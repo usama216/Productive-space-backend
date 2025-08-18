@@ -1,5 +1,6 @@
 const { createClient } = require("@supabase/supabase-js");
 const { v4: uuidv4 } = require("uuid");
+const { sendBookingConfirmation } = require("../utils/email");
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
     console.log(process.env.SUPABASE_URL, process.env.SUPABASE_KEY)
@@ -109,6 +110,50 @@ exports.getBookingById = async (req, res) => {
     res.status(200).json({ booking: data });
   } catch (err) {
     console.error("getBookingById error:", err.message);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+exports.confirmBookingPayment = async (req, res) => {
+  try {
+    const { bookingId } = req.body;
+
+    if (!bookingId) {
+      return res.status(400).json({ error: "Booking ID is required" });
+    }
+
+    // Update booking in Supabase
+    const { data, error } = await supabase
+      .from("Booking")
+      .update({
+        confirmedPayment: true,
+        updatedAt: new Date().toISOString()
+      })
+      .eq("id", bookingId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error(error);
+      return res.status(400).json({ error: error.message });
+    }
+
+    if (!data) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+
+    const userData = {
+      name: "Customer", 
+      email: data.bookedForEmails?.[0]
+    };
+
+    await sendBookingConfirmation(userData, data);
+
+    res.status(200).json({
+      message: "Payment confirmed & confirmation email sent successfully",
+      booking: data
+    });
+  } catch (err) {
+    console.error("confirmBookingPayment error:", err.message);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };

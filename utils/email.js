@@ -1,5 +1,5 @@
 const nodemailer = require("nodemailer");
-const bookingConfirmationTemplate = require("../templates/bookingConfirmation");
+const { paymentConfirmationTemplate, bookingConfirmationTemplate } = require("../templates/bookingConfirmation")
 
 // Configure transporter
 const transporter = nodemailer.createTransport({
@@ -31,9 +31,13 @@ const sendEmail = async (to, templateFn, userData, bookingData) => {
   }
 };
 
-// Shortcut for booking confirmation
+const sendPaymentConfirmation = (userData, bookingData) => {
+  return sendEmail(userData.email, paymentConfirmationTemplate, userData, bookingData);
+};
+
 const sendBookingConfirmation = (userData, bookingData) => {
   return sendEmail(userData.email, bookingConfirmationTemplate, userData, bookingData);
 };
 
-module.exports = { sendEmail, sendBookingConfirmation };
+
+module.exports = { sendEmail, sendBookingConfirmation,sendPaymentConfirmation };
