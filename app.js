@@ -13,6 +13,22 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }))
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+
+// Welcome route - test API endpoint
+app.get("/", (req, res) => {
+    res.json({
+        message: "Welcome to Productive Space Backend!",
+        status: "success",
+        timestamp: new Date().toISOString(),
+        endpoints: {
+            welcome: "GET /",
+            users: "GET /users",
+            payment: "POST /api/hitpay",
+            booking: "POST /api/booking"
+        }
+    });
+});
+
 app.use("/api/hitpay", paymentRoutes);
 app.use("/api/booking", bookingRoutes);
 
