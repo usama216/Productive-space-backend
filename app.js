@@ -73,17 +73,9 @@ app.get("/", (req, res) => {
         </head>
         <body>
             <div class="container">
-                <h1>Welcome to the Productive Space Backend! 🚀</h1>
+                <h1>Welcome to the Productive Space Backend!</h1>
                 <div class="status">Status: Running Successfully</div>
                 <div class="timestamp">Server Time: ${new Date().toLocaleString()}</div>
-                
-                <div class="endpoints">
-                    <h3>Available API Endpoints:</h3>
-                    <div class="endpoint"><strong>GET /</strong> - Welcome Page (this page)</div>
-                    <div class="endpoint"><strong>GET /users</strong> - Get all users</div>
-                    <div class="endpoint"><strong>POST /api/hitpay</strong> - Payment processing</div>
-                    <div class="endpoint"><strong>POST /api/booking</strong> - Booking management</div>
-                </div>
             </div>
         </body>
         </html>
