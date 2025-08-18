@@ -16,17 +16,78 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY
 
 // Welcome route - test API endpoint
 app.get("/", (req, res) => {
-    res.json({
-        message: "Welcome to Productive Space Backend!",
-        status: "success",
-        timestamp: new Date().toISOString(),
-        endpoints: {
-            welcome: "GET /",
-            users: "GET /users",
-            payment: "POST /api/hitpay",
-            booking: "POST /api/booking"
-        }
-    });
+    res.send(`
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Productive Space Backend</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    max-width: 800px;
+                    margin: 50px auto;
+                    padding: 20px;
+                    background-color: #f5f5f5;
+                }
+                .container {
+                    background-color: white;
+                    padding: 40px;
+                    border-radius: 10px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    text-align: center;
+                }
+                h1 {
+                    color: #333;
+                    margin-bottom: 20px;
+                }
+                .status {
+                    color: #28a745;
+                    font-weight: bold;
+                    margin-bottom: 20px;
+                }
+                .timestamp {
+                    color: #666;
+                    font-size: 14px;
+                    margin-bottom: 30px;
+                }
+                .endpoints {
+                    text-align: left;
+                    background-color: #f8f9fa;
+                    padding: 20px;
+                    border-radius: 5px;
+                }
+                .endpoints h3 {
+                    color: #495057;
+                    margin-top: 0;
+                }
+                .endpoint {
+                    margin: 10px 0;
+                    padding: 8px;
+                    background-color: white;
+                    border-left: 4px solid #007bff;
+                    border-radius: 3px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Welcome to the Productive Space Backend! 🚀</h1>
+                <div class="status">Status: Running Successfully</div>
+                <div class="timestamp">Server Time: ${new Date().toLocaleString()}</div>
+                
+                <div class="endpoints">
+                    <h3>Available API Endpoints:</h3>
+                    <div class="endpoint"><strong>GET /</strong> - Welcome Page (this page)</div>
+                    <div class="endpoint"><strong>GET /users</strong> - Get all users</div>
+                    <div class="endpoint"><strong>POST /api/hitpay</strong> - Payment processing</div>
+                    <div class="endpoint"><strong>POST /api/booking</strong> - Booking management</div>
+                </div>
+            </div>
+        </body>
+        </html>
+    `);
 });
 
 app.use("/api/hitpay", paymentRoutes);
