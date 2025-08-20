@@ -137,8 +137,8 @@ const bookingConfirmationTemplate = (userData, bookingData) => ({
             <h3>📞 Need Help?</h3>
             <p>If you have any questions or need to make changes to your booking, please don't hesitate to contact us:</p>
             <ul>
-              <li>📧 Email: support@myproductivespace.com</li>
-              <li>📱 WhatsApp: +65 9123 4567</li>
+              <li>📧 Email: myproductivespacecontact@gmail.com</li>
+              <li>📱 WhatsApp: +65 89202462</li>
               <li>🌐 Website: www.myproductivespace.com</li>
             </ul>
           </div>
