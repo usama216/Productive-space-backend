@@ -22,7 +22,7 @@ exports.createPayment = async (req, res) => {
       reference_number,
       redirect_url,
       webhook,
-      payment_methods = ["paynow_online", "card"],
+      payment_methods = ["paynow_online"],
       phone,
       send_email = false,
       send_sms = false,
