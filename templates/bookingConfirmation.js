@@ -27,42 +27,131 @@ const paymentConfirmationTemplate = (userData, bookingData) => ({
 });
 
 // Booking Confirmation Email
+// const bookingConfirmationTemplate = (userData, bookingData) => ({
+//   subject: `🎉 Booking Confirmation - Ref #${bookingData.bookingRef}`,
+//   html: `
+//     <!DOCTYPE html>
+//     <html lang="en">
+//     <head>
+//       <meta charset="UTF-8">
+//       <title>Booking Confirmation</title>
+//     </head>
+//     <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+//       <h2>Hello ${userData.name || "Guest"},</h2>
+//       <p>✅ Your booking has been <strong>confirmed</strong> and payment received successfully.</p>
+
+//       <h3>📋 Booking Details</h3>
+//       <ul>
+//         <li><strong>Reference Number:</strong> ${bookingData.bookingRef}</li>
+//         <li><strong>Location:</strong> ${bookingData.location || "N/A"}</li>
+//         <li><strong>Seats:</strong> ${bookingData.seatNumbers?.join(", ") || "N/A"}</li>
+//         <li><strong>Number of People (PAX):</strong> ${bookingData.pax || "N/A"}</li>
+//         <li><strong>Start Time:</strong> ${new Date(bookingData.startAt).toLocaleString("en-SG")}</li>
+//         <li><strong>End Time:</strong> ${new Date(bookingData.endAt).toLocaleString("en-SG")}</li>
+//         <li><strong>Special Requests:</strong> ${bookingData.specialRequests || "None"}</li>
+//       </ul>
+
+//       <h3>💳 Payment Details</h3>
+//       <ul>
+//         <li><strong>Total Cost:</strong> SGD ${bookingData.totalCost || 0}</li>
+//         <li><strong>Discount Applied:</strong> ${bookingData.discountId || "N/A"}</li>
+//         <li><strong>Amount Paid:</strong> SGD ${bookingData.totalAmount || 0}</li>
+//         <li><strong>Payment ID:</strong> ${bookingData.paymentId || "N/A"}</li>
+//         <li><strong>Date:</strong> ${new Date().toLocaleDateString("en-SG")}</li>
+//         <li><strong>Time:</strong> ${new Date().toLocaleTimeString("en-SG")}</li>
+//       </ul>
+
+//       <p>We look forward to seeing you 🎉</p>
+//       <p style="margin-top:20px;">- The My Productive Space Team</p>
+//     </body>
+//     </html>
+//   `
+// });
+
 const bookingConfirmationTemplate = (userData, bookingData) => ({
-  subject: `🎉 Booking Confirmation - Ref #${bookingData.bookingRef}`,
+  subject: `Booking Confirmed! Welcome to My Productive Space`,
   html: `
     <!DOCTYPE html>
     <html lang="en">
     <head>
       <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>Booking Confirmation</title>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+        .booking-details { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #667eea; }
+        .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
+        .button { display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 10px 0; }
+        .highlight { color: #667eea; font-weight: bold; }
+        .section { margin: 20px 0; }
+      </style>
     </head>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6;">
-      <h2>Hello ${userData.name || "Guest"},</h2>
-      <p>✅ Your booking has been <strong>confirmed</strong> and payment received successfully.</p>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Booking Confirmed!</h1>
+          <p>Welcome to My Productive Space</p>
+        </div>
+        
+        <div class="content">
+          <h2>Hello ${userData.name || "Guest"},</h2>
+          
+          <p>Thank you for choosing My Productive Space! Your booking has been successfully confirmed and payment received.</p>
+          
+          <div class="booking-details">
+            <h3>📋 Payment Details</h3>
+            <p><strong>Reference Number:</strong> <span class="highlight">${bookingData.bookingRef || 'N/A'}</span></p>
+            <p><strong>Amount Paid:</strong> <span class="highlight">SGD ${bookingData.totalAmount || bookingData.totalCost || 0}</span></p>
+            <p><strong>Payment Method:</strong> <span class="highlight">Online Payment</span></p>
+            <p><strong>Payment ID:</strong> <span class="highlight">${bookingData.paymentId || 'N/A'}</span></p>
+            <p><strong>Date:</strong> <span class="highlight">${new Date().toLocaleDateString('en-SG')}</span></p>
+            <p><strong>Time:</strong> <span class="highlight">${new Date().toLocaleTimeString('en-SG')}</span></p>
+            ${bookingData.discountId ? `<p><strong>Discount Applied:</strong> <span class="highlight">${bookingData.discountId}</span></p>` : ''}
+          </div>
 
-      <h3>📋 Booking Details</h3>
-      <ul>
-        <li><strong>Reference Number:</strong> ${bookingData.bookingRef}</li>
-        <li><strong>Location:</strong> ${bookingData.location || "N/A"}</li>
-        <li><strong>Seats:</strong> ${bookingData.seatNumbers?.join(", ") || "N/A"}</li>
-        <li><strong>Number of People (PAX):</strong> ${bookingData.pax || "N/A"}</li>
-        <li><strong>Start Time:</strong> ${new Date(bookingData.startAt).toLocaleString("en-SG")}</li>
-        <li><strong>End Time:</strong> ${new Date(bookingData.endAt).toLocaleString("en-SG")}</li>
-        <li><strong>Special Requests:</strong> ${bookingData.specialRequests || "None"}</li>
-      </ul>
-
-      <h3>💳 Payment Details</h3>
-      <ul>
-        <li><strong>Total Cost:</strong> SGD ${bookingData.totalCost || 0}</li>
-        <li><strong>Discount Applied:</strong> ${bookingData.discountId || "N/A"}</li>
-        <li><strong>Amount Paid:</strong> SGD ${bookingData.totalAmount || 0}</li>
-        <li><strong>Payment ID:</strong> ${bookingData.paymentId || "N/A"}</li>
-        <li><strong>Date:</strong> ${new Date().toLocaleDateString("en-SG")}</li>
-        <li><strong>Time:</strong> ${new Date().toLocaleTimeString("en-SG")}</li>
-      </ul>
-
-      <p>We look forward to seeing you 🎉</p>
-      <p style="margin-top:20px;">- The My Productive Space Team</p>
+          ${bookingData.location || bookingData.startAt || bookingData.endAt || bookingData.seatNumbers || bookingData.pax ? `
+          <div class="booking-details">
+            <h3>🏢 Booking Details</h3>
+            ${bookingData.location ? `<p><strong>Location:</strong> <span class="highlight">${bookingData.location}</span></p>` : ''}
+            ${bookingData.startAt ? `<p><strong>Start Time:</strong> <span class="highlight">${new Date(bookingData.startAt).toLocaleString("en-SG")}</span></p>` : ''}
+            ${bookingData.endAt ? `<p><strong>End Time:</strong> <span class="highlight">${new Date(bookingData.endAt).toLocaleString("en-SG")}</span></p>` : ''}
+            ${bookingData.seatNumbers && bookingData.seatNumbers.length > 0 ? `<p><strong>Seats:</strong> <span class="highlight">${bookingData.seatNumbers.join(', ')}</span></p>` : ''}
+            ${bookingData.pax ? `<p><strong>Number of People (PAX):</strong> <span class="highlight">${bookingData.pax}</span></p>` : ''}
+            ${bookingData.specialRequests && bookingData.specialRequests !== "None" ? `<p><strong>Special Requests:</strong> <span class="highlight">${bookingData.specialRequests}</span></p>` : ''}
+          </div>
+          ` : ''}
+          
+          <div class="section">
+            <h3>What's Next?</h3>
+            <ul>
+              <li>Check your email for additional booking details</li>
+              <li>Arrive 10 minutes before your scheduled time</li>
+              <li>Enjoy your productive time at our space!</li>
+            </ul>
+          </div>
+          
+          <div class="section">
+            <h3>📞 Need Help?</h3>
+            <p>If you have any questions or need to make changes to your booking, please don't hesitate to contact us:</p>
+            <ul>
+              <li>📧 Email: support@myproductivespace.com</li>
+              <li>📱 WhatsApp: +65 9123 4567</li>
+              <li>🌐 Website: www.myproductivespace.com</li>
+            </ul>
+          </div>
+          
+          <p><strong>Thank you for choosing My Productive Space!</strong></p>
+          <p>We look forward to providing you with an excellent working environment.</p>
+        </div>
+        
+        <div class="footer">
+          <p>© 2025 My Productive Space. All rights reserved.</p>
+          <p>This email was sent to ${userData.email || userData.name || "you"}</p>
+        </div>
+      </div>
     </body>
     </html>
   `
