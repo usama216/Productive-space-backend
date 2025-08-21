@@ -1,4 +1,3 @@
-// services/invoiceService.js
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
@@ -8,20 +7,16 @@ const generateInvoicePDF = (userData, bookingData) => {
         try {
             const doc = new PDFDocument({ margin: 50, size: 'A4' });
 
-            // Create filename with booking reference
             const fileName = `Invoice_${bookingData.bookingRef || bookingData.id || Date.now()}.pdf`;
             const filePath = path.join(__dirname, '../temp', fileName);
 
-            // Ensure temp directory exists
             const tempDir = path.dirname(filePath);
             if (!fs.existsSync(tempDir)) {
                 fs.mkdirSync(tempDir, { recursive: true });
             }
 
-            // Pipe to file
             doc.pipe(fs.createWriteStream(filePath));
 
-            // Standardize fonts
             const headerFont = 'Helvetica-Bold';
             const bodyFont = 'Helvetica';
             const titleFontSize = 18;
@@ -29,11 +24,8 @@ const generateInvoicePDF = (userData, bookingData) => {
             const bodyFontSize = 10;
             const smallFontSize = 8;
 
-            // HEADER SECTION
-            // Company info background (light pink)
             doc.rect(50, 50, 230, 130).fill('#F8E8E8').stroke();
 
-            // Company details
             doc.fillColor('#000000')
                 .font(headerFont).fontSize(titleFontSize)
                 .text('MY PRODUCTIVE SPACE', 60, 60)
@@ -47,14 +39,12 @@ const generateInvoicePDF = (userData, bookingData) => {
                 .text('89202462', 60, 145)
                 .text('myproductivespacecontact@gmail.com', 60, 155);
 
-            // Invoice title and number
-            const invoiceNumber = `INV-${String(bookingData.id || '000001').slice(-6).padStart(6, '0')}`;
+           const invoiceNumber = `INV-${String(bookingData.id || '000001').slice(-6).padStart(6, '0')}`;
             doc.font(headerFont).fontSize(titleFontSize)
                 .text('INVOICE', 400, 60)
                 .font(bodyFont).fontSize(bodyFontSize)
                 .text(`# ${invoiceNumber}`, 400, 85);
 
-            // Balance Due box (green)
             const balanceDue = bookingData.confirmedPayment ? '0.00' : (bookingData.totalAmount || '0.00');
             doc.rect(400, 105, 120, 40).fill('#4CAF50').stroke();
             doc.fillColor('#FFFFFF').font(bodyFont).fontSize(smallFontSize)
@@ -62,20 +52,17 @@ const generateInvoicePDF = (userData, bookingData) => {
                 .font(headerFont).fontSize(bodyFontSize)
                 .text(`$${balanceDue}`, 410, 130);
 
-            // Invoice dates
             const currentDate = new Date().toLocaleDateString('en-SG');
             doc.fillColor('#000000').font(bodyFont).fontSize(bodyFontSize)
                 .text('Invoice Date:', 400, 170).text(currentDate, 480, 170)
                 .text('Due Date:', 400, 200).text(currentDate, 480, 200);
 
-            // BILL TO SECTION
             doc.font(headerFont).fontSize(sectionHeaderFontSize)
                 .text('Bill To', 50, 230)
                 .font(bodyFont).fontSize(bodyFontSize)
                 .text(userData.firstName || 'Customer', 50, 250)
-                .text(userData.email || '', 50, 265, { width: 200 }); // Prevent overflow
+                .text(userData.email || '', 50, 265, { width: 200 });
 
-            // TABLE HEADER
             const tableTop = 300;
             doc.rect(50, tableTop, 500, 25).fill('#2C3E50').stroke();
             doc.fillColor('#FFFFFF').font(headerFont).fontSize(bodyFontSize)
@@ -85,9 +72,8 @@ const generateInvoicePDF = (userData, bookingData) => {
                 .text('Rate', 420, tableTop + 8)
                 .text('Amount', 480, tableTop + 8);
 
-            // TABLE ROW
             let currentY = tableTop + 30;
-            doc.rect(50, currentY, 500, 30).fill('#F8F9FA').stroke(); // Increased row height
+            doc.rect(50, currentY, 500, 30).fill('#F8F9FA').stroke();
 
             const startDate = bookingData.startAt ? new Date(bookingData.startAt) : new Date();
             const hours = bookingData.endAt ?
@@ -102,19 +88,17 @@ const generateInvoicePDF = (userData, bookingData) => {
 
             doc.fillColor('#000000').font(bodyFont).fontSize(bodyFontSize)
                 .text('1', 60, currentY + 10)
-                .text(description, 90, currentY + 10, { width: 280 }) // Constrain width
+                .text(description, 90, currentY + 10, { width: 280 })
                 .text(hours.toString(), 385, currentY + 10)
                 .text(`$${rate.toFixed(2)}`, 420, currentY + 10)
                 .text(`$${amount.toFixed(2)}`, 480, currentY + 10);
 
-            // TOTALS SECTION
-            currentY += 50; // Increased spacing
+            currentY += 50; 
             doc.font(headerFont).fontSize(sectionHeaderFontSize)
                 .text('Sub Total', 400, currentY)
                 .font(bodyFont).fontSize(bodyFontSize)
                 .text(`$${amount.toFixed(2)}`, 480, currentY);
 
-            // Discount if any
             if (bookingData.discountAmount && bookingData.discountAmount > 0) {
                 currentY += 20;
                 doc.font(headerFont).fontSize(sectionHeaderFontSize)
@@ -123,7 +107,6 @@ const generateInvoicePDF = (userData, bookingData) => {
                     .text(`-$${bookingData.discountAmount.toFixed(2)}`, 480, currentY);
             }
 
-            // Total
             currentY += 20;
             const total = amount - (parseFloat(bookingData.discountAmount) || 0);
             doc.font(headerFont).fontSize(sectionHeaderFontSize)
@@ -131,21 +114,18 @@ const generateInvoicePDF = (userData, bookingData) => {
                 .font(bodyFont).fontSize(bodyFontSize)
                 .text(`${total.toFixed(2)} SGD`, 465, currentY);
 
-            // Payment Made (red)
             currentY += 20;
             doc.fillColor('#FF0000').font(headerFont).fontSize(sectionHeaderFontSize)
                 .text('Paid', 400, currentY)
                 .font(bodyFont).fontSize(bodyFontSize)
                 .text(`${amount.toFixed(2)} SGD`, 470, currentY);
 
-            // Balance Due
             currentY += 20;
             doc.fillColor('#000000').font(headerFont).fontSize(sectionHeaderFontSize)
                 .text('Balance Due', 400, currentY)
                 .font(bodyFont).fontSize(bodyFontSize)
                 .text(`$${balanceDue}`, 480, currentY);
 
-            // FOOTER
             const footerY = 650;
             doc.font(headerFont).fontSize(sectionHeaderFontSize)
                 .text('Notes', 50, footerY)
@@ -159,7 +139,6 @@ const generateInvoicePDF = (userData, bookingData) => {
                 .text('2. Once confirmed, we do not offer refunds.', 50, footerY + 80, { width: 300 })
                 .text('3. Please note that seat changes are subject to seats availability.', 50, footerY + 95, { width: 300 });
 
-            // Finalize PDF
             doc.end();
 
             doc.on('end', () => {
