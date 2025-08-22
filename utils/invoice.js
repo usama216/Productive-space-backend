@@ -8,7 +8,9 @@ const generateInvoicePDF = (userData, bookingData) => {
             const doc = new PDFDocument({ margin: 50, size: 'A4' });
 
             const fileName = `Invoice_${bookingData.bookingRef || bookingData.id || Date.now()}.pdf`;
-            const filePath = path.join(__dirname, '../temp', fileName);
+            // const filePath = path.join(__dirname, '../temp', fileName);
+            const filePath = path.join('/tmp', fileName);
+
 
             const tempDir = path.dirname(filePath);
             if (!fs.existsSync(tempDir)) {
