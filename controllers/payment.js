@@ -9,7 +9,7 @@ const hitpayClient = axios.create({
   }
 });
 
-console.log(process.env.HITPAY_API_URL);
+// console.log(process.env.HITPAY_API_URL);
 
 exports.createPayment = async (req, res) => {
   try {
@@ -65,7 +65,7 @@ exports.createPayment = async (req, res) => {
 
 exports.handleWebhook = async (req, res) => {
   try {
-    console.log("Raw webhook body:", req.body);
+    // console.log("Raw webhook body:", req.body);
     
     const event = req.body;
     
@@ -73,7 +73,7 @@ exports.handleWebhook = async (req, res) => {
     try {
       const response = await hitpayClient.get(`/v1/payment-requests/${event.payment_request_id}`);
       paymentDetails = response.data;
-      console.log("Fetched payment details:", paymentDetails);
+      // console.log("Fetched payment details:", paymentDetails);
     } catch (apiError) {
       console.error("Failed to fetch payment details:", apiError.response?.data || apiError.message);
     }
@@ -92,12 +92,12 @@ exports.handleWebhook = async (req, res) => {
       status: event.status
     };
 
-    if (event.status === 'completed' && userData.email) {
-      await sendBookingConfirmation(userData, bookingData);
-      console.log("Confirmation email sent to:", userData.email);
-    } else {
-      console.log("Email not sent - Status:", event.status, "Email:", userData.email);
-    }
+    // if (event.status === 'completed' && userData.email) {
+    //   await sendBookingConfirmation(userData, bookingData);
+    //   console.log("Confirmation email sent to:", userData.email);
+    // } else {
+    //   console.log("Email not sent - Status:", event.status, "Email:", userData.email);
+    // }
 
     res.status(200).send("OK");
   } catch (err) {
