@@ -8,7 +8,9 @@ const generateInvoicePDF = (userData, bookingData) => {
             const doc = new PDFDocument({ margin: 50, size: 'A4' });
 
             const fileName = `Invoice_${bookingData.bookingRef || bookingData.id || Date.now()}.pdf`;
+            // const filePath = path.join(__dirname, '../temp', fileName);
             const filePath = path.join('/tmp', fileName);
+
 
             const tempDir = path.dirname(filePath);
             if (!fs.existsSync(tempDir)) {
@@ -24,60 +26,48 @@ const generateInvoicePDF = (userData, bookingData) => {
             const bodyFontSize = 10;
             const smallFontSize = 8;
 
-            // Company Header Section (Top Left) - Adjusted positioning
-            doc.rect(50, 50, 250, 120).fill('#F8E8E8').stroke();
-            
-            // Company Logo Placeholder - positioned exactly as in reference
-            doc.rect(60, 60, 25, 25).fill('#FFD700').stroke();
-            doc.fillColor('#000000').font(headerFont).fontSize(6).text('LOGO', 63, 70);
-            
-            // Company name and details - aligned exactly as in reference
+            doc.rect(50, 50, 230, 130).fill('#F8E8E8').stroke();
+
             doc.fillColor('#000000')
-                .font(headerFont).fontSize(16)
-                .text('MY PRODUCTIVE SPACE', 95, 60)
-                .font(bodyFont).fontSize(8)
-                .text('co-work | co-learn | co-study', 95, 80)
-                .text('My Productive Space', 60, 100)
-                .text('Company ID: 53502976D', 60, 110)
-                .text('Blk 208 Hougang st 21 #01-201', 60, 120)
-                .text('Hougang 530208', 60, 130)
-                .text('Singapore', 60, 140)
-                .text('89202462', 60, 150)
-                .text('myproductivespacecontact@gmail.com', 60, 160);
+                .font(headerFont).fontSize(titleFontSize)
+                .text('MY PRODUCTIVE SPACE', 60, 60)
+                .font(bodyFont).fontSize(smallFontSize)
+                .text('SMART DESK . MEETING', 60, 85)
+                .text('My Productive Space', 60, 95)
+                .text('Company ID: 53502976D', 60, 105)
+                .text('Blk 208 Hougang st 21 #01-201', 60, 115)
+                .text('Hougang 530208', 60, 125)
+                .text('Singapore', 60, 135)
+                .text('89202462', 60, 145)
+                .text('myproductivespacecontact@gmail.com', 60, 155);
 
-            // Invoice Details (Top Right) - Exact positioning
-            const invoiceNumber = `INV-${String(bookingData.id || '000001').slice(-6).padStart(6, '0')}`;
-            doc.font(headerFont).fontSize(18)
-                .text('INVOICE', 380, 60)
-                .font(bodyFont).fontSize(12)
-                .text(`# ${invoiceNumber}`, 380, 85);
+           const invoiceNumber = `INV-${String(bookingData.id || '000001').slice(-6).padStart(6, '0')}`;
+            doc.font(headerFont).fontSize(titleFontSize)
+                .text('INVOICE', 400, 60)
+                .font(bodyFont).fontSize(bodyFontSize)
+                .text(`# ${invoiceNumber}`, 400, 85);
 
-            // Balance Due Box - Exact size and position
             const balanceDue = bookingData.confirmedPayment ? '0.00' : (bookingData.totalAmount || '0.00');
-            doc.rect(380, 105, 130, 35).fill('#4CAF50').stroke();
-            doc.fillColor('#FFFFFF').font(bodyFont).fontSize(8)
-                .text('Balance Due', 390, 115)
-                .font(headerFont).fontSize(12)
-                .text(`SGD${balanceDue}`, 390, 130);
+            doc.rect(400, 105, 120, 40).fill('#4CAF50').stroke();
+            doc.fillColor('#FFFFFF').font(bodyFont).fontSize(smallFontSize)
+                .text('Balance Due', 410, 115)
+                .font(headerFont).fontSize(bodyFontSize)
+                .text(`$${balanceDue}`, 410, 130);
 
-            // Dates - Exact alignment
             const currentDate = new Date().toLocaleDateString('en-SG');
-            doc.fillColor('#000000').font(bodyFont).fontSize(10)
-                .text('Invoice Date:', 380, 160).text(currentDate, 470, 160)
-                .text('Terms:', 380, 180).text('Due on Receipt', 470, 180)
-                .text('Due Date:', 380, 200).text(currentDate, 470, 200);
+            doc.fillColor('#000000').font(bodyFont).fontSize(bodyFontSize)
+                .text('Invoice Date:', 400, 170).text(currentDate, 480, 170)
+                .text('Due Date:', 400, 200).text(currentDate, 480, 200);
 
-            // Bill To Section - Exact positioning
-            doc.font(headerFont).fontSize(12)
-                .text('Bill To', 50, 200)
-                .font(bodyFont).fontSize(10)
-                .text(userData.firstName || userData.name || 'Customer', 50, 220)
-                .text(userData.email || '', 50, 235, { width: 200 });
+            doc.font(headerFont).fontSize(sectionHeaderFontSize)
+                .text('Bill To', 50, 230)
+                .font(bodyFont).fontSize(bodyFontSize)
+                .text(userData.firstName || 'Customer', 50, 250)
+                .text(userData.email || '', 50, 265, { width: 200 });
 
-            // Itemized Services Table - Exact positioning and alignment
-            const tableTop = 270;
+            const tableTop = 300;
             doc.rect(50, tableTop, 500, 25).fill('#2C3E50').stroke();
-            doc.fillColor('#FFFFFF').font(headerFont).fontSize(10)
+            doc.fillColor('#FFFFFF').font(headerFont).fontSize(bodyFontSize)
                 .text('#', 60, tableTop + 8)
                 .text('Item & Description', 90, tableTop + 8)
                 .text('Qty', 380, tableTop + 8)
@@ -85,59 +75,69 @@ const generateInvoicePDF = (userData, bookingData) => {
                 .text('Amount', 480, tableTop + 8);
 
             let currentY = tableTop + 30;
-            
-            // Generate itemized rows based on booking data
-            const items = generateInvoiceItems(bookingData);
-            let rowNumber = 1;
-            let subtotal = 0;
+            doc.rect(50, currentY, 500, 30).fill('#F8F9FA').stroke();
 
-            items.forEach(item => {
-                doc.rect(50, currentY, 500, 25).fill('#F8F9FA').stroke();
-                
-                doc.fillColor('#000000').font(bodyFont).fontSize(10)
-                    .text(rowNumber.toString(), 60, currentY + 8)
-                    .text(item.description, 90, currentY + 8, { width: 280 })
-                    .text(item.qty.toFixed(2), 385, currentY + 8)
-                    .text(`$${item.rate.toFixed(2)}`, 420, currentY + 8)
-                    .text(`$${item.amount.toFixed(2)}`, 480, currentY + 8);
-                
-                subtotal += item.amount;
-                currentY += 25;
-                rowNumber++;
-            });
+            const startDate = bookingData.startAt ? new Date(bookingData.startAt) : new Date();
+            const hours = bookingData.endAt ?
+                Math.ceil((new Date(bookingData.endAt) - startDate) / (1000 * 60 * 60)) : 1;
 
-            // Financial Summary (Bottom Right) - Exact positioning
-            currentY += 15;
-            doc.font(headerFont).fontSize(12)
-                .text('Total', 380, currentY)
-                .font(bodyFont).fontSize(10)
-                .text(`SGD${subtotal.toFixed(2)}`, 470, currentY);
+            const description = bookingData.location ?
+                `${bookingData.location} - ${startDate.toLocaleDateString('en-SG')}` :
+                `Workspace Booking - ${startDate.toLocaleDateString('en-SG')}`;
+
+            const rate = bookingData.hourlyRate || (parseFloat(bookingData.totalAmount || 0) / hours) || 10;
+            const amount = parseFloat(bookingData.totalAmount || 0);
+
+            doc.fillColor('#000000').font(bodyFont).fontSize(bodyFontSize)
+                .text('1', 60, currentY + 10)
+                .text(description, 90, currentY + 10, { width: 280 })
+                .text((bookingData.pax || 1).toString(), 385, currentY + 10)
+                .text(`$${rate.toFixed(2)}`, 420, currentY + 10)
+                .text(`$${amount.toFixed(2)}`, 480, currentY + 10);
+
+            currentY += 50; 
+            doc.font(headerFont).fontSize(sectionHeaderFontSize)
+                .text('Sub Total', 400, currentY)
+                .font(bodyFont).fontSize(bodyFontSize)
+                .text(`$${amount.toFixed(2)}`, 480, currentY);
+
+            if (bookingData.discountAmount && bookingData.discountAmount > 0) {
+                currentY += 20;
+                doc.font(headerFont).fontSize(sectionHeaderFontSize)
+                    .text('Discount', 400, currentY)
+                    .font(bodyFont).fontSize(bodyFontSize)
+                    .text(`-$${bookingData.discountAmount.toFixed(2)}`, 480, currentY);
+            }
 
             currentY += 20;
-            doc.fillColor('#FF0000').font(headerFont).fontSize(12)
-                .text('Payment Made', 380, currentY)
-                .font(bodyFont).fontSize(10)
-                .text(`(-) ${subtotal.toFixed(2)}`, 470, currentY);
+            const total = amount - (parseFloat(bookingData.discountAmount) || 0);
+            doc.font(headerFont).fontSize(sectionHeaderFontSize)
+                .text('Total', 400, currentY)
+                .font(bodyFont).fontSize(bodyFontSize)
+                .text(`${total.toFixed(2)} SGD`, 465, currentY);
 
             currentY += 20;
-            doc.rect(380, currentY - 5, 130, 25).fill('#F0F0F0');
-            doc.fillColor('#000000').font(headerFont).fontSize(12)
-                .text('Balance Due', 380, currentY)
-                .font(bodyFont).fontSize(10)
-                .text(`SGD0.00`, 470, currentY);
+            doc.fillColor('#FF0000').font(headerFont).fontSize(sectionHeaderFontSize)
+                .text('Paid', 400, currentY)
+                .font(bodyFont).fontSize(bodyFontSize)
+                .text(`${amount.toFixed(2)} SGD`, 470, currentY);
 
-            // Notes Section (Bottom Left) - Exact positioning
-            const footerY = 600;
-            doc.font(headerFont).fontSize(12)
+            currentY += 20;
+            doc.fillColor('#000000').font(headerFont).fontSize(sectionHeaderFontSize)
+                .text('Balance Due', 400, currentY)
+                .font(bodyFont).fontSize(bodyFontSize)
+                .text(`$${balanceDue}`, 480, currentY);
+
+            const footerY = 650;
+            doc.font(headerFont).fontSize(sectionHeaderFontSize)
                 .text('Notes', 50, footerY)
-                .font(bodyFont).fontSize(8)
+                .font(bodyFont).fontSize(smallFontSize)
                 .text('Thanks for your business. Please refer to attached excel sheet for more details', 50, footerY + 15, { width: 300 });
 
-            // Terms & Conditions - Exact positioning
-            doc.font(headerFont).fontSize(12)
+            doc.font(headerFont).fontSize(sectionHeaderFontSize)
                 .text('Terms & Conditions', 50, footerY + 50)
-                .font(bodyFont).fontSize(8)
-                .text('1. Please be inform that full payment is required upon confirmation unless otherwise stated.', 50, footerY + 65, { width: 300 })
+                .font(bodyFont).fontSize(smallFontSize)
+                .text('1. Please be informed that full payment is required upon confirmation.', 50, footerY + 65, { width: 300 })
                 .text('2. Once confirmed, we do not offer refunds.', 50, footerY + 80, { width: 300 })
                 .text('3. Please note that seat changes are subject to seats availability.', 50, footerY + 95, { width: 300 });
 
@@ -155,41 +155,6 @@ const generateInvoicePDF = (userData, bookingData) => {
             reject(error);
         }
     });
-};
-
-// Helper function to generate invoice items
-const generateInvoiceItems = (bookingData) => {
-    const items = [];
-    
-    if (bookingData.startAt && bookingData.endAt) {
-        const startDate = new Date(bookingData.startAt);
-        const endDate = new Date(bookingData.endAt);
-        const hours = Math.ceil((endDate - startDate) / (1000 * 60 * 60));
-        
-        const description = bookingData.location ? 
-            `${startDate.toISOString().slice(0, 8).replace(/-/g, '')}-${bookingData.location}` :
-            `${startDate.toISOString().slice(0, 8).replace(/-/g, '')}-workspace`;
-        
-        const rate = bookingData.hourlyRate || (parseFloat(bookingData.totalAmount || 0) / hours) || 10;
-        const amount = parseFloat(bookingData.totalAmount || 0);
-        
-        items.push({
-            description: description,
-            qty: hours,
-            rate: rate,
-            amount: amount
-        });
-    } else {
-        // Fallback for basic booking data
-        items.push({
-            description: `Workspace Booking - ${new Date().toISOString().slice(0, 8).replace(/-/g, '')}`,
-            qty: 1,
-            rate: parseFloat(bookingData.totalAmount || 0),
-            amount: parseFloat(bookingData.totalAmount || 0)
-        });
-    }
-    
-    return items;
 };
 
 module.exports = {
