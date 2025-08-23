@@ -91,7 +91,7 @@ const generateInvoicePDF = (userData, bookingData) => {
             doc.fillColor('#000000').font(bodyFont).fontSize(bodyFontSize)
                 .text('1', 60, currentY + 10)
                 .text(description, 90, currentY + 10, { width: 280 })
-                .text(hours.toString(), 385, currentY + 10)
+                .text((bookingData.pax || 1).toString(), 385, currentY + 10)
                 .text(`$${rate.toFixed(2)}`, 420, currentY + 10)
                 .text(`$${amount.toFixed(2)}`, 480, currentY + 10);
 
