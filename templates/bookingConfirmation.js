@@ -105,7 +105,7 @@ const bookingConfirmationTemplate = (userData, bookingData) => ({
             <h3>📋 Payment Details</h3>
             <p><strong>Reference Number:</strong> <span class="highlight">${bookingData.bookingRef || 'N/A'}</span></p>
             <p><strong>Amount Paid:</strong> <span class="highlight">SGD ${bookingData.totalAmount || bookingData.totalCost || 0}</span></p>
-            <p><strong>Payment Method:</strong> <span class="highlight">Online Payment</span></p>
+            <p><strong>Payment Method:</strong> <span class="highlight">${bookingData.payment_method || 'Online Payment'}</span></p>
             <p><strong>Payment ID:</strong> <span class="highlight">${bookingData.paymentId || 'N/A'}</span></p>
             <p><strong>Date:</strong> <span class="highlight">${new Date().toLocaleDateString('en-SG')}</span></p>
             <p><strong>Time:</strong> <span class="highlight">${new Date().toLocaleTimeString('en-SG')}</span></p>
