@@ -69,7 +69,7 @@ const paymentConfirmationTemplate = (userData, bookingData) => ({
 // });
 
 const bookingConfirmationTemplate = (userData, bookingData) => ({
-  subject: `Booking Confirmed! Welcome to My Productive Space`,
+  subject: `Booking Confirmed - Ref #${bookingData.bookingRef || 'N/A'} - Welcome to My Productive Space`,
   html: `
     <!DOCTYPE html>
     <html lang="en">
@@ -80,12 +80,12 @@ const bookingConfirmationTemplate = (userData, bookingData) => ({
       <style>
         body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
         .container { max-width: 800px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+        .header { background: linear-gradient(135deg, #ff6900 0%, #ff8533 100%); color: white; padding: 20px 30px; text-align: center; border-radius: 10px 10px 0 0; }
         .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-        .booking-details { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #667eea; }
+        .booking-details { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #ff6900; }
         .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
-        .button { display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 10px 0; }
-        .highlight { color: #667eea; font-weight: bold; }
+        .button { display: inline-block; background: #ff6900; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 10px 0; }
+        .highlight { color: #ff6900; font-weight: bold; }
         .section { margin: 20px 0; }
       </style>
     </head>
@@ -97,7 +97,7 @@ const bookingConfirmationTemplate = (userData, bookingData) => ({
         </div>
         
         <div class="content">
-          <h2>Hello ${userData.name || "Guest"},</h2>
+          <h2>Hello ${userData.firstName + userData.lastName || "Guest"},</h2>
           
           <p>Thank you for choosing My Productive Space! Your booking has been successfully confirmed and payment received.</p>
           
@@ -114,7 +114,7 @@ const bookingConfirmationTemplate = (userData, bookingData) => ({
               const subtotal = totalAmount - cardFee;
               
               return `
-                <p><strong>Service Cost:</strong> <span class="highlight">SGD ${totalCost.toFixed(2)}</span></p>
+                <p><strong>Amount:</strong> <span class="highlight">SGD ${totalCost.toFixed(2)}</span></p>
                 ${isCardPayment ? `<p><strong>Card Processing Fee (5%):</strong> <span class="highlight">SGD ${cardFee.toFixed(2)}</span></p>` : ''}
                 <p><strong>Total Amount Paid:</strong> <span class="highlight">SGD ${totalAmount.toFixed(2)}</span></p>
                 <p><strong>Payment Method:</strong> <span class="highlight">${paymentMethod}</span></p>

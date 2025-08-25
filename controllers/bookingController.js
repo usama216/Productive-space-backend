@@ -9,6 +9,7 @@ exports.createBooking = async (req, res) => {
   try {
 
     const {
+      id, // Allow custom ID if provided
       bookingRef,
       userId,
       location,
@@ -30,11 +31,45 @@ exports.createBooking = async (req, res) => {
       paymentId
     } = req.body;
 
+    // Check if booking with this ID already exists
+    if (id) {
+      const { data: existingBooking, error: checkError } = await supabase
+        .from("Booking")
+        .select("id")
+        .eq("id", id)
+        .single();
+
+      if (existingBooking && !checkError) {
+        return res.status(409).json({ 
+          error: "Booking already exists",
+          message: "A booking with this ID already exists",
+          existingBookingId: id
+        });
+      }
+    }
+
+    // Check if booking with this reference number already exists
+    if (bookingRef) {
+      const { data: existingRef, error: refError } = await supabase
+        .from("Booking")
+        .select("id, bookingRef")
+        .eq("bookingRef", bookingRef)
+        .single();
+
+      if (existingRef && !refError) {
+        return res.status(409).json({ 
+          error: "Duplicate booking reference",
+          message: "A booking with this reference number already exists",
+          existingBookingRef: bookingRef
+        });
+      }
+    }
+
     const { data, error } = await supabase
       .from("Booking")
       .insert([
         {
-           id :uuidv4(),
+           id: id || uuidv4(), // Use provided ID or generate new one
           bookingRef,
           userId,
           location,
@@ -120,6 +155,57 @@ exports.confirmBookingPayment = async (req, res) => {
     
     if (!bookingId) {
       return res.status(400).json({ error: "Booking ID is required" });
+    }
+
+    // First check if booking exists and get current status
+    const { data: existingBooking, error: checkError } = await supabase
+      .from("Booking")
+      .select("*")
+      .eq("id", bookingId)
+      .single();
+
+    if (checkError || !existingBooking) {
+      return res.status(404).json({ 
+        error: "Booking not found",
+        message: `No booking found with ID: ${bookingId}`,
+        requestedBookingId: bookingId
+      });
+    }
+
+    console.log(`Found booking: ${existingBooking.id}, confirmedPayment: ${existingBooking.confirmedPayment}`);
+
+    // Check if payment is already confirmed
+    if (existingBooking.confirmedPayment === true || existingBooking.confirmedPayment === "true") {
+      // Get payment information if paymentId exists
+      let paymentData = null;
+      if (existingBooking.paymentId) {
+        const { data: payment, error: paymentError } = await supabase
+          .from("Payment")
+          .select("*")
+          .eq("id", existingBooking.paymentId)
+          .single();
+
+        if (!paymentError) {
+          paymentData = payment;
+        }
+      }
+
+      console.log(`Booking already confirmed for booking ${existingBooking.id}. Cannot confirm again.`);
+
+      return res.status(400).json({
+        error: "Booking already confirmed",
+        message: "This booking has already been confirmed. Cannot confirm again.",
+        booking: {
+          ...existingBooking,
+          confirmedPayment: true,
+          status: "already_confirmed"
+        },
+        payment: paymentData,
+        totalAmount: existingBooking.totalAmount,
+        confirmedPayment: true,
+        alreadyConfirmed: true, // Flag to indicate this was already confirmed
+        requestedBookingId: bookingId
+      });
     }
 
     // Update booking in Supabase
