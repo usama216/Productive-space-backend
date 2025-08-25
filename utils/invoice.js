@@ -26,20 +26,19 @@ const generateInvoicePDF = (userData, bookingData) => {
             const bodyFontSize = 10;
             const smallFontSize = 8;
 
-            doc.rect(50, 50, 230, 130).fill('#F8E8E8').stroke();
+            doc.rect(50, 50, 230, 130).fill('#F9F9F9').stroke();
 
-            doc.fillColor('#000000')
-                .font(headerFont).fontSize(titleFontSize)
-                .text('MY PRODUCTIVE SPACE', 60, 60)
-                .font(bodyFont).fontSize(smallFontSize)
-                .text('SMART DESK . MEETING', 60, 85)
-                .text('My Productive Space', 60, 95)
-                .text('Company ID: 53502976D', 60, 105)
-                .text('Blk 208 Hougang st 21 #01-201', 60, 115)
-                .text('Hougang 530208', 60, 125)
-                .text('Singapore', 60, 135)
-                .text('89202462', 60, 145)
-                .text('myproductivespacecontact@gmail.com', 60, 155);
+     doc.fillColor('#000000')
+   .image('https://my-productive-space.vercel.app/mock_img/logo5.png', 60, 40, { width: 120 })
+   .font(bodyFont).fontSize(smallFontSize)
+   .text('My Productive Space', 60, 95)
+   .text('Company ID: 53502976D', 60, 105)
+   .text('Blk 208 Hougang st 21 #01-201', 60, 115)
+   .text('Hougang 530208', 60, 125)
+   .text('Singapore', 60, 135)
+   .text('89202462', 60, 145)
+   .text('myproductivespacecontact@gmail.com', 60, 155);
+
 
            const invoiceNumber = `INV-${String(bookingData.id || '000001').slice(-6).padStart(6, '0')}`;
             doc.font(headerFont).fontSize(titleFontSize)
