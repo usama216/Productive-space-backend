@@ -116,7 +116,8 @@ exports.getBookingById = async (req, res) => {
 exports.confirmBookingPayment = async (req, res) => {
   try {
     const { bookingId } = req.body;
-console.log(req.body)
+    console.log(req.body)
+    
     if (!bookingId) {
       return res.status(400).json({ error: "Booking ID is required" });
     }
@@ -141,6 +142,20 @@ console.log(req.body)
       return res.status(404).json({ error: "Booking not found" });
     }
 
+    // Fetch payment information if paymentId exists
+    let paymentData = null;
+    if (data.paymentId) {
+      const { data: payment, error: paymentError } = await supabase
+        .from("Payment")
+        .select("*")
+        .eq("id", data.paymentId)
+        .single();
+
+      if (!paymentError) {
+        paymentData = payment;
+      }
+    }
+
     const userData = {
       name: "Customer", 
       email: data.bookedForEmails?.[0]
@@ -150,7 +165,10 @@ console.log(req.body)
 
     res.status(200).json({
       message: "Payment confirmed & confirmation email sent successfully",
-      booking: data
+      booking: data,
+      payment: paymentData,
+      totalAmount: data.totalAmount,
+      confirmedPayment: data.confirmedPayment
     });
   } catch (err) {
     console.error("confirmBookingPayment error:", err.message);

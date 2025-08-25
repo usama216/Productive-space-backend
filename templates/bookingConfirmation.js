@@ -104,10 +104,23 @@ const bookingConfirmationTemplate = (userData, bookingData) => ({
           <div class="booking-details">
             <h3>📋 Payment Details</h3>
             <p><strong>Reference Number:</strong> <span class="highlight">${bookingData.bookingRef || 'N/A'}</span></p>
-            <p><strong>Subtotal:</strong> <span class="highlight">SGD ${((bookingData.totalAmount || bookingData.totalCost || 0) / (1 + (bookingData.payment_method === 'card' ? 0.05 : 0))).toFixed(2)}</span></p>
-            ${bookingData.payment_method === 'card' ? `<p><strong>Card Processing Fee (5%):</strong> <span class="highlight">SGD ${((bookingData.totalAmount || bookingData.totalCost || 0) * 0.05).toFixed(2)}</span></p>` : ''}
-            <p><strong>Total Amount Paid:</strong> <span class="highlight">SGD ${bookingData.totalAmount || bookingData.totalCost || 0}</span></p>
-            <p><strong>Payment Method:</strong> <span class="highlight">${bookingData.payment_method || 'Online Payment'}</span></p>
+            
+            ${(() => {
+              const totalAmount = parseFloat(bookingData.totalAmount || 0);
+              const totalCost = parseFloat(bookingData.totalCost || 0);
+              const paymentMethod = bookingData.payment_method || (totalAmount !== totalCost ? 'Credit Card' : 'Pay Now (Scan QR code)');
+              const isCardPayment = paymentMethod === 'Credit Card' || paymentMethod === 'card';
+              const cardFee = isCardPayment ? totalAmount * 0.05 : 0;
+              const subtotal = totalAmount - cardFee;
+              
+              return `
+                <p><strong>Service Cost:</strong> <span class="highlight">SGD ${totalCost.toFixed(2)}</span></p>
+                ${isCardPayment ? `<p><strong>Card Processing Fee (5%):</strong> <span class="highlight">SGD ${cardFee.toFixed(2)}</span></p>` : ''}
+                <p><strong>Total Amount Paid:</strong> <span class="highlight">SGD ${totalAmount.toFixed(2)}</span></p>
+                <p><strong>Payment Method:</strong> <span class="highlight">${paymentMethod}</span></p>
+              `;
+            })()}
+            
             <p><strong>Payment ID:</strong> <span class="highlight">${bookingData.paymentId || 'N/A'}</span></p>
             <p><strong>Date:</strong> <span class="highlight">${new Date().toLocaleDateString('en-SG')}</span></p>
             <p><strong>Time:</strong> <span class="highlight">${new Date().toLocaleTimeString('en-SG')}</span></p>

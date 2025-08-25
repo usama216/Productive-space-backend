@@ -26,11 +26,30 @@ const generateInvoicePDF = (userData, bookingData) => {
             const bodyFontSize = 10;
             const smallFontSize = 8;
 
-            doc.rect(50, 50, 230, 130).fill('#F9F9F9').stroke();
-
+            // Add logo from temp folder
+            try {
+                const logoPath = '/tmp/logo.png';
+                if (fs.existsSync(logoPath)) {
+                    // Add logo image (80x80 pixels)
+                    doc.image(logoPath, 60, 60, { width: 80, height: 80 });
+                    console.log('Logo added to PDF successfully');
+                } else {
+                    // Fallback to company name if logo not found
+                    doc.rect(50, 50, 230, 130).fill('#F9F9F9').stroke();
+                    doc.fillColor('#000000')
+                        .font(headerFont).fontSize(titleFontSize)
+                        .text('MY PRODUCTIVE SPACE', 60, 60);
+                }
+            } catch (logoError) {
+                // Fallback to company name if logo fails
+                doc.rect(50, 50, 230, 130).fill('#F9F9F9').stroke();
+                doc.fillColor('#000000')
+                    .font(headerFont).fontSize(titleFontSize)
+                    .text('MY PRODUCTIVE SPACE', 60, 60);
+                console.log('Logo error, using text fallback:', logoError.message);
+            }
+            
             doc.fillColor('#000000')
-                .font(headerFont).fontSize(titleFontSize)
-                .text('MY PRODUCTIVE SPACE', 60, 60)
                 .font(bodyFont).fontSize(smallFontSize)
                 .text('My Productive Space', 60, 95)
                 .text('Company ID: 53502976D', 60, 105)
@@ -51,7 +70,7 @@ const generateInvoicePDF = (userData, bookingData) => {
             doc.fillColor('#FFFFFF').font(bodyFont).fontSize(smallFontSize)
                 .text('Balance Due', 410, 115)
                 .font(headerFont).fontSize(bodyFontSize)
-                .text(`$${balanceDue}`, 410, 130);
+                .text(`SGD ${balanceDue}`, 410, 130);
 
             const currentDate = new Date().toLocaleDateString('en-SG');
             doc.fillColor('#000000').font(bodyFont).fontSize(bodyFontSize)
@@ -60,8 +79,7 @@ const generateInvoicePDF = (userData, bookingData) => {
 
             doc.font(headerFont).fontSize(sectionHeaderFontSize)
                 .text('Bill To', 50, 230)
-                .font(bodyFont).fontSize(bodyFontSize)
-                .text(userData.firstName || 'Customer', 50, 250)
+               
                 .text(userData.email || '', 50, 265, { width: 200 });
 
             const tableTop = 300;
@@ -94,53 +112,63 @@ const generateInvoicePDF = (userData, bookingData) => {
                 .text(`$${rate.toFixed(2)}`, 420, currentY + 10)
                 .text(`$${amount.toFixed(2)}`, 480, currentY + 10);
 
-            // Calculate fee if payment method is card
-            const isCardPayment = bookingData.payment_method === 'card';
-            const feeAmount = isCardPayment ? amount * 0.05 : 0;
-            const baseAmount = amount - feeAmount;
+            // Calculate fee based on payment method or amount difference
+            const totalAmount = parseFloat(bookingData.totalAmount || amount);
+            const totalCost = parseFloat(bookingData.totalCost || amount);
+            const paymentMethod = bookingData.payment_method || (totalAmount !== totalCost ? 'Credit Card' : 'Pay Now (Scan QR code)');
+            const isCardPayment = paymentMethod === 'Credit Card' || paymentMethod === 'card';
+            const feeAmount = isCardPayment ? totalAmount * 0.05 : 0;
+            const baseAmount = totalAmount - feeAmount;
 
+            // Calculate 40% width for financial summary section
+            const pageWidth = 595; // A4 width in points
+            const summaryWidth = pageWidth * 0.4; // 40% of page width
+            const summaryStartX = pageWidth - summaryWidth - 50; // 50 is margin, start from right side
+            
             currentY += 50; 
-            doc.font(headerFont).fontSize(sectionHeaderFontSize)
-                .text('Sub Total', 400, currentY)
+            doc.font(bodyFont).fontSize(bodyFontSize)
+                .text('Sub Total', summaryStartX, currentY)
                 .font(bodyFont).fontSize(bodyFontSize)
-                .text(`$${baseAmount.toFixed(2)}`, 480, currentY);
+                .text(`SGD ${baseAmount.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
 
             // Show card processing fee if applicable
             if (isCardPayment) {
                 currentY += 20;
-                doc.font(headerFont).fontSize(sectionHeaderFontSize)
-                    .text('Card Processing Fee (5%)', 400, currentY)
+                doc.font(bodyFont).fontSize(bodyFontSize)
+                    .text('Card Fee (5%)', summaryStartX, currentY, { width: summaryWidth - 20 })
                     .font(bodyFont).fontSize(bodyFontSize)
-                    .text(`$${feeAmount.toFixed(2)}`, 480, currentY);
+                    .text(`SGD ${feeAmount.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
             }
+
+            // Show payment method
+            currentY += 20;
+            doc.font(bodyFont).fontSize(bodyFontSize)
+                .text('Payment Method', summaryStartX, currentY)
+                .font(bodyFont).fontSize(bodyFontSize)
+                .text(paymentMethod, summaryStartX + summaryWidth - 80, currentY);
 
             if (bookingData.discountAmount && bookingData.discountAmount > 0) {
                 currentY += 20;
-                doc.font(headerFont).fontSize(sectionHeaderFontSize)
-                    .text('Discount', 400, currentY)
+                doc.font(bodyFont).fontSize(bodyFontSize)
+                    .text('Discount', summaryStartX, currentY)
                     .font(bodyFont).fontSize(bodyFontSize)
-                    .text(`-$${bookingData.discountAmount.toFixed(2)}`, 480, currentY);
+                    .text(`-SGD ${bookingData.discountAmount.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
             }
 
             currentY += 20;
             const total = amount - (parseFloat(bookingData.discountAmount) || 0);
             doc.font(headerFont).fontSize(sectionHeaderFontSize)
-                .text('Total', 400, currentY)
+                .text('Total', summaryStartX, currentY)
                 .font(bodyFont).fontSize(bodyFontSize)
-                .text(`${total.toFixed(2)} SGD`, 465, currentY);
-
-            currentY += 20;
-            doc.fillColor('#FF0000').font(headerFont).fontSize(sectionHeaderFontSize)
-                .text('Paid', 400, currentY)
-                .font(bodyFont).fontSize(bodyFontSize)
-                .text(`${amount.toFixed(2)} SGD`, 470, currentY);
+                .text(`SGD ${total.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
 
             currentY += 20;
             doc.fillColor('#000000').font(headerFont).fontSize(sectionHeaderFontSize)
-                .text('Balance Due', 400, currentY)
+                .text('Paid', summaryStartX, currentY)
                 .font(bodyFont).fontSize(bodyFontSize)
-                .text(`$${balanceDue}`, 480, currentY);
+                .text(`SGD ${amount.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
 
+       
             const footerY = 650;
             doc.font(headerFont).fontSize(sectionHeaderFontSize)
                 .text('Notes', 50, footerY)
