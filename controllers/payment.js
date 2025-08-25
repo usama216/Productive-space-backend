@@ -88,8 +88,9 @@ exports.handleWebhook = async (req, res) => {
       amount: event.amount,
       location: paymentDetails?.purpose || event.location, 
       seats: [],
-      payment_method: event.payment_method || "Online",
-      status: event.status
+      payment_method: event.payment_method || paymentDetails?.payment_methods?.[0] || "Online",
+      status: event.status,
+      totalAmount: event.amount
     };
 
     // if (event.status === 'completed' && userData.email) {

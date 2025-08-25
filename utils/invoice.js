@@ -94,11 +94,25 @@ const generateInvoicePDF = (userData, bookingData) => {
                 .text(`$${rate.toFixed(2)}`, 420, currentY + 10)
                 .text(`$${amount.toFixed(2)}`, 480, currentY + 10);
 
+            // Calculate fee if payment method is card
+            const isCardPayment = bookingData.payment_method === 'card';
+            const feeAmount = isCardPayment ? amount * 0.05 : 0;
+            const baseAmount = amount - feeAmount;
+
             currentY += 50; 
             doc.font(headerFont).fontSize(sectionHeaderFontSize)
                 .text('Sub Total', 400, currentY)
                 .font(bodyFont).fontSize(bodyFontSize)
-                .text(`$${amount.toFixed(2)}`, 480, currentY);
+                .text(`$${baseAmount.toFixed(2)}`, 480, currentY);
+
+            // Show card processing fee if applicable
+            if (isCardPayment) {
+                currentY += 20;
+                doc.font(headerFont).fontSize(sectionHeaderFontSize)
+                    .text('Card Processing Fee (5%)', 400, currentY)
+                    .font(bodyFont).fontSize(bodyFontSize)
+                    .text(`$${feeAmount.toFixed(2)}`, 480, currentY);
+            }
 
             if (bookingData.discountAmount && bookingData.discountAmount > 0) {
                 currentY += 20;

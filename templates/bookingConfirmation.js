@@ -104,7 +104,9 @@ const bookingConfirmationTemplate = (userData, bookingData) => ({
           <div class="booking-details">
             <h3>📋 Payment Details</h3>
             <p><strong>Reference Number:</strong> <span class="highlight">${bookingData.bookingRef || 'N/A'}</span></p>
-            <p><strong>Amount Paid:</strong> <span class="highlight">SGD ${bookingData.totalAmount || bookingData.totalCost || 0}</span></p>
+            <p><strong>Subtotal:</strong> <span class="highlight">SGD ${((bookingData.totalAmount || bookingData.totalCost || 0) / (1 + (bookingData.payment_method === 'card' ? 0.05 : 0))).toFixed(2)}</span></p>
+            ${bookingData.payment_method === 'card' ? `<p><strong>Card Processing Fee (5%):</strong> <span class="highlight">SGD ${((bookingData.totalAmount || bookingData.totalCost || 0) * 0.05).toFixed(2)}</span></p>` : ''}
+            <p><strong>Total Amount Paid:</strong> <span class="highlight">SGD ${bookingData.totalAmount || bookingData.totalCost || 0}</span></p>
             <p><strong>Payment Method:</strong> <span class="highlight">${bookingData.payment_method || 'Online Payment'}</span></p>
             <p><strong>Payment ID:</strong> <span class="highlight">${bookingData.paymentId || 'N/A'}</span></p>
             <p><strong>Date:</strong> <span class="highlight">${new Date().toLocaleDateString('en-SG')}</span></p>
