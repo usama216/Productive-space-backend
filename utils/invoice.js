@@ -1,7 +1,6 @@
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
-const { formatCurrentGMT8, formatGMT8Date } = require('./timezone');
 
 const generateInvoicePDF = (userData, bookingData) => {
     return new Promise((resolve, reject) => {
@@ -73,7 +72,7 @@ const generateInvoicePDF = (userData, bookingData) => {
                 .font(headerFont).fontSize(bodyFontSize)
                 .text(`SGD ${balanceDue}`, 410, 130);
 
-            const currentDate = formatCurrentGMT8('date');
+            const currentDate = new Date().toLocaleDateString('en-SG');
             doc.fillColor('#000000').font(bodyFont).fontSize(bodyFontSize)
                 .text('Invoice Date:', 400, 170).text(currentDate, 480, 170)
                 .text('Due Date:', 400, 200).text(currentDate, 480, 200);
@@ -100,8 +99,8 @@ const generateInvoicePDF = (userData, bookingData) => {
                 Math.ceil((new Date(bookingData.endAt) - startDate) / (1000 * 60 * 60)) : 1;
 
             const description = bookingData.location ?
-                `${bookingData.location} - ${formatGMT8Date(bookingData.startAt, 'date')}` :
-                `Workspace Booking - ${formatGMT8Date(bookingData.startAt, 'date')}`;
+                `${bookingData.location} - ${startDate.toLocaleDateString('en-SG')}` :
+                `Workspace Booking - ${startDate.toLocaleDateString('en-SG')}`;
 
             const rate = bookingData.hourlyRate || (parseFloat(bookingData.totalAmount || 0) / hours) || 10;
             const amount = parseFloat(bookingData.totalAmount || 0);

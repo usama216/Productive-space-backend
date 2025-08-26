@@ -1,5 +1,4 @@
 // templates/emailTemplates.js
-const { formatCurrentGMT8, formatGMT8Date } = require('../utils/timezone');
 
 // Payment Confirmation Email
 const paymentConfirmationTemplate = (userData, bookingData) => ({
@@ -18,8 +17,8 @@ const paymentConfirmationTemplate = (userData, bookingData) => ({
       <h3>📋 Payment Details</h3>
       <p><strong>Reference Number:</strong> ${bookingData.reference_number || 'N/A'}</p>
       <p><strong>Amount Paid:</strong> SGD ${bookingData.amount}</p>
-      <p><strong>Date:</strong> ${formatCurrentGMT8('date')}</p>
-      <p><strong>Time:</strong> ${formatCurrentGMT8('time')}</p>
+      <p><strong>Date:</strong> ${new Date().toLocaleDateString('en-SG')}</p>
+      <p><strong>Time:</strong> ${new Date().toLocaleTimeString('en-SG')}</p>
 
       <p>We look forward to seeing you 🎉</p>
     </body>
@@ -123,8 +122,8 @@ const bookingConfirmationTemplate = (userData, bookingData) => ({
             })()}
             
             <p><strong>Payment ID:</strong> <span class="highlight">${bookingData.paymentId || 'N/A'}</span></p>
-            <p><strong>Date:</strong> <span class="highlight">${formatCurrentGMT8('date')}</span></p>
-            <p><strong>Time:</strong> <span class="highlight">${formatCurrentGMT8('time')}</span></p>
+            <p><strong>Date:</strong> <span class="highlight">${new Date().toLocaleDateString('en-SG')}</span></p>
+            <p><strong>Time:</strong> <span class="highlight">${new Date().toLocaleTimeString('en-SG')}</span></p>
             ${bookingData.discountId ? `<p><strong>Discount Applied:</strong> <span class="highlight">${bookingData.discountId}</span></p>` : ''}
           </div>
 
@@ -132,8 +131,8 @@ const bookingConfirmationTemplate = (userData, bookingData) => ({
           <div class="booking-details">
             <h3>🏢 Booking Details</h3>
             ${bookingData.location ? `<p><strong>Location:</strong> <span class="highlight">${bookingData.location}</span></p>` : ''}
-            ${bookingData.startAt ? `<p><strong>Start Time:</strong> <span class="highlight">${formatGMT8Date(bookingData.startAt, 'full')}</span></p>` : ''}
-            ${bookingData.endAt ? `<p><strong>End Time:</strong> <span class="highlight">${formatGMT8Date(bookingData.endAt, 'full')}</span></p>` : ''}
+                         ${bookingData.startAt ? `<p><strong>Start Time:</strong> <span class="highlight">${new Date(bookingData.startAt).toLocaleString("en-SG")}</span></p>` : ''}
+             ${bookingData.endAt ? `<p><strong>End Time:</strong> <span class="highlight">${new Date(bookingData.endAt).toLocaleString("en-SG")}</span></p>` : ''}
             ${bookingData.seatNumbers && bookingData.seatNumbers.length > 0 ? `<p><strong>Seats:</strong> <span class="highlight">${bookingData.seatNumbers.join(', ')}</span></p>` : ''}
             ${bookingData.pax ? `<p><strong>Number of People (PAX):</strong> <span class="highlight">${bookingData.pax}</span></p>` : ''}
             ${bookingData.specialRequests && bookingData.specialRequests !== "None" ? `<p><strong>Special Requests:</strong> <span class="highlight">${bookingData.specialRequests}</span></p>` : ''}
@@ -232,8 +231,8 @@ module.exports = {
 //               <p><strong>Reference Number:</strong> <span class="highlight">${bookingData.reference_number || 'N/A'}</span></p>
 //               <p><strong>Amount Paid:</strong> <span class="highlight">SGD ${bookingData.amount}</span></p>
 //               <p><strong>Payment Method:</strong> <span class="highlight">${bookingData.payment_method || 'Online Payment'}</span></p>
-//               <p><strong>Date:</strong> <span class="highlight">${formatCurrentGMT8('date')}</span></p>
-//               <p><strong>Time:</strong> <span class="highlight">${formatCurrentGMT8('time')}</span></p>
+//               <p><strong>Date:</strong> <span class="highlight">${new Date().toLocaleDateString('en-SG')}</span></p>
+//               <p><strong>Time:</strong> <span class="highlight">${new Date().toLocaleTimeString('en-SG')}</span></p>
 //             </div>
 
 //             ${bookingData.location || bookingData.date || bookingData.time ? `
