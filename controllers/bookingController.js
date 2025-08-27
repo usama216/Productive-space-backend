@@ -2,6 +2,31 @@ const { createClient } = require("@supabase/supabase-js");
 const { v4: uuidv4 } = require("uuid");
 const { sendBookingConfirmation } = require("../utils/email");
 
+// Helper function to record promo code usage
+const recordPromoCodeUsage = async (promoCodeId, userId, bookingId) => {
+  try {
+    const { error } = await supabase
+      .from("PromoCodeUsage")
+      .insert([{
+        id: uuidv4(),
+        promoCodeId,
+        userId,
+        bookingId,
+        usedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString()
+      }]);
+
+    if (error) {
+      console.error("Failed to record promo code usage:", error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("Error recording promo code usage:", err);
+    return false;
+  }
+};
+
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
     // console.log(process.env.SUPABASE_URL, process.env.SUPABASE_KEY)
 
@@ -28,7 +53,9 @@ exports.createBooking = async (req, res) => {
       memberType,
       bookedForEmails,
       confirmedPayment,
-      paymentId
+      paymentId,
+      promoCodeId, // Add promo code ID
+      discountAmount // Add discount amount applied
     } = req.body;
 
     // Check if booking with this ID already exists
@@ -89,6 +116,8 @@ exports.createBooking = async (req, res) => {
           bookedForEmails,
           confirmedPayment,
           paymentId,
+          promoCodeId,
+          discountAmount,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }
@@ -99,6 +128,11 @@ exports.createBooking = async (req, res) => {
     if (error) {
         console.error(error)
       return res.status(400).json({ error: error.message });
+    }
+
+    // Record promo code usage if promo code was applied
+    if (promoCodeId && data.id) {
+      await recordPromoCodeUsage(promoCodeId, userId, data.id);
     }
 
     res.status(201).json({ message: "Booking created successfully", booking: data });
