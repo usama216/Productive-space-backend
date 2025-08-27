@@ -72,9 +72,17 @@ const generateInvoicePDF = (userData, bookingData) => {
                 .font(headerFont).fontSize(bodyFontSize)
                 .text(`SGD ${balanceDue}`, 410, 130);
 
-            const currentDate = new Date().toLocaleDateString('en-SG');
+            // Use Singapore timezone for invoice dates
+            const currentDate = new Date().toLocaleDateString('en-SG', { timeZone: 'Asia/Singapore' });
+            const currentTime = new Date().toLocaleTimeString('en-SG', { 
+                timeZone: 'Asia/Singapore',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
             doc.fillColor('#000000').font(bodyFont).fontSize(bodyFontSize)
                 .text('Invoice Date:', 400, 170).text(currentDate, 480, 170)
+                .text('Invoice Time:', 400, 185).text(currentTime, 480, 185)
                 .text('Due Date:', 400, 200).text(currentDate, 480, 200);
 
             doc.font(headerFont).fontSize(sectionHeaderFontSize)
@@ -94,13 +102,34 @@ const generateInvoicePDF = (userData, bookingData) => {
             let currentY = tableTop + 30;
             doc.rect(50, currentY, 500, 30).fill('#F8F9FA').stroke();
 
+            // Convert to Singapore timezone (SGT)
             const startDate = bookingData.startAt ? new Date(bookingData.startAt) : new Date();
+            const endDate = bookingData.endAt ? new Date(bookingData.endAt) : new Date();
+            
+            // Format dates in Singapore timezone
+            const startDateSGT = startDate.toLocaleDateString('en-SG', { 
+                timeZone: 'Asia/Singapore',
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+            const startTimeSGT = startDate.toLocaleTimeString('en-SG', { 
+                timeZone: 'Asia/Singapore',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            const endTimeSGT = endDate.toLocaleTimeString('en-SG', { 
+                timeZone: 'Asia/Singapore',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
             const hours = bookingData.endAt ?
-                Math.ceil((new Date(bookingData.endAt) - startDate) / (1000 * 60 * 60)) : 1;
+                Math.ceil((endDate - startDate) / (1000 * 60 * 60)) : 1;
 
             const description = bookingData.location ?
-                `${bookingData.location} - ${startDate.toLocaleDateString('en-SG')}` :
-                `Workspace Booking - ${startDate.toLocaleDateString('en-SG')}`;
+                `${bookingData.location} - ${startDateSGT} (${startTimeSGT} - ${endTimeSGT})` :
+                `Workspace Booking - ${startDateSGT} (${startTimeSGT} - ${endTimeSGT})`;
 
             const rate = bookingData.hourlyRate || (parseFloat(bookingData.totalAmount || 0) / hours) || 10;
             const amount = parseFloat(bookingData.totalAmount || 0);
@@ -147,12 +176,20 @@ const generateInvoicePDF = (userData, bookingData) => {
                 .font(bodyFont).fontSize(bodyFontSize)
                 .text(paymentMethod, summaryStartX + summaryWidth - 80, currentY);
 
+            // Show promo code discount if applied
             if (bookingData.discountAmount && bookingData.discountAmount > 0) {
                 currentY += 20;
                 doc.font(bodyFont).fontSize(bodyFontSize)
-                    .text('Discount', summaryStartX, currentY)
+                    .text('Promo Code Discount', summaryStartX, currentY)
                     .font(bodyFont).fontSize(bodyFontSize)
                     .text(`-SGD ${bookingData.discountAmount.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
+                
+                // Show promo code ID if available
+                if (bookingData.promoCodeId) {
+                    currentY += 15;
+                    doc.font(bodyFont).fontSize(smallFontSize)
+                        .text(`Applied Code: ${bookingData.promoCodeId}`, summaryStartX, currentY, { width: summaryWidth - 20 });
+                }
             }
 
             currentY += 20;

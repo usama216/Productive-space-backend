@@ -112,9 +112,13 @@ const bookingConfirmationTemplate = (userData, bookingData) => ({
               const isCardPayment = paymentMethod === 'Credit Card' || paymentMethod === 'card';
               const cardFee = isCardPayment ? totalAmount * 0.05 : 0;
               const subtotal = totalAmount - cardFee;
+              const discountAmount = parseFloat(bookingData.discountAmount || 0);
+              const promoCodeId = bookingData.promoCodeId;
               
               return `
-                <p><strong>Amount:</strong> <span class="highlight">SGD ${totalCost.toFixed(2)}</span></p>
+                <p><strong>Original Amount:</strong> <span class="highlight">SGD ${totalCost.toFixed(2)}</span></p>
+                ${discountAmount > 0 ? `<p><strong>Discount Applied:</strong> <span class="highlight">-SGD ${discountAmount.toFixed(2)}</span></p>` : ''}
+                ${promoCodeId ? `<p><strong>Promo Code:</strong> <span class="highlight">${promoCodeId}</span></p>` : ''}
                 ${isCardPayment ? `<p><strong>Card Processing Fee (5%):</strong> <span class="highlight">SGD ${cardFee.toFixed(2)}</span></p>` : ''}
                 <p><strong>Total Amount Paid:</strong> <span class="highlight">SGD ${totalAmount.toFixed(2)}</span></p>
                 <p><strong>Payment Method:</strong> <span class="highlight">${paymentMethod}</span></p>
@@ -122,17 +126,49 @@ const bookingConfirmationTemplate = (userData, bookingData) => ({
             })()}
             
             <p><strong>Payment ID:</strong> <span class="highlight">${bookingData.paymentId || 'N/A'}</span></p>
-            <p><strong>Date:</strong> <span class="highlight">${new Date().toLocaleDateString('en-SG')}</span></p>
-            <p><strong>Time:</strong> <span class="highlight">${new Date().toLocaleTimeString('en-SG')}</span></p>
-            ${bookingData.discountId ? `<p><strong>Discount Applied:</strong> <span class="highlight">${bookingData.discountId}</span></p>` : ''}
+            <p><strong>Date:</strong> <span class="highlight">${new Date().toLocaleDateString('en-SG', { timeZone: 'Asia/Singapore' })}</span></p>
+            <p><strong>Time:</strong> <span class="highlight">${new Date().toLocaleTimeString('en-SG', { timeZone: 'Asia/Singapore' })}</span></p>
+            ${(() => {
+              if (bookingData.promoCodeId && parseFloat(bookingData.discountAmount || 0) > 0) {
+                return `<p><strong>Promo Code Applied:</strong> <span class="highlight">${bookingData.promoCodeId}</span></p>`;
+              }
+              return '';
+            })()}
           </div>
 
           ${bookingData.location || bookingData.startAt || bookingData.endAt || bookingData.seatNumbers || bookingData.pax ? `
           <div class="booking-details">
             <h3>🏢 Booking Details</h3>
             ${bookingData.location ? `<p><strong>Location:</strong> <span class="highlight">${bookingData.location}</span></p>` : ''}
-                         ${bookingData.startAt ? `<p><strong>Start Time:</strong> <span class="highlight">${new Date(bookingData.startAt).toLocaleString("en-SG")}</span></p>` : ''}
-             ${bookingData.endAt ? `<p><strong>End Time:</strong> <span class="highlight">${new Date(bookingData.endAt).toLocaleString("en-SG")}</span></p>` : ''}
+            ${(() => {
+              // Convert to Singapore timezone (SGT)
+              const startAt = bookingData.startAt ? new Date(bookingData.startAt) : null;
+              const endAt = bookingData.endAt ? new Date(bookingData.endAt) : null;
+              
+              if (startAt && endAt) {
+                // Format in Singapore timezone
+                const startSGT = startAt.toLocaleString("en-SG", { 
+                  timeZone: "Asia/Singapore",
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  weekday: 'long'
+                });
+                const endSGT = endAt.toLocaleString("en-SG", { 
+                  timeZone: "Asia/Singapore",
+                  hour: '2-digit',
+                  minute: '2-digit'
+                });
+                
+                return `
+                  <p><strong>Start Time:</strong> <span class="highlight">${startSGT}</span></p>
+                  <p><strong>End Time:</strong> <span class="highlight">${endSGT}</span></p>
+                `;
+              }
+              return '';
+            })()}
             ${bookingData.seatNumbers && bookingData.seatNumbers.length > 0 ? `<p><strong>Seats:</strong> <span class="highlight">${bookingData.seatNumbers.join(', ')}</span></p>` : ''}
             ${bookingData.pax ? `<p><strong>Number of People (PAX):</strong> <span class="highlight">${bookingData.pax}</span></p>` : ''}
             ${bookingData.specialRequests && bookingData.specialRequests !== "None" ? `<p><strong>Special Requests:</strong> <span class="highlight">${bookingData.specialRequests}</span></p>` : ''}
