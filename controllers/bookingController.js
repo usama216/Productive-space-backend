@@ -464,6 +464,354 @@ exports.getBookedSeats = async (req, res) => {
   }
 };
 
+// ==================== USER DASHBOARD APIs ====================
+
+// Get user's own bookings with filters and pagination
+exports.getUserBookings = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const {
+      page = 1,
+      limit = 20,
+      status,
+      paymentStatus,
+      sortBy = 'startAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required" });
+    }
+
+    // Build the base query - only for this specific user
+    let query = supabase
+      .from('Booking')
+      .select('*', { count: 'exact' })
+      .eq('userId', userId); // This ensures only user's own bookings
+
+    // Apply status filters
+    if (status) {
+      const now = new Date().toISOString();
+      if (status === 'upcoming') {
+        query = query.gt('startAt', now);
+      } else if (status === 'ongoing') {
+        query = query.lte('startAt', now).gt('endAt', now);
+      } else if (status === 'completed') {
+        query = query.lt('endAt', now);
+      } else if (status === 'today') {
+        const today = new Date();
+        const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
+        const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59).toISOString();
+        query = query.gte('startAt', startOfDay).lte('startAt', endOfDay);
+      }
+    }
+
+    // Apply payment status filter
+    if (paymentStatus) {
+      if (paymentStatus === 'paid') {
+        query = query.eq('confirmedPayment', true);
+      } else if (paymentStatus === 'unpaid') {
+        query = query.eq('confirmedPayment', false);
+      }
+    }
+
+    // Apply sorting
+    query = query.order(sortBy, { ascending: sortOrder === 'asc' });
+
+    // Apply pagination
+    const offset = (page - 1) * limit;
+    query = query.range(offset, offset + limit - 1);
+
+    const { data: bookings, error, count } = await query;
+
+    if (error) {
+      console.error('getUserBookings error:', error);
+      return res.status(500).json({ error: 'Failed to fetch user bookings', details: error.message });
+    }
+
+    // Get promo code data for user's bookings
+    const promoCodeIds = bookings
+      .filter(b => b.promoCodeId)
+      .map(b => b.promoCodeId);
+    
+    let promoCodeData = {};
+    if (promoCodeIds.length > 0) {
+      const { data: promoCodes, error: promoError } = await supabase
+        .from('PromoCode')
+        .select('id, code, discountAmount')
+        .in('id', promoCodeIds);
+      
+      if (!promoError && promoCodes) {
+        promoCodes.forEach(promo => {
+          promoCodeData[promo.id] = promo;
+        });
+      }
+    }
+
+    // Calculate additional fields for each booking
+    const now = new Date();
+    const bookingsWithStatus = bookings.map(booking => {
+      const startAt = new Date(booking.startAt);
+      const endAt = new Date(booking.endAt);
+      
+      const isUpcoming = startAt > now;
+      const isOngoing = startAt <= now && endAt > now;
+      const isCompleted = endAt <= now;
+      const isToday = startAt.toDateString() === now.toDateString();
+      
+      const durationMs = endAt.getTime() - startAt.getTime();
+      const durationHours = Math.round(durationMs / (1000 * 60 * 60) * 100) / 100;
+      
+      let timeUntilBooking = null;
+      if (isUpcoming) {
+        const remainingMs = startAt.getTime() - now.getTime();
+        const remainingHours = Math.floor(remainingMs / (1000 * 60 * 60));
+        const remainingMinutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+        timeUntilBooking = `${remainingHours}h ${remainingMinutes}m`;
+      }
+
+      // Add promo code data if available
+      const promoCode = booking.promoCodeId ? promoCodeData[booking.promoCodeId] : null;
+
+      return {
+        ...booking,
+        isUpcoming,
+        isOngoing,
+        isCompleted,
+        isToday,
+        durationHours,
+        timeUntilBooking,
+        status: isUpcoming ? 'upcoming' : isOngoing ? 'ongoing' : 'completed',
+        PromoCode: promoCode
+      };
+    });
+
+    // Calculate summary statistics for this user only
+    const totalBookings = count || 0;
+    const upcomingBookings = bookingsWithStatus.filter(b => b.isUpcoming).length;
+    const ongoingBookings = bookingsWithStatus.filter(b => b.isOngoing).length;
+    const completedBookings = bookingsWithStatus.filter(b => b.isCompleted).length;
+    const totalSpent = bookingsWithStatus
+      .filter(b => b.confirmedPayment)
+      .reduce((sum, b) => sum + parseFloat(b.totalAmount || 0), 0);
+    const pendingPayments = bookingsWithStatus
+      .filter(b => !b.confirmedPayment)
+      .reduce((sum, b) => sum + parseFloat(b.totalAmount || 0), 0);
+
+    res.json({
+      userId,
+      bookings: bookingsWithStatus,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: totalBookings,
+        totalPages: Math.ceil(totalBookings / limit)
+      },
+      summary: {
+        totalBookings,
+        upcomingBookings,
+        ongoingBookings,
+        completedBookings,
+        totalSpent: Math.round(totalSpent * 100) / 100,
+        pendingPayments: Math.round(pendingPayments * 100) / 100
+      }
+    });
+
+  } catch (err) {
+    console.error('getUserBookings error:', err);
+    res.status(500).json({ error: 'Failed to fetch user bookings', details: err.message });
+  }
+};
+
+// Get user's own booking analytics
+exports.getUserBookingAnalytics = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const { period = 'month' } = req.query;
+    
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required" });
+    }
+
+    const now = new Date();
+    let startDate, endDate;
+    
+    switch (period) {
+      case 'week':
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case 'month':
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      case 'quarter':
+        const quarter = Math.floor(now.getMonth() / 3);
+        startDate = new Date(now.getFullYear(), quarter * 3, 1);
+        break;
+      case 'year':
+        startDate = new Date(now.getFullYear(), 0, 1);
+        break;
+      default:
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+    
+    endDate = now;
+
+    // Get user's bookings in date range
+    const { data: bookings, error } = await supabase
+      .from('Booking')
+      .select('*')
+      .eq('userId', userId) // Only this user's bookings
+      .gte('startAt', startDate.toISOString())
+      .lte('startAt', endDate.toISOString());
+
+    if (error) {
+      console.error('getUserBookingAnalytics error:', error);
+      return res.status(500).json({ error: 'Failed to fetch user analytics' });
+    }
+
+    // Calculate analytics for this user only
+    const totalBookings = bookings.length;
+    const confirmedBookings = bookings.filter(b => b.confirmedPayment).length;
+    const pendingBookings = totalBookings - confirmedBookings;
+    const totalSpent = bookings
+      .filter(b => b.confirmedPayment)
+      .reduce((sum, b) => sum + parseFloat(b.totalAmount || 0), 0);
+    const averageBookingValue = totalBookings > 0 ? totalSpent / totalBookings : 0;
+
+    // Breakdown by location for this user
+    const locationBreakdown = {};
+    bookings.forEach(booking => {
+      const loc = booking.location || 'Unknown';
+      if (!locationBreakdown[loc]) {
+        locationBreakdown[loc] = { count: 0, spent: 0 };
+      }
+      locationBreakdown[loc].count++;
+      if (booking.confirmedPayment) {
+        locationBreakdown[loc].spent += parseFloat(booking.totalAmount || 0);
+      }
+    });
+
+    // Daily trends for this user
+    const dailyTrends = {};
+    const currentDate = new Date(startDate);
+    while (currentDate <= endDate) {
+      const dateKey = currentDate.toISOString().split('T')[0];
+      dailyTrends[dateKey] = { bookings: 0, spent: 0 };
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    bookings.forEach(booking => {
+      const dateKey = new Date(booking.startAt).toISOString().split('T')[0];
+      if (dailyTrends[dateKey]) {
+        dailyTrends[dateKey].bookings++;
+        if (booking.confirmedPayment) {
+          dailyTrends[dateKey].spent += parseFloat(booking.totalAmount || 0);
+        }
+      }
+    });
+
+    res.json({
+      userId,
+      period,
+      dateRange: {
+        start: startDate.toISOString(),
+        end: endDate.toISOString()
+      },
+      overview: {
+        totalBookings,
+        confirmedBookings,
+        pendingBookings,
+        totalSpent: Math.round(totalSpent * 100) / 100,
+        averageBookingValue: Math.round(averageBookingValue * 100) / 100
+      },
+      breakdowns: {
+        byLocation: locationBreakdown
+      },
+      trends: {
+        daily: dailyTrends
+      }
+    });
+
+  } catch (err) {
+    console.error('getUserBookingAnalytics error:', err);
+    res.status(500).json({ error: 'Failed to fetch user analytics' });
+  }
+};
+
+// Get user's own dashboard summary
+exports.getUserDashboardSummary = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required" });
+    }
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Today's bookings for this user only
+    const { count: todayBookings } = await supabase
+      .from('Booking')
+      .select('*', { count: 'exact', head: true })
+      .eq('userId', userId) // Only this user's bookings
+      .gte('startAt', today.toISOString())
+      .lt('startAt', new Date(today.getTime() + 24 * 60 * 60 * 1000).toISOString());
+
+    // This month's spending for this user only
+    const { data: monthBookings } = await supabase
+      .from('Booking')
+      .select('totalAmount')
+      .eq('userId', userId) // Only this user's bookings
+      .gte('startAt', startOfMonth.toISOString())
+      .lte('startAt', now.toISOString())
+      .eq('confirmedPayment', true);
+
+    const monthSpent = monthBookings
+      .reduce((sum, b) => sum + parseFloat(b.totalAmount || 0), 0);
+
+    // Upcoming bookings for this user only
+    const { count: upcomingCount } = await supabase
+      .from('Booking')
+      .select('*', { count: 'exact', head: true })
+      .eq('userId', userId) // Only this user's bookings
+      .gt('startAt', now.toISOString());
+
+    // Pending payments for this user only
+    const { data: pendingBookings } = await supabase
+      .from('Booking')
+      .select('totalAmount')
+      .eq('userId', userId) // Only this user's bookings
+      .eq('confirmedPayment', false);
+
+    const pendingAmount = pendingBookings
+      .reduce((sum, b) => sum + parseFloat(b.totalAmount || 0), 0);
+
+    res.json({
+      userId,
+      today: {
+        bookings: todayBookings || 0
+      },
+      thisMonth: {
+        spent: Math.round(monthSpent * 100) / 100
+      },
+      upcoming: {
+        count: upcomingCount || 0
+      },
+      pending: {
+        amount: Math.round(pendingAmount * 100) / 100
+      },
+      lastUpdated: now.toISOString()
+    });
+
+  } catch (err) {
+    console.error('getUserDashboardSummary error:', err);
+    res.status(500).json({ error: 'Failed to fetch user dashboard summary' });
+  }
+};
+
+// Enhanced user booking stats (keeping the original for backward compatibility)
 exports.getUserBookingStats = async (req, res) => {
   try {
     const { userId } = req.body;
