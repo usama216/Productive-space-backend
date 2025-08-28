@@ -2,8 +2,7 @@ const { createClient } = require("@supabase/supabase-js");
 const { v4: uuidv4 } = require("uuid");
 const { sendBookingConfirmation } = require("../utils/email");
 
-// IMPORTANT: Duplicate booking confirmation check is commented out for PDF testing
-// Remember to uncomment the section around line 210-239 after testing is complete
+
 
 // Helper function to record promo code usage
 const recordPromoCodeUsage = async (promoCodeId, userId, bookingId) => {
@@ -212,8 +211,6 @@ exports.confirmBookingPayment = async (req, res) => {
     console.log(`Found booking: ${existingBooking.id}, confirmedPayment: ${existingBooking.confirmedPayment}`);
 
     // Check if payment is already confirmed
-    // COMMENTED OUT FOR TESTING PDF GENERATION - UNCOMMENT AFTER TESTING
-    /*
     if (existingBooking.confirmedPayment === true || existingBooking.confirmedPayment === "true") {
       // Get payment information if paymentId exists
       let paymentData = null;
@@ -246,7 +243,6 @@ exports.confirmBookingPayment = async (req, res) => {
         requestedBookingId: bookingId
       });
     }
-    */
 
     // Update booking in Supabase
     const { data, error } = await supabase
