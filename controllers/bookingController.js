@@ -5,17 +5,20 @@ const { sendBookingConfirmation } = require("../utils/email");
 
 
 // Helper function to record promo code usage
-const recordPromoCodeUsage = async (promoCodeId, userId, bookingId) => {
+const recordPromoCodeUsage = async (promoCodeId, userId, bookingId, discountAmount, originalAmount, finalAmount) => {
   try {
     const { error } = await supabase
       .from("PromoCodeUsage")
       .insert([{
         id: uuidv4(),
-        promoCodeId,
-        userId,
-        bookingId,
-        usedAt: new Date().toISOString(),
-        createdAt: new Date().toISOString()
+        promocodeid: promoCodeId,
+        userid: userId,
+        bookingid: bookingId,
+        discountamount: discountAmount,
+        originalamount: originalAmount,
+        finalamount: finalAmount,
+        usedat: new Date().toISOString(),
+        createdat: new Date().toISOString()
       }]);
 
     if (error) {
@@ -25,6 +28,48 @@ const recordPromoCodeUsage = async (promoCodeId, userId, bookingId) => {
     return true;
   } catch (err) {
     console.error("Error recording promo code usage:", err);
+    return false;
+  }
+};
+
+// Helper function to update promo code usage count
+const updatePromoCodeUsage = async (promoCodeId) => {
+  try {
+    // First get current usage
+    const { data: promoCode, error: fetchError } = await supabase
+      .from("PromoCode")
+      .select("currentusage, maxtotalusage")
+      .eq("id", promoCodeId)
+      .single();
+
+    if (fetchError) {
+      console.error("Failed to fetch promo code:", fetchError);
+      return false;
+    }
+
+    // Check if we can still use this promo code
+    if (promoCode.maxtotalusage && promoCode.currentusage >= promoCode.maxtotalusage) {
+      console.error("Promo code usage limit exceeded");
+      return false;
+    }
+
+    // Update usage count
+    const { error: updateError } = await supabase
+      .from("PromoCode")
+      .update({
+        currentusage: (promoCode.currentusage || 0) + 1,
+        updatedat: new Date().toISOString()
+      })
+      .eq("id", promoCodeId);
+
+    if (updateError) {
+      console.error("Failed to update promo code usage:", updateError);
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.error("Error updating promo code usage:", err);
     return false;
   }
 };
@@ -94,6 +139,25 @@ exports.createBooking = async (req, res) => {
       }
     }
 
+    // Basic promo code validation if provided
+    // Full validation will happen during payment confirmation
+    if (promoCodeId) {
+      const { data: promoCode, error: promoError } = await supabase
+        .from("PromoCode")
+        .select("id, isactive")
+        .eq("id", promoCodeId)
+        .eq("isactive", true)
+        .single();
+
+      if (promoError || !promoCode) {
+        return res.status(400).json({
+          error: "Invalid promo code",
+          message: "The provided promo code is not valid or inactive"
+        });
+      }
+      // Note: Full validation (expiry, usage limits) happens during payment confirmation
+    }
+
     const { data, error } = await supabase
       .from("Booking")
       .insert([
@@ -132,12 +196,14 @@ exports.createBooking = async (req, res) => {
       return res.status(400).json({ error: error.message });
     }
 
-    // Record promo code usage if promo code was applied
-    if (promoCodeId && data.id) {
-      await recordPromoCodeUsage(promoCodeId, userId, data.id);
-    }
+    // Note: Promo code usage will be recorded when payment is confirmed
+    // This prevents promo code abuse during booking creation
 
-    res.status(201).json({ message: "Booking created successfully", booking: data });
+    res.status(201).json({ 
+      message: "Booking created successfully", 
+      booking: data,
+      promoCodeApplied: !!promoCodeId
+    });
   } catch (err) {
     console.error("createBooking error:", err.message);
     res.status(500).json({ error: "Internal Server Error" });
@@ -184,10 +250,11 @@ exports.getBookingById = async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
+
 exports.confirmBookingPayment = async (req, res) => {
   try {
     const { bookingId } = req.body;
-    console.log(req.body)
+    console.log(req.body);
     
     if (!bookingId) {
       return res.status(400).json({ error: "Booking ID is required" });
@@ -278,6 +345,71 @@ exports.confirmBookingPayment = async (req, res) => {
       }
     }
 
+    // Fetch promo code details if promo code was applied
+    let promoCodeData = null;
+    if (data.promoCodeId) {
+      const { data: promoCode, error: promoError } = await supabase
+        .from("PromoCode")
+        .select("code, name, description, discounttype, discountvalue")
+        .eq("id", data.promoCodeId)
+        .single();
+
+      if (!promoError && promoCode) {
+        promoCodeData = promoCode;
+        // Add promo code details to the booking data for PDF generation
+        data.promoCode = promoCode.code;
+        data.promoCodeName = promoCode.name;
+        data.promoCodeDescription = promoCode.description;
+        data.promoCodeType = promoCode.discounttype;
+        data.promoCodeValue = promoCode.discountvalue;
+      }
+    }
+
+    // Record promo code usage if promo code was applied and payment is confirmed
+    if (data.promoCodeId && data.discountAmount && data.discountAmount > 0) {
+      try {
+        // Full promo code validation before recording usage
+        const { data: promoCode, error: promoError } = await supabase
+          .from("PromoCode")
+          .select("*")
+          .eq("id", data.promoCodeId)
+          .eq("isactive", true)
+          .single();
+
+        if (promoError || !promoCode) {
+          console.error("❌ Promo code validation failed during payment confirmation:", promoError);
+          // Continue with payment confirmation but log the error
+        } else {
+          // Check if promo code is still active
+          const now = new Date();
+          if (promoCode.activeto && new Date(promoCode.activeto) < now) {
+            console.error("❌ Promo code expired during payment confirmation");
+          } else if (promoCode.maxtotalusage && promoCode.currentusage >= promoCode.maxtotalusage) {
+            console.error("❌ Promo code usage limit reached during payment confirmation");
+          } else {
+            // All validations passed, record usage
+            const usageRecorded = await recordPromoCodeUsage(
+              data.promoCodeId, 
+              data.userId, 
+              data.id, 
+              data.discountAmount, 
+              data.totalCost, 
+              data.totalAmount
+            );
+
+            if (usageRecorded) {
+              // Update promo code usage count only after payment confirmation
+              await updatePromoCodeUsage(data.promoCodeId);
+              console.log(`✅ Promo code ${promoCode.code} usage recorded and count updated`);
+            }
+          }
+        }
+      } catch (promoError) {
+        console.error("❌ Error recording promo code usage:", promoError);
+        // Don't fail the payment confirmation if promo code tracking fails
+      }
+    }
+
     const userData = {
       name: "Customer", 
       email: data.bookedForEmails?.[0]
@@ -289,6 +421,7 @@ exports.confirmBookingPayment = async (req, res) => {
       message: "Payment confirmed & confirmation email sent successfully",
       booking: data,
       payment: paymentData,
+      promoCode: promoCodeData,
       totalAmount: data.totalAmount,
       confirmedPayment: data.confirmedPayment
     });

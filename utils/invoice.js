@@ -189,6 +189,50 @@ try {
                 currentY += 10; // Add some spacing
             }
 
+            // Add promo code information if applied
+            if (bookingData.promoCodeId && bookingData.discountAmount && bookingData.discountAmount > 0) {
+                currentY += 20;
+                doc.font(headerFont).fontSize(sectionHeaderFontSize)
+                    .text('Promo Code Applied', 50, currentY);
+                
+                currentY += 20;
+                
+                // Show promo code details
+                doc.font(bodyFont).fontSize(bodyFontSize)
+                    .text(`Code: ${bookingData.promoCode || bookingData.promoCodeId}`, 50, currentY);
+                currentY += 15;
+                
+                // Show promo code name if available
+                if (bookingData.promoCodeName) {
+                    doc.font(bodyFont).fontSize(bodyFontSize)
+                        .text(`Name: ${bookingData.promoCodeName}`, 50, currentY);
+                    currentY += 15;
+                }
+                
+                doc.font(bodyFont).fontSize(bodyFontSize)
+                    .text(`Original Amount: SGD ${(parseFloat(bookingData.totalCost) || 0).toFixed(2)}`, 50, currentY);
+                currentY += 15;
+                
+                doc.font(bodyFont).fontSize(bodyFontSize)
+                    .text(`Discount Amount: SGD ${(parseFloat(bookingData.discountAmount) || 0).toFixed(2)}`, 50, currentY);
+                currentY += 15;
+                
+                // Calculate and show discount percentage
+                const originalAmount = parseFloat(bookingData.totalCost) || 0;
+                const discountAmount = parseFloat(bookingData.discountAmount) || 0;
+                if (originalAmount > 0 && discountAmount > 0) {
+                    const discountPercentage = ((discountAmount / originalAmount) * 100).toFixed(1);
+                    doc.font(bodyFont).fontSize(bodyFontSize)
+                        .text(`Discount: ${discountPercentage}%`, 50, currentY);
+                    currentY += 15;
+                }
+                
+                doc.font(bodyFont).fontSize(bodyFontSize)
+                    .text(`Final Amount: SGD ${(parseFloat(bookingData.totalAmount) || 0).toFixed(2)}`, 50, currentY);
+                
+                currentY += 20; // Add spacing before financial summary
+            }
+
             // Calculate fee based on payment method or amount difference
             const totalAmount = parseFloat(bookingData.totalAmount || amount);
             const totalCost = parseFloat(bookingData.totalCost || amount);
@@ -202,9 +246,10 @@ try {
             const summaryWidth = pageWidth * 0.4; // 40% of page width
             const summaryStartX = pageWidth - summaryWidth - 50; // 50 is margin, start from right side
             
-            // Adjust spacing based on whether role information was added
-            if (hasRoleInfo) {
-                currentY += 20; // Less spacing since role info was already added
+            // Adjust spacing based on whether role information and promo code were added
+            const hasPromoCode = bookingData.promoCodeId && bookingData.discountAmount && bookingData.discountAmount > 0;
+            if (hasRoleInfo || hasPromoCode) {
+                currentY += 20; // Less spacing since additional sections were already added
             } else {
                 currentY += 50; // Original spacing
             } 
@@ -237,12 +282,8 @@ try {
                     .font(bodyFont).fontSize(bodyFontSize)
                     .text(`-SGD ${bookingData.discountAmount.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
                 
-                // Show promo code ID if available
-                if (bookingData.promoCodeId) {
-                    currentY += 15;
-                    doc.font(bodyFont).fontSize(smallFontSize)
-                        .text(`Applied Code: ${bookingData.promoCodeId}`, summaryStartX, currentY, { width: summaryWidth - 20 });
-                }
+                // Show promo code details if available
+               
             }
 
             currentY += 20;
@@ -259,18 +300,18 @@ try {
                 .text(`SGD ${amount.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
 
        
-            const footerY = 650;
-            doc.font(headerFont).fontSize(sectionHeaderFontSize)
-                .text('Notes', 50, footerY)
-                .font(bodyFont).fontSize(smallFontSize)
-                .text('Thanks for your business. Please refer to attached excel sheet for more details', 50, footerY + 15, { width: 300 });
+            // const footerY = 650;
+            // doc.font(headerFont).fontSize(sectionHeaderFontSize)
+            //     .text('Notes', 50, footerY)
+            //     .font(bodyFont).fontSize(smallFontSize)
+            //     .text('Thanks for your business. Please refer to attached excel sheet for more details', 50, footerY + 15, { width: 300 });
 
-            doc.font(headerFont).fontSize(sectionHeaderFontSize)
-                .text('Terms & Conditions', 50, footerY + 50)
-                .font(bodyFont).fontSize(smallFontSize)
-                .text('1. Please be informed that full payment is required upon confirmation.', 50, footerY + 65, { width: 300 })
-                .text('2. Once confirmed, we do not offer refunds.', 50, footerY + 80, { width: 300 })
-                .text('3. Please note that seat changes are subject to seats availability.', 50, footerY + 95, { width: 300 });
+            // doc.font(headerFont).fontSize(sectionHeaderFontSize)
+            //     .text('Terms & Conditions', 50, footerY + 50)
+            //     .font(bodyFont).fontSize(smallFontSize)
+            //     .text('1. Please be informed that full payment is required upon confirmation.', 50, footerY + 65, { width: 300 })
+            //     .text('2. Once confirmed, we do not offer refunds.', 50, footerY + 80, { width: 300 })
+            //     .text('3. Please note that seat changes are subject to seats availability.', 50, footerY + 95, { width: 300 });
 
             doc.end();
 
