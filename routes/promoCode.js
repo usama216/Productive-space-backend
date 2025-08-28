@@ -13,7 +13,8 @@ const {
   updatePromoCode,
   deletePromoCode,
   getAllPromoCodes,
-  getPromoCodeById
+  getPromoCodeById,
+  getPromoCodesByTimeStatus
 } = require("../controllers/promoCodeController");
 
 const router = express.Router();
@@ -60,5 +61,8 @@ router.get("/admin/all", getAllPromoCodes);
 
 // Get specific promo code details
 router.get("/admin/:id", getPromoCodeById);
+
+// Get promo codes by time status
+router.get("/admin/time-status", getPromoCodesByTimeStatus);
 
 module.exports = router;

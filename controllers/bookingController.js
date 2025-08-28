@@ -508,3 +508,504 @@ exports.getUserBookingStats = async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
+
+// ==================== ADMIN BOOKING MANAGEMENT APIs ====================
+
+// Get all bookings with comprehensive filters (admin) - FIXED VERSION
+exports.getAllBookings = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 20,
+      search,
+      status,
+      location,
+      dateFrom,
+      dateTo,
+      memberType,
+      paymentStatus,
+      sortBy = 'startAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    // Build the base query - Use simple select to avoid relationship issues
+    let query = supabase
+      .from('Booking')
+      .select('*', { count: 'exact' });
+
+    // Apply filters
+    if (search) {
+      query = query.or(`bookingRef.ilike.%${search}%,location.ilike.%${search}%`);
+    }
+
+    if (status) {
+      const now = new Date().toISOString();
+      if (status === 'upcoming') {
+        query = query.gt('startAt', now);
+      } else if (status === 'ongoing') {
+        query = query.lte('startAt', now).gt('endAt', now);
+      } else if (status === 'completed') {
+        query = query.lt('endAt', now);
+      } else if (status === 'today') {
+        const today = new Date();
+        const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
+        const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59).toISOString();
+        query = query.gte('startAt', startOfDay).lte('startAt', endOfDay);
+      }
+    }
+
+    if (location) {
+      query = query.eq('location', location);
+    }
+
+    if (dateFrom) {
+      query = query.gte('startAt', dateFrom);
+    }
+
+    if (dateTo) {
+      query = query.lte('startAt', dateTo);
+    }
+
+    if (memberType) {
+      query = query.eq('memberType', memberType);
+    }
+
+    if (paymentStatus) {
+      if (paymentStatus === 'paid') {
+        query = query.eq('confirmedPayment', true);
+      } else if (paymentStatus === 'unpaid') {
+        query = query.eq('confirmedPayment', false);
+      }
+    }
+
+    // Apply sorting
+    query = query.order(sortBy, { ascending: sortOrder === 'asc' });
+
+    // Apply pagination
+    const offset = (page - 1) * limit;
+    query = query.range(offset, offset + limit - 1);
+
+    const { data: bookings, error, count } = await query;
+
+    if (error) {
+      console.error('getAllBookings error:', error);
+      return res.status(500).json({ error: 'Failed to fetch bookings', details: error.message });
+    }
+
+    // Get user data separately to avoid relationship conflicts
+    const userIds = bookings
+      .filter(b => b.userId)
+      .map(b => b.userId);
+    
+    let userData = {};
+    if (userIds.length > 0) {
+      const { data: users, error: userError } = await supabase
+        .from('User')
+        .select('id, name, email, memberType')
+        .in('id', userIds);
+      
+      if (!userError && users) {
+        users.forEach(user => {
+          userData[user.id] = user;
+        });
+      }
+    }
+
+    // Get promo code data separately to avoid relationship conflicts
+    const promoCodeIds = bookings
+      .filter(b => b.promoCodeId)
+      .map(b => b.promoCodeId);
+    
+    let promoCodeData = {};
+    if (promoCodeIds.length > 0) {
+      const { data: promoCodes, error: promoError } = await supabase
+        .from('PromoCode')
+        .select('id, code, discountAmount')
+        .in('id', promoCodeIds);
+      
+      if (!promoError && promoCodes) {
+        promoCodes.forEach(promo => {
+          promoCodeData[promo.id] = promo;
+        });
+      }
+    }
+
+    // Calculate additional fields for each booking
+    const now = new Date();
+    const bookingsWithStatus = bookings.map(booking => {
+      const startAt = new Date(booking.startAt);
+      const endAt = new Date(booking.endAt);
+      
+      const isUpcoming = startAt > now;
+      const isOngoing = startAt <= now && endAt > now;
+      const isCompleted = endAt <= now;
+      const isToday = startAt.toDateString() === now.toDateString();
+      
+      const durationMs = endAt.getTime() - startAt.getTime();
+      const durationHours = Math.round(durationMs / (1000 * 60 * 60) * 100) / 100;
+      
+      let timeUntilBooking = null;
+      if (isUpcoming) {
+        const remainingMs = startAt.getTime() - now.getTime();
+        const remainingHours = Math.floor(remainingMs / (1000 * 60 * 60));
+        const remainingMinutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+        timeUntilBooking = `${remainingHours}h ${remainingMinutes}m`;
+      }
+
+      // Add user and promo code data if available
+      const user = booking.userId ? userData[booking.userId] : null;
+      const promoCode = booking.promoCodeId ? promoCodeData[booking.promoCodeId] : null;
+
+      return {
+        ...booking,
+        isUpcoming,
+        isOngoing,
+        isCompleted,
+        isToday,
+        durationHours,
+        timeUntilBooking,
+        status: isUpcoming ? 'upcoming' : isOngoing ? 'ongoing' : 'completed',
+        User: user,
+        PromoCode: promoCode
+      };
+    });
+
+    // Calculate summary statistics
+    const totalBookings = count || 0;
+    const upcomingBookings = bookingsWithStatus.filter(b => b.isUpcoming).length;
+    const ongoingBookings = bookingsWithStatus.filter(b => b.isOngoing).length;
+    const completedBookings = bookingsWithStatus.filter(b => b.isCompleted).length;
+    const totalRevenue = bookingsWithStatus
+      .filter(b => b.confirmedPayment)
+      .reduce((sum, b) => sum + parseFloat(b.totalAmount || 0), 0);
+    const pendingPayments = bookingsWithStatus
+      .filter(b => !b.confirmedPayment)
+      .reduce((sum, b) => sum + parseFloat(b.totalAmount || 0), 0);
+
+    res.json({
+      bookings: bookingsWithStatus,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: totalBookings,
+        totalPages: Math.ceil(totalBookings / limit)
+      },
+      summary: {
+        totalBookings,
+        upcomingBookings,
+        ongoingBookings,
+        completedBookings,
+        totalRevenue: Math.round(totalRevenue * 100) / 100,
+        pendingPayments: Math.round(pendingPayments * 100) / 100
+      }
+    });
+
+  } catch (err) {
+    console.error('getAllBookings error:', err);
+    res.status(500).json({ error: 'Failed to fetch bookings', details: err.message });
+  }
+};
+
+// Get booking analytics and statistics
+exports.getBookingAnalytics = async (req, res) => {
+  try {
+    const { period = 'month' } = req.query;
+    
+    const now = new Date();
+    let startDate, endDate;
+    
+    switch (period) {
+      case 'week':
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case 'month':
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      case 'quarter':
+        const quarter = Math.floor(now.getMonth() / 3);
+        startDate = new Date(now.getFullYear(), quarter * 3, 1);
+        break;
+      case 'year':
+        startDate = new Date(now.getFullYear(), 0, 1);
+        break;
+      default:
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+    
+    endDate = now;
+
+    // Get bookings in date range
+    const { data: bookings, error } = await supabase
+      .from('Booking')
+      .select('*')
+      .gte('startAt', startDate.toISOString())
+      .lte('startAt', endDate.toISOString());
+
+    if (error) {
+      console.error('getBookingAnalytics error:', error);
+      return res.status(500).json({ error: 'Failed to fetch analytics' });
+    }
+
+    // Calculate analytics
+    const totalBookings = bookings.length;
+    const confirmedBookings = bookings.filter(b => b.confirmedPayment).length;
+    const pendingBookings = totalBookings - confirmedBookings;
+    const totalRevenue = bookings
+      .filter(b => b.confirmedPayment)
+      .reduce((sum, b) => sum + parseFloat(b.totalAmount || 0), 0);
+    const averageBookingValue = totalBookings > 0 ? totalRevenue / totalBookings : 0;
+
+    // Breakdown by location
+    const locationBreakdown = {};
+    bookings.forEach(booking => {
+      const loc = booking.location || 'Unknown';
+      if (!locationBreakdown[loc]) {
+        locationBreakdown[loc] = { count: 0, revenue: 0 };
+      }
+      locationBreakdown[loc].count++;
+      if (booking.confirmedPayment) {
+        locationBreakdown[loc].revenue += parseFloat(booking.totalAmount || 0);
+      }
+    });
+
+    // Breakdown by member type
+    const memberTypeBreakdown = {};
+    bookings.forEach(booking => {
+      const type = booking.memberType || 'regular';
+      if (!memberTypeBreakdown[type]) {
+        memberTypeBreakdown[type] = { count: 0, revenue: 0 };
+      }
+      memberTypeBreakdown[type].count++;
+      if (booking.confirmedPayment) {
+        memberTypeBreakdown[type].revenue += parseFloat(booking.totalAmount || 0);
+      }
+    });
+
+    // Daily trends
+    const dailyTrends = {};
+    const currentDate = new Date(startDate);
+    while (currentDate <= endDate) {
+      const dateKey = currentDate.toISOString().split('T')[0];
+      dailyTrends[dateKey] = { bookings: 0, revenue: 0 };
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    bookings.forEach(booking => {
+      const dateKey = new Date(booking.startAt).toISOString().split('T')[0];
+      if (dailyTrends[dateKey]) {
+        dailyTrends[dateKey].bookings++;
+        if (booking.confirmedPayment) {
+          dailyTrends[dateKey].revenue += parseFloat(booking.totalAmount || 0);
+        }
+      }
+    });
+
+    res.json({
+      period,
+      dateRange: {
+        start: startDate.toISOString(),
+        end: endDate.toISOString()
+      },
+      overview: {
+        totalBookings,
+        confirmedBookings,
+        pendingBookings,
+        totalRevenue: Math.round(totalRevenue * 100) / 100,
+        averageBookingValue: Math.round(averageBookingValue * 100) / 100
+      },
+      breakdowns: {
+        byLocation: locationBreakdown,
+        byMemberType: memberTypeBreakdown
+      },
+      trends: {
+        daily: dailyTrends
+      }
+    });
+
+  } catch (err) {
+    console.error('getBookingAnalytics error:', err);
+    res.status(500).json({ error: 'Failed to fetch analytics' });
+  }
+};
+
+// Get dashboard summary
+exports.getDashboardSummary = async (req, res) => {
+  try {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Today's bookings
+    const { count: todayBookings } = await supabase
+      .from('Booking')
+      .select('*', { count: 'exact', head: true })
+      .gte('startAt', today.toISOString())
+      .lt('startAt', new Date(today.getTime() + 24 * 60 * 60 * 1000).toISOString());
+
+    // This month's revenue
+    const { data: monthBookings } = await supabase
+      .from('Booking')
+      .select('totalAmount')
+      .gte('startAt', startOfMonth.toISOString())
+      .lte('startAt', now.toISOString())
+      .eq('confirmedPayment', true);
+
+    const monthRevenue = monthBookings
+      .reduce((sum, b) => sum + parseFloat(b.totalAmount || 0), 0);
+
+    // Upcoming bookings
+    const { count: upcomingCount } = await supabase
+      .from('Booking')
+      .select('*', { count: 'exact', head: true })
+      .gt('startAt', now.toISOString());
+
+    // Pending payments
+    const { data: pendingBookings } = await supabase
+      .from('Booking')
+      .select('totalAmount')
+      .eq('confirmedPayment', false);
+
+    const pendingAmount = pendingBookings
+      .reduce((sum, b) => sum + parseFloat(b.totalAmount || 0), 0);
+
+    res.json({
+      today: {
+        bookings: todayBookings || 0
+      },
+      thisMonth: {
+        revenue: Math.round(monthRevenue * 100) / 100
+      },
+      upcoming: {
+        count: upcomingCount || 0
+      },
+      pending: {
+        amount: Math.round(pendingAmount * 100) / 100
+      },
+      lastUpdated: now.toISOString()
+    });
+
+  } catch (err) {
+    console.error('getDashboardSummary error:', err);
+    res.status(500).json({ error: 'Failed to fetch dashboard summary' });
+  }
+};
+
+// Update booking (admin)
+exports.updateBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    // Check if booking exists
+    const { data: existingBooking, error: fetchError } = await supabase
+      .from('Booking')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !existingBooking) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+
+    // Update booking
+    const { data: updatedBooking, error: updateError } = await supabase
+      .from('Booking')
+      .update({
+        ...updateData,
+        updatedAt: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select('*')
+      .single();
+
+    if (updateError) {
+      console.error('updateBooking error:', updateError);
+      return res.status(500).json({ error: 'Failed to update booking' });
+    }
+
+    // Get user data separately
+    let userData = null;
+    if (updatedBooking.userId) {
+      const { data: user, error: userError } = await supabase
+        .from('User')
+        .select('id, name, email')
+        .eq('id', updatedBooking.userId)
+        .single();
+      
+      if (!userError && user) {
+        userData = user;
+      }
+    }
+
+    const finalResponse = {
+      ...updatedBooking,
+      User: userData
+    };
+
+    if (updateError) {
+      console.error('updateBooking error:', updateError);
+      return res.status(500).json({ error: 'Failed to update booking' });
+    }
+
+    res.json({
+      message: 'Booking updated successfully',
+      booking: finalResponse
+    });
+
+  } catch (err) {
+    console.error('updateBooking error:', err);
+    res.status(500).json({ error: 'Failed to update booking' });
+  }
+};
+
+// Cancel/Delete booking (admin)
+exports.cancelBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason, refundAmount } = req.body;
+
+    // Check if booking exists
+    const { data: existingBooking, error: fetchError } = await supabase
+      .from('Booking')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !existingBooking) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+
+    // Check if booking is in the future
+    const now = new Date();
+    const startAt = new Date(existingBooking.startAt);
+    
+    if (startAt <= now) {
+      return res.status(400).json({ error: 'Cannot cancel past or ongoing bookings' });
+    }
+
+    // Delete the booking
+    const { error: deleteError } = await supabase
+      .from('Booking')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) {
+      console.error('cancelBooking error:', deleteError);
+      return res.status(500).json({ error: 'Failed to cancel booking' });
+    }
+
+    res.json({
+      message: 'Booking cancelled successfully',
+      cancelledBooking: {
+        id: existingBooking.id,
+        bookingRef: existingBooking.bookingRef,
+        reason: reason || 'Admin cancellation',
+        refundAmount: refundAmount || existingBooking.totalAmount
+      }
+    });
+
+  } catch (err) {
+    console.error('cancelBooking error:', err);
+    res.status(500).json({ error: 'Failed to cancel booking' });
+  }
+};
