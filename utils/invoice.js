@@ -70,14 +70,7 @@ try {
                 .font(bodyFont).fontSize(bodyFontSize)
                 .text(`# ${invoiceNumber}`, 400, 85);
 
-            const balanceDue = bookingData.confirmedPayment ? '0.00' : (bookingData.totalAmount || '0.00');
-            doc.rect(400, 105, 120, 40).fill('#4CAF50').stroke();
-            doc.fillColor('#FFFFFF').font(bodyFont).fontSize(smallFontSize)
-                .text('Balance Due', 410, 115)
-                .font(headerFont).fontSize(bodyFontSize)
-                .text(`SGD ${balanceDue}`, 410, 130);
-
-            // Use Singapore timezone for invoice dates
+          
             const currentDate = new Date().toLocaleDateString('en-SG', { timeZone: 'Asia/Singapore' });
             const currentTime = new Date().toLocaleTimeString('en-SG', { 
                 timeZone: 'Asia/Singapore',
@@ -92,14 +85,14 @@ try {
 
             doc.font(headerFont).fontSize(sectionHeaderFontSize)
                 .text('Bill To', 50, 230)
-               
+                .font(bodyFont).fontSize(bodyFontSize)
                 .text(userData.email || '', 50, 265, { width: 200 });
 
             const tableTop = 300;
             doc.rect(50, tableTop, 500, 25).fill('#2C3E50').stroke();
             doc.fillColor('#FFFFFF').font(headerFont).fontSize(bodyFontSize)
                 .text('#', 60, tableTop + 8)
-                .text('Item & Description', 90, tableTop + 8)
+                .text('Location & Date/Time', 90, tableTop + 8)
                 .text('Qty', 380, tableTop + 8)
                 .text('Rate', 420, tableTop + 8)
                 .text('Amount', 480, tableTop + 8);
