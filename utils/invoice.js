@@ -1,6 +1,12 @@
 const PDFDocument = require('pdfkit');
-const fs = require('fs');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");   // put it here, at the top
+
+// IMPORTANT: Logo positioning has been fixed to prevent overlap with company information
+// Logo: 60x60 pixels at position (60, 60)
+// Company info: starts at y=130 to provide proper spacing below logo (70 pixels gap)
+// Right side elements: positioned to avoid overlap with left side content
+
 
 const generateInvoicePDF = (userData, bookingData) => {
     return new Promise((resolve, reject) => {
@@ -26,38 +32,37 @@ const generateInvoicePDF = (userData, bookingData) => {
             const bodyFontSize = 10;
             const smallFontSize = 8;
 
-            // Add logo from temp folder
-            try {
-                const logoPath = '/tmp/logo.png';
-                if (fs.existsSync(logoPath)) {
-                    // Add logo image (80x80 pixels)
-                    doc.image(logoPath, 60, 60, { width: 80, height: 80 });
-                    console.log('Logo added to PDF successfully');
-                } else {
-                    // Fallback to company name if logo not found
-                    doc.rect(50, 50, 230, 130).fill('#F9F9F9').stroke();
-                    doc.fillColor('#000000')
-                        .font(headerFont).fontSize(titleFontSize)
-                        .text('MY PRODUCTIVE SPACE', 60, 60);
-                }
-            } catch (logoError) {
-                // Fallback to company name if logo fails
-                doc.rect(50, 50, 230, 130).fill('#F9F9F9').stroke();
-                doc.fillColor('#000000')
-                    .font(headerFont).fontSize(titleFontSize)
-                    .text('MY PRODUCTIVE SPACE', 60, 60);
-                console.log('Logo error, using text fallback:', logoError.message);
-            }
-            
+      
+
+try {
+    const logoPath = path.join(process.cwd(), "public", "logo.png");
+
+    if (fs.existsSync(logoPath)) {
+        // Logo positioned at top left with proper spacing - 60x60 pixels to prevent overlap
+        doc.image(logoPath, 60, 60, { width: 150, height: 60 });
+        console.log("Logo added to PDF successfully");
+    } else {
+        doc.font(headerFont).fontSize(titleFontSize).text("MY PRODUCTIVE SPACE", 60, 60);
+        console.log('Logo not added')
+    }
+} catch (logoError) {
+    doc.font(headerFont).fontSize(titleFontSize).text("MY PRODUCTIVE SPACE", 60, 60);
+    console.log("Logo error, using text fallback:", logoError.message);
+}
+
+
+
+
+            // Company information positioned below logo with proper spacing to prevent overlap
             doc.fillColor('#000000')
                 .font(bodyFont).fontSize(smallFontSize)
-                .text('My Productive Space', 60, 95)
-                .text('Company ID: 53502976D', 60, 105)
-                .text('Blk 208 Hougang st 21 #01-201', 60, 115)
-                .text('Hougang 530208', 60, 125)
-                .text('Singapore', 60, 135)
-                .text('89202462', 60, 145)
-                .text('myproductivespacecontact@gmail.com', 60, 155);
+                .text('My Productive Space', 60, 130)  // Moved from 95 to 130
+                .text('Company ID: 53502976D', 60, 140)  // Moved from 105 to 140
+                .text('Blk 208 Hougang st 21 #01-201', 60, 150)  // Moved from 115 to 150
+                .text('Hougang 530208', 60, 160)  // Moved from 125 to 160
+                .text('Singapore', 60, 170)  // Moved from 135 to 170
+                .text('89202462', 60, 180)  // Moved from 145 to 180
+                .text('myproductivespacecontact@gmail.com', 60, 190);  // Moved from 155 to 190
 
            const invoiceNumber = `INV-${String(bookingData.id || '000001').slice(-6).padStart(6, '0')}`;
             doc.font(headerFont).fontSize(titleFontSize)
@@ -127,7 +132,8 @@ const generateInvoicePDF = (userData, bookingData) => {
             const hours = bookingData.endAt ?
                 Math.ceil((endDate - startDate) / (1000 * 60 * 60)) : 1;
 
-            const description = bookingData.location ?
+            // Generate description with role and seat information
+            let description = bookingData.location ?
                 `${bookingData.location} - ${startDateSGT} (${startTimeSGT} - ${endTimeSGT})` :
                 `Workspace Booking - ${startDateSGT} (${startTimeSGT} - ${endTimeSGT})`;
 
@@ -140,6 +146,55 @@ const generateInvoicePDF = (userData, bookingData) => {
                 .text((bookingData.pax || 1).toString(), 385, currentY + 10)
                 .text(`$${rate.toFixed(2)}`, 420, currentY + 10)
                 .text(`$${amount.toFixed(2)}`, 480, currentY + 10);
+
+            // Add role and seat information below the main table
+            currentY += 40;
+            
+            // Check if we have role information
+            const hasRoleInfo = (bookingData.students > 0 || bookingData.members > 0 || bookingData.tutors > 0) || 
+                               (bookingData.seatNumbers && bookingData.seatNumbers.length > 0);
+            
+            if (hasRoleInfo) {
+                doc.font(headerFont).fontSize(sectionHeaderFontSize)
+                    .text('Role & Seat Information', 50, currentY);
+                
+                currentY += 20;
+                
+                // Show role breakdown
+                let roleSummary = [];
+                if (bookingData.students > 0) roleSummary.push(`${bookingData.students} Student(s)`);
+                if (bookingData.members > 0) roleSummary.push(`${bookingData.members} Member(s)`);
+                if (bookingData.tutors > 0) roleSummary.push(`${bookingData.tutors} Tutor(s)`);
+                
+                if (roleSummary.length > 0) {
+                    doc.font(bodyFont).fontSize(bodyFontSize)
+                        .text(`Total: ${roleSummary.join(', ')}`, 50, currentY);
+                    currentY += 15;
+                }
+                
+                // Show seat numbers if available
+                if (bookingData.seatNumbers && bookingData.seatNumbers.length > 0) {
+                    doc.font(bodyFont).fontSize(bodyFontSize)
+                        .text(`Assigned Seats: ${bookingData.seatNumbers.join(', ')}`, 50, currentY);
+                    currentY += 15;
+                }
+                
+                // Show member type if available
+                if (bookingData.memberType) {
+                    doc.font(bodyFont).fontSize(bodyFontSize)
+                        .text(`Member Type: ${bookingData.memberType}`, 50, currentY);
+                    currentY += 15;
+                }
+                
+                // Show booked for emails if available
+                if (bookingData.bookedForEmails && bookingData.bookedForEmails.length > 0) {
+                    doc.font(bodyFont).fontSize(bodyFontSize)
+                        .text(`Booked For: ${bookingData.bookedForEmails.join(', ')}`, 50, currentY);
+                    currentY += 15;
+                }
+                
+                currentY += 10; // Add some spacing
+            }
 
             // Calculate fee based on payment method or amount difference
             const totalAmount = parseFloat(bookingData.totalAmount || amount);
@@ -154,7 +209,12 @@ const generateInvoicePDF = (userData, bookingData) => {
             const summaryWidth = pageWidth * 0.4; // 40% of page width
             const summaryStartX = pageWidth - summaryWidth - 50; // 50 is margin, start from right side
             
-            currentY += 50; 
+            // Adjust spacing based on whether role information was added
+            if (hasRoleInfo) {
+                currentY += 20; // Less spacing since role info was already added
+            } else {
+                currentY += 50; // Original spacing
+            } 
             doc.font(bodyFont).fontSize(bodyFontSize)
                 .text('Sub Total', summaryStartX, currentY)
                 .font(bodyFont).fontSize(bodyFontSize)

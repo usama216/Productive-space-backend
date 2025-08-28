@@ -9,18 +9,43 @@ const paymentConfirmationTemplate = (userData, bookingData) => ({
     <head>
       <meta charset="UTF-8">
       <title>Payment Confirmation</title>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #ff6900 0%, #ff8533 100%); color: white; padding: 20px 30px; text-align: center; border-radius: 10px 10px 0 0; }
+        .logo-container { text-align: center; margin-bottom: 20px; }
+        .logo { max-width: 120px; height: auto; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+        .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
+      </style>
     </head>
     <body>
-      <h2>Hello ${userData.name},</h2>
-      <p>Your payment was successful!</p>
+      <div class="container">
+        <div class="header">
+          <div class="logo-container">
+            <img src="cid:logo" alt="My Productive Space Logo" class="logo">
+          </div>
+          <h1>Payment Confirmed!</h1>
+          <p>Welcome to My Productive Space</p>
+        </div>
+        
+        <div class="content">
+          <h2>Hello ${userData.name},</h2>
+          <p>Your payment was successful!</p>
 
-      <h3>📋 Payment Details</h3>
-      <p><strong>Reference Number:</strong> ${bookingData.reference_number || 'N/A'}</p>
-      <p><strong>Amount Paid:</strong> SGD ${bookingData.amount}</p>
-      <p><strong>Date:</strong> ${new Date().toLocaleDateString('en-SG')}</p>
-      <p><strong>Time:</strong> ${new Date().toLocaleTimeString('en-SG')}</p>
+          <h3>📋 Payment Details</h3>
+          <p><strong>Reference Number:</strong> ${bookingData.reference_number || 'N/A'}</p>
+          <p><strong>Amount Paid:</strong> SGD ${bookingData.amount}</p>
+          <p><strong>Date:</strong> ${new Date().toLocaleDateString('en-SG')}</p>
+          <p><strong>Time:</strong> ${new Date().toLocaleTimeString('en-SG')}</p>
 
-      <p>We look forward to seeing you 🎉</p>
+          <p>We look forward to seeing you 🎉</p>
+        </div>
+        
+        <div class="footer">
+          <p>© 2025 My Productive Space. All rights reserved.</p>
+        </div>
+      </div>
     </body>
     </html>
   `
@@ -80,7 +105,9 @@ const bookingConfirmationTemplate = (userData, bookingData) => ({
       <style>
         body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
         .container { max-width: 800px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #ff6900 0%, #ff8533 100%); color: white; padding: 20px 30px; text-align: center; border-radius: 10px 10px 0 0; }
+        .header { background: linear-gradient(135deg, #ff6900 0%, #ff8533 100%); color: white; padding: 6px 20px; text-align: center; border-radius: 10px 10px 0 0; }
+        .logo-container { text-align: center; margin-bottom: 20px; }
+        .logo { max-width: 220px; height: auto; border-radius: 0px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
         .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
         .booking-details { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #ff6900; }
         .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
@@ -92,8 +119,11 @@ const bookingConfirmationTemplate = (userData, bookingData) => ({
     <body>
       <div class="container">
         <div class="header">
-          <h1>Booking Confirmed!</h1>
-          <p>Welcome to My Productive Space</p>
+          <div class="logo-container">
+            <img src="cid:logo" alt="My Productive Space Logo" class="logo">
+          </div>
+          <h3>Booking Confirmed!</h3>
+         
         </div>
         
         <div class="content">

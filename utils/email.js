@@ -1,5 +1,6 @@
 const nodemailer = require("nodemailer");
 const fs = require('fs');
+const path = require('path'); // ADD THIS IMPORT
 const { paymentConfirmationTemplate, bookingConfirmationTemplate } = require("../templates/bookingConfirmation");
 const { generateInvoicePDF } = require("./invoice"); // ADD THIS IMPORT
 
@@ -53,10 +54,16 @@ const sendBookingConfirmation = async (userData, bookingData) => {
       subject: emailContent.subject,
       html: emailContent.html,
       attachments: [
+      
         {
           filename: fileName,
           path: filePath,
           contentType: 'application/pdf'
+        },
+          {
+          filename: 'logo.png',
+          path: path.join(process.cwd(), 'public', 'logo.png'),
+          cid: 'logo' // This makes it an embedded image
         }
       ]
     };
