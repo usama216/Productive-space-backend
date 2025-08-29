@@ -1,12 +1,6 @@
 const axios = require("axios");
 const { sendBookingConfirmation } = require("../utils/email");
-const { createClient } = require("@supabase/supabase-js");
-
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-);
+const supabase = require("../config/database");
 
 const hitpayClient = axios.create({
   baseURL: process.env.HITPAY_API_URL,

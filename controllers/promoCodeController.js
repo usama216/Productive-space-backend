@@ -1,6 +1,4 @@
-const { createClient } = require("@supabase/supabase-js");
-
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const supabase = require("../config/database");
 
 // ==================== TEST ENDPOINT ====================
 // Test endpoint to check database connection and table status

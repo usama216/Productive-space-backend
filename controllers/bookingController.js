@@ -74,8 +74,7 @@ const updatePromoCodeUsage = async (promoCodeId) => {
   }
 };
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
-    // console.log(process.env.SUPABASE_URL, process.env.SUPABASE_KEY)
+const supabase = require("../config/database");
 
 exports.createBooking = async (req, res) => {
   try {

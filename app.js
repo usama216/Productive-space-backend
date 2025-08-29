@@ -3,9 +3,6 @@ require('dotenv').config();
 const express = require("express");
 const cors = require("cors");
 const { createClient } = require("@supabase/supabase-js");
-const paymentRoutes = require("./routes/payment");
-const bookingRoutes = require("./routes/booking");
-const promoCodeRoutes = require("./routes/promoCode");
 
 
 
@@ -13,6 +10,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }))
+
+// Import routes after environment variables are loaded
+const paymentRoutes = require("./routes/payment");
+const bookingRoutes = require("./routes/booking");
+const promoCodeRoutes = require("./routes/promoCode");
+const studentVerificationRoutes = require("./routes/studentVerification");
+
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
 // Welcome route - test API endpoint
@@ -70,6 +74,7 @@ app.get("/", (req, res) => {
 app.use("/api/hitpay", paymentRoutes);
 app.use("/api/booking", bookingRoutes);
 app.use("/api/promocode", promoCodeRoutes);
+app.use("/api/student", studentVerificationRoutes);
 
 app.get("/users", async (req, res) => {
     const { data, error } = await supabase.from("User").select("*");
