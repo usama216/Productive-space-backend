@@ -1357,3 +1357,500 @@ exports.cancelBooking = async (req, res) => {
     res.status(500).json({ error: 'Failed to cancel booking' });
   }
 };
+
+// ==================== ADMIN USER MANAGEMENT APIs ====================
+
+// Get all users with comprehensive filters and analytics
+exports.getAllUsers = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 20,
+      search,
+      memberType,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+      includeStats = 'false'
+    } = req.query;
+
+    // Build the base query
+    let query = supabase
+      .from('User')
+      .select('*', { count: 'exact' });
+
+    // Apply search filter
+    if (search) {
+      query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%`);
+    }
+
+    // Apply member type filter
+    if (memberType) {
+      query = query.eq('memberType', memberType);
+    }
+
+    // Apply sorting
+    query = query.order(sortBy, { ascending: sortOrder === 'asc' });
+
+    // Apply pagination
+    const offset = (page - 1) * limit;
+    query = query.range(offset, offset + limit - 1);
+
+    const { data: users, error, count } = await query;
+
+    if (error) {
+      console.error('getAllUsers error:', error);
+      return res.status(500).json({ error: 'Failed to fetch users', details: error.message });
+    }
+
+    // If includeStats is true, get additional user statistics
+    let usersWithStats = users;
+    if (includeStats === 'true') {
+      const userIds = users.map(user => user.id);
+      
+      // Get booking counts for each user
+      const { data: bookingCounts, error: bookingError } = await supabase
+        .from('Booking')
+        .select('userId, confirmedPayment, totalAmount')
+        .in('userId', userIds);
+
+      if (!bookingError && bookingCounts) {
+        // Group bookings by user
+        const userBookings = {};
+        bookingCounts.forEach(booking => {
+          if (!userBookings[booking.userId]) {
+            userBookings[booking.userId] = {
+              totalBookings: 0,
+              confirmedBookings: 0,
+              totalSpent: 0
+            };
+          }
+          userBookings[booking.userId].totalBookings++;
+          if (booking.confirmedPayment) {
+            userBookings[booking.userId].confirmedBookings++;
+            userBookings[booking.userId].totalSpent += parseFloat(booking.totalAmount || 0);
+          }
+        });
+
+        // Add stats to users
+        usersWithStats = users.map(user => ({
+          ...user,
+          stats: userBookings[user.id] || {
+            totalBookings: 0,
+            confirmedBookings: 0,
+            totalSpent: 0
+          }
+        }));
+      }
+    }
+
+    // Calculate summary statistics
+    const totalUsers = count || 0;
+    const memberTypeBreakdown = {};
+    users.forEach(user => {
+      const type = user.memberType || 'regular';
+      if (!memberTypeBreakdown[type]) {
+        memberTypeBreakdown[type] = 0;
+      }
+      memberTypeBreakdown[type]++;
+    });
+
+    res.json({
+      users: usersWithStats,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: totalUsers,
+        totalPages: Math.ceil(totalUsers / limit)
+      },
+      summary: {
+        totalUsers,
+        memberTypeBreakdown
+      }
+    });
+
+  } catch (err) {
+    console.error('getAllUsers error:', err);
+    res.status(500).json({ error: 'Failed to fetch users', details: err.message });
+  }
+};
+
+// Get user analytics and statistics
+exports.getUserAnalytics = async (req, res) => {
+  try {
+    const { period = 'month' } = req.query;
+    
+    const now = new Date();
+    let startDate, endDate;
+    
+    switch (period) {
+      case 'week':
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case 'month':
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      case 'quarter':
+        const quarter = Math.floor(now.getMonth() / 3);
+        startDate = new Date(now.getFullYear(), quarter * 3, 1);
+        break;
+      case 'year':
+        startDate = new Date(now.getFullYear(), 0, 1);
+        break;
+      default:
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+    
+    endDate = now;
+
+    // Get total users
+    const { count: totalUsers } = await supabase
+      .from('User')
+      .select('*', { count: 'exact', head: true });
+
+    // Get new users in date range
+    const { count: newUsers } = await supabase
+      .from('User')
+      .select('*', { count: 'exact', head: true })
+      .gte('createdAt', startDate.toISOString())
+      .lte('createdAt', endDate.toISOString());
+
+    // Get users by member type
+    const { data: usersByType } = await supabase
+      .from('User')
+      .select('memberType');
+
+    const memberTypeBreakdown = {};
+    if (usersByType) {
+      usersByType.forEach(user => {
+        const type = user.memberType || 'regular';
+        if (!memberTypeBreakdown[type]) {
+          memberTypeBreakdown[type] = 0;
+        }
+        memberTypeBreakdown[type]++;
+      });
+    }
+
+    // Get users with bookings
+    const { data: usersWithBookings } = await supabase
+      .from('User')
+      .select('id')
+      .in('id', supabase
+        .from('Booking')
+        .select('userId')
+        .not('userId', 'is', null)
+      );
+
+    const activeUsers = usersWithBookings ? usersWithBookings.length : 0;
+
+    // Daily user registration trends
+    const dailyTrends = {};
+    const currentDate = new Date(startDate);
+    while (currentDate <= endDate) {
+      const dateKey = currentDate.toISOString().split('T')[0];
+      dailyTrends[dateKey] = 0;
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    // Get daily user counts
+    const { data: dailyUsers } = await supabase
+      .from('User')
+      .select('createdAt')
+      .gte('createdAt', startDate.toISOString())
+      .lte('createdAt', endDate.toISOString());
+
+    if (dailyUsers) {
+      dailyUsers.forEach(user => {
+        const dateKey = new Date(user.createdAt).toISOString().split('T')[0];
+        if (dailyTrends[dateKey]) {
+          dailyTrends[dateKey]++;
+        }
+      });
+    }
+
+    res.json({
+      period,
+      dateRange: {
+        start: startDate.toISOString(),
+        end: endDate.toISOString()
+      },
+      overview: {
+        totalUsers: totalUsers || 0,
+        newUsers: newUsers || 0,
+        activeUsers,
+        inactiveUsers: (totalUsers || 0) - activeUsers
+      },
+      breakdowns: {
+        byMemberType: memberTypeBreakdown
+      },
+      trends: {
+        daily: dailyTrends
+      }
+    });
+
+  } catch (err) {
+    console.error('getUserAnalytics error:', err);
+    res.status(500).json({ error: 'Failed to fetch user analytics' });
+  }
+};
+
+// Get user dashboard summary
+exports.getUserManagementSummary = async (req, res) => {
+  try {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Today's new users
+    const { count: todayUsers } = await supabase
+      .from('User')
+      .select('*', { count: 'exact', head: true })
+      .gte('createdAt', today.toISOString())
+      .lt('createdAt', new Date(today.getTime() + 24 * 60 * 60 * 1000).toISOString());
+
+    // This month's new users
+    const { count: monthUsers } = await supabase
+      .from('User')
+      .select('*', { count: 'exact', head: true })
+      .gte('createdAt', startOfMonth.toISOString())
+      .lte('createdAt', now.toISOString());
+
+    // Total users
+    const { count: totalUsers } = await supabase
+      .from('User')
+      .select('*', { count: 'exact', head: true });
+
+    // Users by member type
+    const { data: memberTypeData } = await supabase
+      .from('User')
+      .select('memberType');
+
+    const memberTypeBreakdown = {};
+    if (memberTypeData) {
+      memberTypeData.forEach(user => {
+        const type = user.memberType || 'regular';
+        if (!memberTypeBreakdown[type]) {
+          memberTypeBreakdown[type] = 0;
+        }
+        memberTypeBreakdown[type]++;
+      });
+    }
+
+    res.json({
+      today: {
+        newUsers: todayUsers || 0
+      },
+      thisMonth: {
+        newUsers: monthUsers || 0
+      },
+      total: {
+        users: totalUsers || 0
+      },
+      breakdown: {
+        byMemberType: memberTypeBreakdown
+      },
+      lastUpdated: now.toISOString()
+    });
+
+  } catch (err) {
+    console.error('getUserManagementSummary error:', err);
+    res.status(500).json({ error: 'Failed to fetch user management summary' });
+  }
+};
+
+// ... existing code ...
+
+// ==================== ADMIN USER VERIFICATION APIs ====================
+
+// Approve/Reject student verification
+exports.verifyStudentAccount = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { studentVerificationStatus, rejectionReason } = req.body;
+
+    // Log the request details for debugging
+    console.log('verifyStudentAccount request:', {
+      userId,
+      studentVerificationStatus,
+      rejectionReason,
+      body: req.body
+    });
+
+    // Validate the status
+    if (!['VERIFIED', 'REJECTED'].includes(studentVerificationStatus)) {
+      return res.status(400).json({ 
+        error: 'Invalid verification status. Must be VERIFIED or REJECTED' 
+      });
+    }
+
+    // Check if user exists
+    const { data: existingUser, error: fetchError } = await supabase
+      .from('User')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (fetchError || !existingUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Log user details for debugging
+    console.log('verifyStudentAccount - User details:', {
+      userId,
+      memberType: existingUser.memberType,
+      memberTypeType: typeof existingUser.memberType,
+      hasVerificationImage: !!existingUser.studentVerificationImageUrl,
+      verificationImageUrl: existingUser.studentVerificationImageUrl,
+      currentVerificationStatus: existingUser.studentVerificationStatus
+    });
+
+    // Check if user has uploaded verification document
+    if (!existingUser.studentVerificationImageUrl) {
+      return res.status(400).json({ 
+        error: 'User has not uploaded verification document' 
+      });
+    }
+
+    // Prepare update data
+    const updateData = {
+      studentVerificationStatus: studentVerificationStatus,
+      studentVerificationDate: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    // Add rejection reason if status is REJECTED
+    if (studentVerificationStatus === 'REJECTED') {
+      updateData.studentRejectionReason = rejectionReason || 'Admin rejection - no reason provided';
+      updateData.studentVerificationStatus = 'REJECTED';
+    } else {
+      // If verified, clear any previous rejection reason
+      updateData.studentRejectionReason = null;
+    }
+
+    // Update user verification status
+    console.log('Updating user with data:', updateData);
+    const { data: updatedUser, error: updateError } = await supabase
+      .from('User')
+      .update(updateData)
+      .eq('id', userId)
+      .select('*')
+      .single();
+
+    if (updateError) {
+      console.error('verifyStudentAccount error:', updateError);
+      console.error('Update data that failed:', updateData);
+      return res.status(500).json({ 
+        error: 'Failed to update verification status',
+        details: updateError.message,
+        attemptedUpdate: updateData
+      });
+    }
+
+    // Prepare response
+    const response = {
+      message: `Account verification ${studentVerificationStatus.toLowerCase()} successfully`,
+      user: {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        memberType: updatedUser.memberType,
+        studentVerificationStatus: updatedUser.studentVerificationStatus,
+        studentVerificationDate: updatedUser.studentVerificationDate,
+        studentRejectionReason: updatedUser.studentRejectionReason,
+        studentVerificationImageUrl: updatedUser.studentVerificationImageUrl
+      },
+      verificationDetails: {
+        status: updatedUser.studentVerificationStatus,
+        date: updatedUser.studentVerificationDate,
+        reason: updatedUser.studentRejectionReason
+      }
+    };
+
+    res.json(response);
+
+  } catch (err) {
+    console.error('verifyStudentAccount error:', err);
+    res.status(500).json({ error: 'Failed to verify student account', details: err.message });
+  }
+};
+
+// Delete user (admin)
+exports.deleteUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Log the request details for debugging
+    console.log('deleteUser request:', {
+      userId,
+      body: req.body,
+      hasBody: !!req.body,
+      bodyType: typeof req.body
+    });
+    
+    // Validate userId parameter
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+    
+    // Safely extract reason from req.body, handle case where req.body might be undefined
+    const reason = req.body && req.body.reason ? req.body.reason : 'Admin deletion';
+
+    // Check if user exists
+    const { data: existingUser, error: fetchError } = await supabase
+      .from('User')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (fetchError || !existingUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Check if user has any bookings
+    const { data: userBookings, error: bookingError } = await supabase
+      .from('Booking')
+      .select('id')
+      .eq('userId', userId);
+
+    if (bookingError) {
+      console.error('deleteUser error checking bookings:', bookingError);
+      return res.status(500).json({ error: 'Failed to check user bookings' });
+    }
+
+    if (userBookings && userBookings.length > 0) {
+      return res.status(400).json({ 
+        error: 'Cannot delete user with existing bookings',
+        message: 'Please cancel all user bookings before deleting the account',
+        bookingCount: userBookings.length
+      });
+    }
+
+    // Delete the user
+    console.log('Attempting to delete user:', userId);
+    const { error: deleteError } = await supabase
+      .from('User')
+      .delete()
+      .eq('id', userId);
+
+    if (deleteError) {
+      console.error('deleteUser error:', deleteError);
+      return res.status(500).json({ error: 'Failed to delete user' });
+    }
+    
+    console.log('User deleted successfully:', userId);
+
+    res.json({
+      message: 'User deleted successfully',
+      deletedUser: {
+        id: existingUser.id,
+        name: existingUser.name,
+        email: existingUser.email,
+        memberType: existingUser.memberType,
+        reason: reason
+      }
+    });
+
+  } catch (err) {
+    console.error('deleteUser error:', err);
+    res.status(500).json({ error: 'Failed to delete user', details: err.message });
+  }
+};

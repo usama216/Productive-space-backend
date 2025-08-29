@@ -129,6 +129,17 @@ app.get("/", (req, res) => {
                     <div class="endpoint admin">
                         <strong>GET /api/promocode/admin/:id</strong> - Get promo code details
                     </div>
+                    
+                    <h3 style="margin-top: 30px; color: #dc3545;">👥 Admin User Management APIs:</h3>
+                    <div class="endpoint admin">
+                        <strong>GET /api/booking/admin/users</strong> - Get all users
+                    </div>
+                    <div class="endpoint admin">
+                        <strong>DELETE /api/booking/admin/users/:userId</strong> - Delete user (requires reason in body)
+                    </div>
+                    <div class="endpoint admin">
+                        <strong>PUT /api/booking/admin/users/:userId/verify</strong> - Verify student account
+                    </div>
                 </div>
             </div>
         </body>

@@ -9,6 +9,11 @@ CREATE TABLE IF NOT EXISTS "User" (
     name VARCHAR(255),
     phone VARCHAR(20),
     memberType VARCHAR(50) DEFAULT 'regular',
+    -- Student verification fields
+    studentVerificationStatus VARCHAR(20) DEFAULT 'PENDING' CHECK (studentVerificationStatus IN ('PENDING', 'VERIFIED', 'REJECTED')),
+    studentVerificationDate TIMESTAMP WITH TIME ZONE,
+    studentRejectionReason TEXT,
+    studentVerificationImageUrl TEXT,
     createdAt TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updatedAt TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

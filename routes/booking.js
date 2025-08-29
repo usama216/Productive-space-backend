@@ -14,7 +14,13 @@ const {
   getBookingAnalytics,
   updateBooking,
   cancelBooking,
-  getDashboardSummary
+  getDashboardSummary,
+  // Admin User Management functions
+  getAllUsers,
+  getUserAnalytics,
+  getUserManagementSummary,
+  verifyStudentAccount,
+  deleteUser
 } = require("../controllers/bookingController");
 
 const router = express.Router();
@@ -53,4 +59,17 @@ router.put("/admin/:id", updateBooking);
 // Cancel/delete booking (ADMIN)
 router.delete("/admin/:id", cancelBooking);
 
+// ==================== ADMIN USER MANAGEMENT ROUTES ====================
+// Get all users with filters and pagination
+router.get("/admin/users", getAllUsers);
+
+// Get user analytics and statistics
+router.get("/admin/users/analytics", getUserAnalytics);
+
+// Get user management dashboard summary
+router.get("/admin/users/dashboard", getUserManagementSummary);
+router.put("/admin/users/:userId/verify", verifyStudentAccount);
+
+// Delete user (ADMIN)
+router.delete("/admin/users/:userId", deleteUser);
 module.exports = router;
