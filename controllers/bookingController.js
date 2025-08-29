@@ -104,9 +104,7 @@ exports.createBooking = async (req, res) => {
       discountAmount // Add discount amount applied
     } = req.body;
 
-    // TEMPORARILY COMMENTED OUT FOR TESTING - UNCOMMENT AFTER TESTING IS COMPLETE
     // Check if booking with this ID already exists
-    /*
     if (id) {
       const { data: existingBooking, error: checkError } = await supabase
         .from("Booking")
@@ -122,11 +120,8 @@ exports.createBooking = async (req, res) => {
         });
       }
     }
-    */
 
-    // TEMPORARILY COMMENTED OUT FOR TESTING - UNCOMMENT AFTER TESTING IS COMPLETE
     // Check if booking with this reference number already exists
-    /*
     if (bookingRef) {
       const { data: existingRef, error: refError } = await supabase
         .from("Booking")
@@ -142,7 +137,6 @@ exports.createBooking = async (req, res) => {
         });
       }
     }
-    */
 
     // Basic promo code validation if provided
     // Full validation will happen during payment confirmation
@@ -282,9 +276,7 @@ exports.confirmBookingPayment = async (req, res) => {
 
     console.log(`Found booking: ${existingBooking.id}, confirmedPayment: ${existingBooking.confirmedPayment}`);
 
-    // TEMPORARILY COMMENTED OUT FOR TESTING - UNCOMMENT AFTER TESTING IS COMPLETE
     // Check if payment is already confirmed
-    /*
     if (existingBooking.confirmedPayment === true || existingBooking.confirmedPayment === "true") {
       // Get payment information if paymentId exists
       let paymentData = null;
@@ -317,7 +309,6 @@ exports.confirmBookingPayment = async (req, res) => {
         requestedBookingId: bookingId
       });
     }
-    */
 
     // Update booking in Supabase
     const { data, error } = await supabase
