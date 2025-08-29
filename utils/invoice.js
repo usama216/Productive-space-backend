@@ -172,21 +172,6 @@ try {
                     currentY += 15;
                 }
                 
-                // Show member type if available
-                if (bookingData.memberType) {
-                    doc.font(bodyFont).fontSize(bodyFontSize)
-                        .text(`Member Type: ${bookingData.memberType}`, 50, currentY);
-                    currentY += 15;
-                }
-                
-                // Show booked for emails if available
-                if (bookingData.bookedForEmails && bookingData.bookedForEmails.length > 0) {
-                    doc.font(bodyFont).fontSize(bodyFontSize)
-                        .text(`Booked For: ${bookingData.bookedForEmails.join(', ')}`, 50, currentY);
-                    currentY += 15;
-                }
-                
-                currentY += 10; // Add some spacing
             }
 
             // Add promo code information if applied
