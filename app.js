@@ -53,29 +53,7 @@ app.get("/", (req, res) => {
                     font-size: 14px;
                     margin-bottom: 30px;
                 }
-                .endpoints {
-                    text-align: left;
-                    background-color: #f8f9fa;
-                    padding: 20px;
-                    border-radius: 5px;
-                }
-                .endpoints h3 {
-                    color: #495057;
-                    margin-top: 0;
-                }
-                .endpoint {
-                    margin: 10px 0;
-                    padding: 8px;
-                    background-color: white;
-                    border-left: 4px solid #007bff;
-                    border-radius: 3px;
-                }
-                .endpoint.promo {
-                    border-left: 4px solid #28a745;
-                }
-                .endpoint.admin {
-                    border-left: 4px solid #dc3545;
-                }
+              
             </style>
         </head>
         <body>
@@ -83,64 +61,6 @@ app.get("/", (req, res) => {
                 <h1>Welcome to the Productive Space Backend!</h1>
                 <div class="status">Status: Running Successfully</div>
                 <div class="timestamp">Server Time: ${new Date().toLocaleString()}</div>
-                
-                <div class="endpoints">
-                    <h3>Available API Endpoints:</h3>
-                    <div class="endpoint">
-                        <strong>GET /</strong> - Welcome page (this page)
-                    </div>
-                    <div class="endpoint">
-                        <strong>GET /users</strong> - Get all users
-                    </div>
-                    <div class="endpoint">
-                        <strong>POST /api/booking/create</strong> - Create new booking
-                    </div>
-                    <div class="endpoint">
-                        <strong>GET /api/booking/all</strong> - Get all bookings
-                    </div>
-                    <div class="endpoint">
-                        <strong>POST /api/hitpay/create-payment</strong> - Create payment request
-                    </div>
-                    
-                    <h3 style="margin-top: 30px; color: #28a745;">🎫 Promo Code APIs (NEW!):</h3>
-                    <div class="endpoint promo">
-                        <strong>POST /api/promocode/apply</strong> - Apply promo code during booking
-                    </div>
-                    <div class="endpoint promo">
-                        <strong>GET /api/promocode/user/:userId/available</strong> - Get user's available promo codes
-                    </div>
-                    <div class="endpoint promo">
-                        <strong>GET /api/promocode/user/:userId/used</strong> - Get user's used promo codes
-                    </div>
-                    
-                    <h3 style="margin-top: 30px; color: #dc3545;">🔧 Admin Promo Code APIs:</h3>
-                    <div class="endpoint admin">
-                        <strong>POST /api/promocode/admin/create</strong> - Create new promo code
-                    </div>
-                    <div class="endpoint admin">
-                        <strong>PUT /api/promocode/admin/:id</strong> - Update promo code
-                    </div>
-                    <div class="endpoint admin">
-                        <strong>DELETE /api/promocode/admin/:id</strong> - Delete promo code
-                    </div>
-                    <div class="endpoint admin">
-                        <strong>GET /api/promocode/admin/all</strong> - Get all promo codes with stats
-                    </div>
-                    <div class="endpoint admin">
-                        <strong>GET /api/promocode/admin/:id</strong> - Get promo code details
-                    </div>
-                    
-                    <h3 style="margin-top: 30px; color: #dc3545;">👥 Admin User Management APIs:</h3>
-                    <div class="endpoint admin">
-                        <strong>GET /api/booking/admin/users</strong> - Get all users
-                    </div>
-                    <div class="endpoint admin">
-                        <strong>DELETE /api/booking/admin/users/:userId</strong> - Delete user (requires reason in body)
-                    </div>
-                    <div class="endpoint admin">
-                        <strong>PUT /api/booking/admin/users/:userId/verify</strong> - Verify student account
-                    </div>
-                </div>
             </div>
         </body>
         </html>

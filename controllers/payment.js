@@ -83,6 +83,7 @@ exports.createPayment = async (req, res) => {
         bookingRef: reference_number,
         paidBy: email,
         discountCode: null,
+        paymentMethod: payment_methods[0] || "paynow_online", // Store the intended payment method
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       })
@@ -165,6 +166,7 @@ exports.handleWebhook = async (req, res) => {
         .from('Payment')
         .update({
           paidAt: new Date(),
+          paymentMethod: event.payment_method || paymentDetails?.payment_methods?.[0] || "Online",
           updatedAt: new Date()
         })
         .eq('bookingRef', event.reference_number);

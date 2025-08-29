@@ -221,8 +221,44 @@ try {
             // Calculate fee based on payment method or amount difference
             const totalAmount = parseFloat(bookingData.totalAmount || amount);
             const totalCost = parseFloat(bookingData.totalCost || amount);
-            const paymentMethod = bookingData.payment_method || (totalAmount !== totalCost ? 'Credit Card' : 'Pay Now (Scan QR code)');
-            const isCardPayment = paymentMethod === 'Credit Card' || paymentMethod === 'card';
+            
+            // Determine payment method more accurately
+            let paymentMethod = 'Unknown';
+            if (bookingData.paymentMethod) {
+                // Use the actual payment method from payment data
+                paymentMethod = bookingData.paymentMethod;
+            } else if (bookingData.paymentDetails && bookingData.paymentDetails.paymentMethod) {
+                // Fallback to payment details
+                paymentMethod = bookingData.paymentDetails.paymentMethod;
+            } else {
+                // Smart fallback based on actual payment characteristics
+                // Check if there's a card processing fee (5% difference)
+                const cardFee = totalAmount * 0.05;
+                const subtotalWithCardFee = totalAmount - cardFee;
+                
+                if (Math.abs(subtotalWithCardFee - totalCost) < 0.01) {
+                    // Amounts match when accounting for card fee, likely a card payment
+                    paymentMethod = 'Credit Card';
+                } else if (totalAmount < totalCost) {
+                    // Amount is less than original cost, likely a discount was applied
+                    paymentMethod = 'Pay Now';
+                } else if (totalAmount === totalCost) {
+                    // Amounts are exactly the same
+                    paymentMethod = 'Pay Now';
+                } else {
+                    // Default case
+                    paymentMethod = 'Online Payment';
+                }
+            }
+            
+            // Convert technical payment method names to user-friendly names
+            if (paymentMethod === 'paynow_online') {
+                paymentMethod = 'Pay Now';
+            } else if (paymentMethod === 'credit_card' || paymentMethod === 'card') {
+                paymentMethod = 'Credit Card';
+            }
+            
+            const isCardPayment = paymentMethod.toLowerCase().includes('card') || paymentMethod.toLowerCase().includes('credit');
             const feeAmount = isCardPayment ? totalAmount * 0.05 : 0;
             const baseAmount = totalAmount - feeAmount;
 
