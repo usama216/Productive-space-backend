@@ -28,7 +28,7 @@ exports.createPayment = async (req, res) => {
       send_email = false,
       send_sms = false,
       allow_repeated_payments = false,
-      bookingId, // Add this to link payment to booking
+      bookingId // Add this to link payment to booking
     } = req.body;
 
     // Validate required fields
@@ -209,5 +209,91 @@ exports.handleWebhook = async (req, res) => {
   } catch (err) {
     console.error("Webhook handler error:", err.message);
     res.status(500).send("Internal Server Error");
+  }
+};
+
+// 🎯 Create payment for package purchase
+exports.createPackagePayment = async (req, res) => {
+  try {
+    const {
+      amount,
+      currency = "SGD",
+      email,
+      name,
+      purpose,
+      reference_number,
+      redirect_url,
+      webhook,
+      payment_methods = ["paynow_online"],
+      phone,
+      send_email = false,
+      send_sms = false,
+      allow_repeated_payments = false,
+      packageId,
+      userId
+    } = req.body;
+
+    // Validate required fields
+    if (!amount || !email || !name || !purpose || !reference_number || !redirect_url || !packageId || !userId) {
+      return res.status(400).json({
+        error: "Missing required fields",
+        required: ["amount", "email", "name", "purpose", "reference_number", "redirect_url", "packageId", "userId"]
+      });
+    }
+
+    const payload = {
+      amount,
+      currency,
+      email,
+      name,
+      purpose,
+      reference_number,
+      redirect_url,
+      webhook,
+      payment_methods,
+      phone,
+      send_email,
+      send_sms,
+      allow_repeated_payments,
+    };
+
+    Object.keys(payload).forEach(key => {
+      if (payload[key] === undefined) {
+        delete payload[key];
+      }
+    });
+
+    // Create payment request with HitPay
+    const response = await hitpayClient.post("/v1/payment-requests", payload);
+    
+    // Update purchase history with payment reference
+    const { error: updateError } = await supabase
+      .from('purchase_history')
+      .update({
+        hitpay_reference: reference_number,
+        payment_status: "pending",
+        updated_at: new Date().toISOString()
+      })
+      .eq('order_id', req.body.order_id);
+
+    if (updateError) {
+      console.error("Purchase history update error:", updateError);
+      return res.status(500).json({ error: "Failed to update purchase history" });
+    }
+
+    // Return HitPay response
+    res.json({
+      ...response.data,
+      packageId: packageId,
+      userId: userId,
+      message: "Package payment request created successfully"
+    });
+
+  } catch (error) {
+    console.error("HitPay createPackagePayment error:", error.response?.data || error.message);
+    res.status(500).json({ 
+      error: error.response?.data || error.message,
+      details: error.response?.status ? `HTTP ${error.response.status}` : 'Network Error'
+    });
   }
 };

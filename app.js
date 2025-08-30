@@ -16,6 +16,7 @@ const paymentRoutes = require("./routes/payment");
 const bookingRoutes = require("./routes/booking");
 const promoCodeRoutes = require("./routes/promoCode");
 const studentVerificationRoutes = require("./routes/studentVerification");
+const packageRoutes = require("./routes/packages");
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
@@ -75,6 +76,7 @@ app.use("/api/hitpay", paymentRoutes);
 app.use("/api/booking", bookingRoutes);
 app.use("/api/promocode", promoCodeRoutes);
 app.use("/api/student", studentVerificationRoutes);
+app.use("/api/packages", packageRoutes);
 
 app.get("/users", async (req, res) => {
     const { data, error } = await supabase.from("User").select("*");
