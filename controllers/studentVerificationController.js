@@ -64,7 +64,7 @@ const checkStudentVerification = async (req, res) => {
     } else if (verificationStatus === 'PENDING') {
       message = 'This email is available in our records but not registered as a student account';
     } else if (verificationStatus === 'REJECTED') {
-      message = 'This email is available in our records but student verification was rejected';
+      message = 'This email is available in our records but failed to verify';
     } else {
       message = 'This email is available in our records but not registered as a student account';
     }

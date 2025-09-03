@@ -1,78 +1,7 @@
 const { createClient } = require("@supabase/supabase-js");
 const { v4: uuidv4 } = require("uuid");
 const { sendBookingConfirmation } = require("../utils/email");
-
-
-
-// Helper function to record promo code usage
-const recordPromoCodeUsage = async (promoCodeId, userId, bookingId, discountAmount, originalAmount, finalAmount) => {
-  try {
-    const { error } = await supabase
-      .from("PromoCodeUsage")
-      .insert([{
-        id: uuidv4(),
-        promocodeid: promoCodeId,
-        userid: userId,
-        bookingid: bookingId,
-        discountamount: discountAmount,
-        originalamount: originalAmount,
-        finalamount: finalAmount,
-        usedat: new Date().toISOString(),
-        createdat: new Date().toISOString()
-      }]);
-
-    if (error) {
-      console.error("Failed to record promo code usage:", error);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    console.error("Error recording promo code usage:", err);
-    return false;
-  }
-};
-
-// Helper function to update promo code usage count
-const updatePromoCodeUsage = async (promoCodeId) => {
-  try {
-    // First get current usage
-    const { data: promoCode, error: fetchError } = await supabase
-      .from("PromoCode")
-      .select("currentusage, maxtotalusage")
-      .eq("id", promoCodeId)
-      .single();
-
-    if (fetchError) {
-      console.error("Failed to fetch promo code:", fetchError);
-      return false;
-    }
-
-    // Check if we can still use this promo code
-    if (promoCode.maxtotalusage && promoCode.currentusage >= promoCode.maxtotalusage) {
-      console.error("Promo code usage limit exceeded");
-      return false;
-    }
-
-    // Update usage count
-    const { error: updateError } = await supabase
-      .from("PromoCode")
-      .update({
-        currentusage: (promoCode.currentusage || 0) + 1,
-        updatedat: new Date().toISOString()
-      })
-      .eq("id", promoCodeId);
-
-    if (updateError) {
-      console.error("Failed to update promo code usage:", updateError);
-      return false;
-    }
-
-    return true;
-  } catch (err) {
-    console.error("Error updating promo code usage:", err);
-    return false;
-  }
-};
+const { applyPromoCodeToBooking } = require("./promoCodeController");
 
 const supabase = require("../config/database");
 
@@ -100,8 +29,8 @@ exports.createBooking = async (req, res) => {
       bookedForEmails,
       confirmedPayment,
       paymentId,
-      promoCodeId, // Add promo code ID
-      discountAmount // Add discount amount applied
+      promoCodeId, // Promo code ID
+      discountAmount // Discount amount applied
     } = req.body;
 
     // Check if booking with this ID already exists
@@ -138,12 +67,37 @@ exports.createBooking = async (req, res) => {
       }
     }
 
+    // Check for duplicate bookings (same user, same time, same location)
+    const { data: duplicateBookings, error: duplicateError } = await supabase
+      .from("Booking")
+      .select("id, bookingRef, startAt, endAt, location, userId")
+      .eq("userId", userId)
+      .eq("location", location)
+      .overlaps("startAt", startAt, "endAt", endAt);
+
+    if (!duplicateError && duplicateBookings && duplicateBookings.length > 0) {
+      // Check if any of these are the same booking (same ID) or if they're truly duplicates
+      const isSameBooking = duplicateBookings.some(booking => 
+        booking.id === id || 
+        (Math.abs(new Date(booking.startAt) - new Date(startAt)) < 60000 && // Within 1 minute
+         Math.abs(new Date(booking.endAt) - new Date(endAt)) < 60000)
+      );
+
+      if (!isSameBooking) {
+        return res.status(409).json({
+          error: "Duplicate booking detected",
+          message: "You already have a booking at this location during this time period",
+          existingBookings: duplicateBookings
+        });
+      }
+    }
+
     // Basic promo code validation if provided
     // Full validation will happen during payment confirmation
     if (promoCodeId) {
       const { data: promoCode, error: promoError } = await supabase
         .from("PromoCode")
-        .select("id, isactive")
+        .select("id, isactive, code")
         .eq("id", promoCodeId)
         .eq("isactive", true)
         .single();
@@ -154,14 +108,32 @@ exports.createBooking = async (req, res) => {
           message: "The provided promo code is not valid or inactive"
         });
       }
-      // Note: Full validation (expiry, usage limits) happens during payment confirmation
+      // Note: Full validation (expiry, usage limits, eligibility) happens during payment confirmation
+    }
+
+    // Check if this is a payment confirmation (don't create new booking if payment is already confirmed)
+    if (confirmedPayment === true && paymentId) {
+      const { data: existingPayment, error: paymentCheckError } = await supabase
+        .from("Payment")
+        .select("id, status")
+        .eq("id", paymentId)
+        .single();
+
+      if (!paymentCheckError && existingPayment && existingPayment.status === "completed") {
+        return res.status(409).json({
+          error: "Payment already confirmed",
+          message: "This payment has already been confirmed. Cannot create duplicate booking.",
+          paymentId: paymentId,
+          paymentStatus: existingPayment.status
+        });
+      }
     }
 
     const { data, error } = await supabase
       .from("Booking")
       .insert([
         {
-           id: id || uuidv4(), // Use provided ID or generate new one
+          id: id || uuidv4(), // Use provided ID or generate new one
           bookingRef,
           userId,
           location,
@@ -181,8 +153,8 @@ exports.createBooking = async (req, res) => {
           bookedForEmails,
           confirmedPayment,
           paymentId,
-          promoCodeId,
-          discountAmount,
+          promocodeid: promoCodeId, // Use schema field name
+          discountamount: discountAmount, // Use schema field name
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }
@@ -310,6 +282,43 @@ exports.confirmBookingPayment = async (req, res) => {
       });
     }
 
+    // Check if this booking has a payment record (webhook might have already updated it)
+    if (existingBooking.paymentId) {
+      const { data: payment, error: paymentError } = await supabase
+        .from("Payment")
+        .select("*")
+        .eq("id", existingBooking.paymentId)
+        .single();
+
+      if (!paymentError && payment && payment.status === "completed") {
+        // Payment is already completed, just update the booking status
+        const { data: updatedBooking, error: updateError } = await supabase
+          .from("Booking")
+          .update({
+            confirmedPayment: true,
+            updatedAt: new Date().toISOString()
+          })
+          .eq("id", bookingId)
+          .select()
+          .single();
+
+        if (updateError) {
+          console.error("Error updating booking:", updateError);
+          return res.status(500).json({ error: "Failed to update booking" });
+        }
+
+        console.log(`Booking ${bookingId} updated to confirmed (payment was already completed)`);
+        
+        return res.json({
+          success: true,
+          message: "Booking confirmed successfully (payment was already completed)",
+          booking: updatedBooking,
+          payment: payment,
+          alreadyHadPayment: true
+        });
+      }
+    }
+
     // Update booking in Supabase
     const { data, error } = await supabase
       .from("Booking")
@@ -346,11 +355,11 @@ exports.confirmBookingPayment = async (req, res) => {
 
     // Fetch promo code details if promo code was applied
     let promoCodeData = null;
-    if (data.promoCodeId) {
+    if (data.promocodeid) {
       const { data: promoCode, error: promoError } = await supabase
         .from("PromoCode")
         .select("code, name, description, discounttype, discountvalue")
-        .eq("id", data.promoCodeId)
+        .eq("id", data.promocodeid)
         .single();
 
       if (!promoError && promoCode) {
@@ -365,43 +374,21 @@ exports.confirmBookingPayment = async (req, res) => {
     }
 
     // Record promo code usage if promo code was applied and payment is confirmed
-    if (data.promoCodeId && data.discountAmount && data.discountAmount > 0) {
+    if (data.promocodeid && data.discountamount && data.discountamount > 0) {
       try {
-        // Full promo code validation before recording usage
-        const { data: promoCode, error: promoError } = await supabase
-          .from("PromoCode")
-          .select("*")
-          .eq("id", data.promoCodeId)
-          .eq("isactive", true)
-          .single();
+        // Use the new promo code system to record usage
+        const promoResult = await applyPromoCodeToBooking(
+          data.promocodeid,
+          data.userId,
+          data.id,
+          data.totalCost
+        );
 
-        if (promoError || !promoCode) {
-          console.error("❌ Promo code validation failed during payment confirmation:", promoError);
-          // Continue with payment confirmation but log the error
+        if (promoResult.success) {
+          console.log(`✅ Promo code ${promoResult.promoCode.code} usage recorded and count updated`);
         } else {
-          // Check if promo code is still active
-          const now = new Date();
-          if (promoCode.activeto && new Date(promoCode.activeto) < now) {
-            console.error("❌ Promo code expired during payment confirmation");
-          } else if (promoCode.maxtotalusage && promoCode.currentusage >= promoCode.maxtotalusage) {
-            console.error("❌ Promo code usage limit reached during payment confirmation");
-          } else {
-            // All validations passed, record usage
-            const usageRecorded = await recordPromoCodeUsage(
-              data.promoCodeId, 
-              data.userId, 
-              data.id, 
-              data.discountAmount, 
-              data.totalCost, 
-              data.totalAmount
-            );
-
-            if (usageRecorded) {
-              // Update promo code usage count only after payment confirmation
-              await updatePromoCodeUsage(data.promoCodeId);
-              console.log(`✅ Promo code ${promoCode.code} usage recorded and count updated`);
-            }
-          }
+          console.error("❌ Error recording promo code usage:", promoResult.error);
+          // Don't fail the payment confirmation if promo code tracking fails
         }
       } catch (promoError) {
         console.error("❌ Error recording promo code usage:", promoError);

@@ -17,6 +17,8 @@ const bookingRoutes = require("./routes/booking");
 const promoCodeRoutes = require("./routes/promoCode");
 const studentVerificationRoutes = require("./routes/studentVerification");
 const packageRoutes = require("./routes/packages");
+const enhancedPromoRoutes = require("./routes/enhancedPromoCode");
+const enhancedPromoAdminRoutes = require("./routes/enhancedPromoCodeAdmin");
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
@@ -77,6 +79,8 @@ app.use("/api/booking", bookingRoutes);
 app.use("/api/promocode", promoCodeRoutes);
 app.use("/api/student", studentVerificationRoutes);
 app.use("/api/packages", packageRoutes);
+app.use("/api/enhanced-promo", enhancedPromoRoutes);
+app.use("/api/enhanced-promo-admin", enhancedPromoAdminRoutes);
 
 app.get("/users", async (req, res) => {
     const { data, error } = await supabase.from("User").select("*");

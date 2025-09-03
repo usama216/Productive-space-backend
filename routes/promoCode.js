@@ -1,68 +1,33 @@
-const express = require("express");
-const {
-  // Test endpoint
-  testPromoCodeTable,
-  
-  // User/Client APIs
-  applyPromoCode,
-  getUserAvailablePromos,
-  getUserUsedPromos,
-  
-  // Admin APIs
-  createPromoCode,
-  updatePromoCode,
-  deletePromoCode,
-  getAllPromoCodes,
-  getPromoCodeById,
-  getPromoCodesByTimeStatus
-} = require("../controllers/promoCodeController");
-
+const express = require('express');
 const router = express.Router();
-
-// ==================== TEST ROUTE ====================
-// Test endpoint to check database connection
-router.get("/test", testPromoCodeTable);
+const promoCodeController = require('../controllers/promoCodeController');
 
 // ==================== USER/CLIENT ROUTES ====================
-// These routes are for users to apply and view promo codes
 
 // Apply promo code during booking
-router.post("/apply", applyPromoCode);
+router.post('/apply', promoCodeController.applyPromoCode);
 
-// Get available promo codes for logged-in user
-router.get("/user/:userId/available", getUserAvailablePromos);
+// Get available promo codes for a user
+router.get('/user/:userId/available', promoCodeController.getUserAvailablePromos);
 
 // Get user's used promo codes
-router.get("/user/:userId/used", getUserUsedPromos);
-
-// ==================== PUBLIC ADMIN ROUTES ====================
-// These routes are now publicly accessible for testing
-
-// Get all promo codes (public access)
-router.get("/public/all", getAllPromoCodes);
-
-// Get specific promo code details (public access)
-router.get("/public/:id", getPromoCodeById);
+router.get('/user/:userId/used', promoCodeController.getUserUsedPromos);
 
 // ==================== ADMIN ROUTES ====================
-// These routes are for admin management of promo codes
 
 // Create new promo code
-router.post("/admin/create", createPromoCode);
+router.post('/admin/create', promoCodeController.createPromoCode);
 
-// Update existing promo code
-router.put("/admin/:id", updatePromoCode);
+// Update promo code
+router.put('/admin/:id', promoCodeController.updatePromoCode);
 
 // Delete promo code
-router.delete("/admin/:id", deletePromoCode);
+router.delete('/admin/:id', promoCodeController.deletePromoCode);
 
-// Get all promo codes with pagination and filters
-router.get("/admin/all", getAllPromoCodes);
+// Get all promo codes (admin)
+router.get('/admin/all', promoCodeController.getAllPromoCodes);
 
-// Get specific promo code details
-router.get("/admin/:id", getPromoCodeById);
-
-// Get promo codes by time status
-router.get("/admin/time-status", getPromoCodesByTimeStatus);
+// Get specific promo code details (admin)
+router.get('/admin/:id', promoCodeController.getPromoCodeById);
 
 module.exports = router;
