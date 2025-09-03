@@ -82,10 +82,71 @@ app.use("/api/packages", packageRoutes);
 app.use("/api/enhanced-promo", enhancedPromoRoutes);
 app.use("/api/enhanced-promo-admin", enhancedPromoAdminRoutes);
 
+// Get all users (admin only)
 app.get("/users", async (req, res) => {
     const { data, error } = await supabase.from("User").select("*");
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
+});
+
+// Get single user profile by ID (for profile settings)
+app.get("/api/user/:userId", async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        if (!userId) {
+            return res.status(400).json({ 
+                error: "User ID is required",
+                message: "Please provide a valid user ID" 
+            });
+        }
+
+        const { data: user, error } = await supabase
+            .from("User")
+            .select(`
+                id,
+                email,
+                firstName,
+                lastName,
+                memberType,
+                contactNumber,
+                createdAt,
+                updatedAt,
+                studentVerificationImageUrl,
+                studentVerificationDate,
+                studentRejectionReason,
+                studentVerificationStatus
+            `)
+            .eq("id", userId)
+            .single();
+
+        if (error) {
+            console.error('Get user profile error:', error);
+            return res.status(500).json({ 
+                error: "Failed to fetch user profile", 
+                details: error.message 
+            });
+        }
+
+        if (!user) {
+            return res.status(404).json({ 
+                error: "User not found",
+                message: "The specified user does not exist" 
+            });
+        }
+
+        res.json({
+            success: true,
+            user: user
+        });
+
+    } catch (err) {
+        console.error('Get user profile error:', err);
+        res.status(500).json({ 
+            error: "Internal server error", 
+            details: err.message 
+        });
+    }
 });
 
 app.listen(process.env.PORT, () => {
