@@ -97,7 +97,7 @@ exports.createBooking = async (req, res) => {
     if (promoCodeId) {
       const { data: promoCode, error: promoError } = await supabase
         .from("PromoCode")
-        .select("id, isactive, code")
+        .select("id, isactive, code, minimum_hours")
         .eq("id", promoCodeId)
         .eq("isactive", true)
         .single();
@@ -107,6 +107,21 @@ exports.createBooking = async (req, res) => {
           error: "Invalid promo code",
           message: "The provided promo code is not valid or inactive"
         });
+      }
+
+      // Check minimum hours requirement if promo code has one
+      if (promoCode.minimum_hours) {
+        const startTime = new Date(startAt);
+        const endTime = new Date(endAt);
+        const durationMs = endTime.getTime() - startTime.getTime();
+        const durationHours = durationMs / (1000 * 60 * 60); // Convert milliseconds to hours
+
+        if (durationHours < promoCode.minimum_hours) {
+          return res.status(400).json({
+            error: "Minimum hours not met",
+            message: `This promo code requires a minimum booking duration of ${promoCode.minimum_hours} hours. Your booking is ${durationHours.toFixed(1)} hours.`
+          });
+        }
       }
       // Note: Full validation (expiry, usage limits, eligibility) happens during payment confirmation
     }
