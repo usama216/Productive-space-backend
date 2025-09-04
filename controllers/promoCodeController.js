@@ -4,6 +4,35 @@ const { v4: uuidv4 } = require('uuid');
 // ==================== HELPER FUNCTIONS ====================
 
 /**
+ * Check if booking duration meets minimum hours requirement
+ */
+function checkMinimumHoursRequirement(promoCode, startAt, endAt) {
+  if (!promoCode.minimum_hours) {
+    return {
+      isEligible: true,
+      reason: 'No minimum hours requirement'
+    };
+  }
+
+  const startTime = new Date(startAt);
+  const endTime = new Date(endAt);
+  const durationMs = endTime.getTime() - startTime.getTime();
+  const durationHours = durationMs / (1000 * 60 * 60); // Convert milliseconds to hours
+
+  if (durationHours >= promoCode.minimum_hours) {
+    return {
+      isEligible: true,
+      reason: `Booking duration (${durationHours.toFixed(1)} hours) meets minimum requirement (${promoCode.minimum_hours} hours)`
+    };
+  } else {
+    return {
+      isEligible: false,
+      reason: `Booking duration (${durationHours.toFixed(1)} hours) does not meet minimum requirement (${promoCode.minimum_hours} hours)`
+    };
+  }
+}
+
+/**
  * Check if a user is eligible for a specific promo code based on business rules
  */
 async function checkPromoCodeEligibility(promoCode, userData, userId) {
@@ -185,7 +214,7 @@ async function updatePromoCodeUsage(promoCodeId) {
  */
 exports.applyPromoCode = async (req, res) => {
   try {
-    const { promoCode, userId, bookingAmount } = req.body;
+    const { promoCode, userId, bookingAmount, startAt, endAt } = req.body;
 
     if (!promoCode || !userId || !bookingAmount) {
       return res.status(400).json({
@@ -245,6 +274,29 @@ exports.applyPromoCode = async (req, res) => {
         error: "Minimum amount not met",
         message: `Minimum booking amount of SGD ${promoData.minimumamount} required for this promo code`
       });
+    }
+
+    // Check minimum hours requirement if booking times are provided
+    if (startAt && endAt) {
+      // Validate that startAt and endAt are valid dates
+      const startTime = new Date(startAt);
+      const endTime = new Date(endAt);
+      
+      if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
+        return res.status(400).json({
+          error: "Invalid booking times",
+          message: "Please provide valid start and end times"
+        });
+      }
+      
+      const hoursCheck = checkMinimumHoursRequirement(promoData, startAt, endAt);
+      
+      if (!hoursCheck.isEligible) {
+        return res.status(400).json({
+          error: "Minimum hours not met",
+          message: hoursCheck.reason
+        });
+      }
     }
 
     // Check eligibility
@@ -317,7 +369,8 @@ exports.applyPromoCode = async (req, res) => {
         discountType: promoData.discounttype,
         discountValue: promoData.discountvalue,
         maxDiscountAmount: promoData.maxDiscountAmount,
-        minimumAmount: promoData.minimumamount
+        minimumAmount: promoData.minimumamount,
+        minimumHours: promoData.minimum_hours
       },
       calculation: calculation,
       eligibility: {
@@ -363,9 +416,32 @@ exports.getUserAvailablePromos = async (req, res) => {
     // Get all active promo codes ordered by priority
     const { data: promoCodes, error: promosError } = await supabase
       .from("PromoCode")
-      .select("*")
+      .select(`
+        id,
+        code,
+        name,
+        description,
+        discounttype,
+        discountvalue,
+        maxDiscountAmount,
+        minimumamount,
+        minimum_hours,
+        activefrom,
+        activeto,
+        promoType,
+        targetGroup,
+        targetUserIds,
+        isWelcomeCode,
+        maxusageperuser,
+        globalUsageLimit,
+        currentusage,
+        isactive,
+        category,
+        priority
+      `)
       .eq("isactive", true)
       .order("priority", { ascending: false });
+
 
     if (promosError) {
       console.error("Promo codes fetch error:", promosError);
@@ -424,6 +500,7 @@ exports.getUserAvailablePromos = async (req, res) => {
             discountValue: promo.discountvalue,
             maxDiscountAmount: promo.maxDiscountAmount,
             minimumAmount: promo.minimumamount,
+            minimumHours: promo.minimum_hours,
             activeFrom: promo.activefrom,
             activeTo: promo.activeto,
             maxUsagePerUser: promo.maxusageperuser,
@@ -531,6 +608,7 @@ exports.createPromoCode = async (req, res) => {
       discountvalue,
       maxDiscountAmount,
       minimumamount,
+      minimum_hours, // New field for minimum booking hours
       activefrom,
       activeto,
       promoType = 'GENERAL',
@@ -598,6 +676,14 @@ exports.createPromoCode = async (req, res) => {
       });
     }
 
+    // Validate minimum hours if provided
+    if (minimum_hours && (parseFloat(minimum_hours) <= 0 || parseFloat(minimum_hours) > 24)) {
+      return res.status(400).json({
+        error: "Invalid minimum hours",
+        message: "Minimum hours must be between 0 and 24"
+      });
+    }
+
     // Check if promo code already exists
     const { data: existingCode, error: checkError } = await supabase
       .from("PromoCode")
@@ -657,6 +743,7 @@ exports.createPromoCode = async (req, res) => {
       discountvalue: parseFloat(discountvalue),
       maxDiscountAmount: maxDiscountAmount ? parseFloat(maxDiscountAmount) : null,
       minimumamount: minimumamount ? parseFloat(minimumamount) : 0,
+      minimum_hours: minimum_hours ? parseFloat(minimum_hours) : null, // Add minimum hours field
       activefrom: processedActiveFrom,
       activeto: processedActiveTo,
       promoType: promoType,
@@ -1141,6 +1228,7 @@ exports.applyPromoCodeToBooking = async (promoCodeId, userId, bookingId, booking
 // Export helper functions for use in other controllers
 exports.helperFunctions = {
   checkPromoCodeEligibility,
+  checkMinimumHoursRequirement,
   calculateDiscount,
   recordPromoCodeUsage,
   updatePromoCodeUsage
