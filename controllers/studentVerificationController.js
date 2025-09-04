@@ -143,7 +143,7 @@ const checkMultipleStudentVerifications = async (req, res) => {
       });
     }
 
-    // Validate email formats
+    // Validate email formats and remove duplicates
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const invalidEmails = emails.filter(email => !emailRegex.test(email));
     
@@ -155,17 +155,56 @@ const checkMultipleStudentVerifications = async (req, res) => {
       });
     }
 
+    // Remove duplicates and filter out empty emails
+    const uniqueEmails = [...new Set(emails.filter(email => email && email.trim()))];
+    
+    if (uniqueEmails.length === 0) {
+      return res.status(400).json({
+        error: 'No valid emails',
+        message: 'Please provide at least one valid email address'
+      });
+    }
+
+    // Normalize emails for query
+    const normalizedEmails = uniqueEmails.map(email => email.toLowerCase().trim());
+    
     // Check verification status for all emails
-    const { data: users, error } = await supabase
+    // Try with all columns first, then fallback to basic columns if needed
+    let { data: users, error } = await supabase
       .from('User')
       .select('email, studentVerificationStatus, firstName, lastName, name')
-      .in('email', emails.map(email => email.toLowerCase().trim()));
+      .in('email', normalizedEmails);
+
+    // If the query fails, try with just basic columns
+    if (error) {
+      console.log('⚠️  Full query failed, trying with basic columns...');
+      const fallbackQuery = await supabase
+        .from('User')
+        .select('email, studentVerificationStatus')
+        .in('email', normalizedEmails);
+      
+      if (!fallbackQuery.error) {
+        users = fallbackQuery.data;
+        error = null;
+        console.log('✅ Fallback query successful');
+      }
+    }
 
     if (error) {
-      console.error('Database error:', error);
+      console.error('Database error in checkMultipleStudentVerifications:', error);
+      console.error('Query details:', {
+        table: 'User',
+        columns: ['email', 'studentVerificationStatus', 'firstName', 'lastName', 'name'],
+        emails: normalizedEmails,
+        errorCode: error.code,
+        errorMessage: error.message,
+        errorDetails: error.details
+      });
+      
       return res.status(500).json({
         error: 'Database error',
-        message: 'Failed to check student verification statuses'
+        message: 'Failed to check student verification statuses',
+        details: error.message
       });
     }
 
@@ -176,7 +215,7 @@ const checkMultipleStudentVerifications = async (req, res) => {
     });
 
     // Build results array with clear messages
-    const results = emails.map(email => {
+    const results = uniqueEmails.map(email => {
       const normalizedEmail = email.toLowerCase().trim();
       const user = users.find(u => u.email === normalizedEmail);
       const verificationStatus = user ? user.studentVerificationStatus : null;
@@ -219,7 +258,7 @@ const checkMultipleStudentVerifications = async (req, res) => {
 
     return res.status(200).json({
       results,
-      totalChecked: emails.length,
+      totalChecked: uniqueEmails.length,
       totalFound: users.length,
       totalStudents: results.filter(r => r.isStudent).length
     });

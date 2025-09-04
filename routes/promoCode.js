@@ -24,6 +24,12 @@ router.put('/admin/:id', promoCodeController.updatePromoCode);
 // Delete promo code
 router.delete('/admin/:id', promoCodeController.deletePromoCode);
 
+// Force delete promo code (bypasses usage check)
+router.delete('/admin/:id/force', promoCodeController.forceDeletePromoCode);
+
+// Restore soft-deleted promo code
+router.put('/admin/:id/restore', promoCodeController.restorePromoCode);
+
 // Get all promo codes (admin)
 router.get('/admin/all', promoCodeController.getAllPromoCodes);
 

@@ -229,6 +229,7 @@ exports.applyPromoCode = async (req, res) => {
       .select("*")
       .eq("code", promoCode.toUpperCase())
       .eq("isactive", true)
+      .is("deletedAt", null) // Exclude soft-deleted promo codes
       .single();
 
     if (promoError || !promoData) {
@@ -440,6 +441,7 @@ exports.getUserAvailablePromos = async (req, res) => {
         priority
       `)
       .eq("isactive", true)
+      .is("deletedAt", null) // Exclude soft-deleted promo codes
       .order("priority", { ascending: false });
 
 
@@ -889,6 +891,7 @@ exports.updatePromoCode = async (req, res) => {
 exports.deletePromoCode = async (req, res) => {
   try {
     const { id } = req.params;
+    const { force } = req.query; // Add force parameter
 
     if (!id) {
       return res.status(400).json({ error: "Promo code ID is required" });
@@ -922,31 +925,163 @@ exports.deletePromoCode = async (req, res) => {
       });
     }
 
+    // Note: For soft delete, we don't prevent deletion based on usage
+    // since we're not actually removing the data from the database
+    // The usage data is preserved for historical purposes
+
+    // Soft delete promo code (set deletedAt timestamp)
+    const { error } = await supabase
+      .from("PromoCode")
+      .update({
+        deletedAt: new Date().toISOString(),
+        isactive: false // Also deactivate it
+      })
+      .eq("id", id);
+
+    if (error) {
+      console.error("Promo code soft deletion error:", error);
+      return res.status(400).json({ error: error.message });
+    }
+
+    // Prepare response message
+    let message = "Promo code deleted successfully";
     if (usageData && usageData.length > 0) {
-      return res.status(400).json({
-        error: "Cannot delete used promo code",
-        message: "This promo code has been used and cannot be deleted. Consider deactivating it instead."
+      message = `Promo code deleted successfully. This promo code had ${usageData.length} usage record(s) which are preserved for historical data.`;
+    }
+
+    res.status(200).json({
+      message,
+      deletedPromoCode: {
+        ...existingCode,
+        deletedAt: new Date().toISOString(),
+        isactive: false
+      },
+      wasSoftDeleted: true,
+      usageCount: usageData ? usageData.length : 0
+    });
+
+  } catch (err) {
+    console.error("deletePromoCode error:", err.message);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+/**
+ * Force delete promo code (bypasses usage check)
+ * DELETE /api/promocode/admin/:id/force
+ */
+exports.forceDeletePromoCode = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ error: "Promo code ID is required" });
+    }
+
+    // Check if promo code exists
+    const { data: existingCode, error: checkError } = await supabase
+      .from("PromoCode")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (checkError || !existingCode) {
+      return res.status(404).json({
+        error: "Promo code not found",
+        message: `No promo code found with ID: ${id}`
       });
     }
 
-    // Delete promo code
+    // Get usage count for warning
+    const { data: usageData, error: usageError } = await supabase
+      .from("PromoCodeUsage")
+      .select("id")
+      .eq("promocodeid", id);
+
+    if (usageError) {
+      console.error("Usage check error:", usageError);
+      return res.status(500).json({
+        error: "Failed to check promo code usage",
+        message: "Please try again"
+      });
+    }
+
+    // Force delete promo code
     const { error } = await supabase
       .from("PromoCode")
       .delete()
       .eq("id", id);
 
     if (error) {
-      console.error("Promo code deletion error:", error);
+      console.error("Promo code force deletion error:", error);
       return res.status(400).json({ error: error.message });
     }
 
     res.status(200).json({
-      message: "Promo code deleted successfully",
-      deletedPromoCode: existingCode
+      message: `Promo code deleted successfully. Warning: This promo code had ${usageData ? usageData.length : 0} usage record(s) that may now be orphaned.`,
+      deletedPromoCode: existingCode,
+      wasForceDeleted: true,
+      usageCount: usageData ? usageData.length : 0
     });
 
   } catch (err) {
-    console.error("deletePromoCode error:", err.message);
+    console.error("forceDeletePromoCode error:", err.message);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+/**
+ * Restore soft-deleted promo code
+ * PUT /api/promocode/admin/:id/restore
+ */
+exports.restorePromoCode = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ error: "Promo code ID is required" });
+    }
+
+    // Check if promo code exists and is soft-deleted
+    const { data: existingCode, error: checkError } = await supabase
+      .from("PromoCode")
+      .select("*")
+      .eq("id", id)
+      .not("deletedAt", "is", null) // Only soft-deleted codes
+      .single();
+
+    if (checkError || !existingCode) {
+      return res.status(404).json({
+        error: "Soft-deleted promo code not found",
+        message: `No soft-deleted promo code found with ID: ${id}`
+      });
+    }
+
+    // Restore promo code (remove deletedAt timestamp)
+    const { error } = await supabase
+      .from("PromoCode")
+      .update({
+        deletedAt: null,
+        isactive: true // Also reactivate it
+      })
+      .eq("id", id);
+
+    if (error) {
+      console.error("Promo code restoration error:", error);
+      return res.status(400).json({ error: error.message });
+    }
+
+    res.status(200).json({
+      message: "Promo code restored successfully",
+      restoredPromoCode: {
+        ...existingCode,
+        deletedAt: null,
+        isactive: true
+      }
+    });
+
+  } catch (err) {
+    console.error("restorePromoCode error:", err.message);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
@@ -963,7 +1098,8 @@ exports.getAllPromoCodes = async (req, res) => {
     // Build query with filters
     let query = supabase
       .from("PromoCode")
-      .select("*", { count: "exact" });
+      .select("*", { count: "exact" })
+      .is("deletedAt", null); // Exclude soft-deleted promo codes
 
     // Apply filters
     if (search) {
