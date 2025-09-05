@@ -218,49 +218,9 @@ try {
                 currentY += 20; // Add spacing before financial summary
             }
 
-            // Calculate fee based on payment method or amount difference
-            const totalAmount = parseFloat(bookingData.totalAmount || amount);
-            const totalCost = parseFloat(bookingData.totalCost || amount);
-            
-            // Determine payment method more accurately
-            let paymentMethod = 'Unknown';
-            if (bookingData.paymentMethod) {
-                // Use the actual payment method from payment data
-                paymentMethod = bookingData.paymentMethod;
-            } else if (bookingData.paymentDetails && bookingData.paymentDetails.paymentMethod) {
-                // Fallback to payment details
-                paymentMethod = bookingData.paymentDetails.paymentMethod;
-            } else {
-                // Smart fallback based on actual payment characteristics
-                // Check if there's a card processing fee (5% difference)
-                const cardFee = totalAmount * 0.05;
-                const subtotalWithCardFee = totalAmount - cardFee;
-                
-                if (Math.abs(subtotalWithCardFee - totalCost) < 0.01) {
-                    // Amounts match when accounting for card fee, likely a card payment
-                    paymentMethod = 'Credit Card';
-                } else if (totalAmount < totalCost) {
-                    // Amount is less than original cost, likely a discount was applied
-                    paymentMethod = 'Pay Now';
-                } else if (totalAmount === totalCost) {
-                    // Amounts are exactly the same
-                    paymentMethod = 'Pay Now';
-                } else {
-                    // Default case
-                    paymentMethod = 'Online Payment';
-                }
-            }
-            
-            // Convert technical payment method names to user-friendly names
-            if (paymentMethod === 'paynow_online') {
-                paymentMethod = 'Pay Now';
-            } else if (paymentMethod === 'credit_card' || paymentMethod === 'card') {
-                paymentMethod = 'Credit Card';
-            }
-            
-            const isCardPayment = paymentMethod.toLowerCase().includes('card') || paymentMethod.toLowerCase().includes('credit');
-            const feeAmount = isCardPayment ? totalAmount * 0.05 : 0;
-            const baseAmount = totalAmount - feeAmount;
+            // Use shared calculation utility for consistency
+            const { calculatePaymentDetails } = require('./calculationHelper');
+            const paymentDetails = calculatePaymentDetails(bookingData);
 
             // Calculate 40% width for financial summary section
             const pageWidth = 595; // A4 width in points
@@ -274,18 +234,28 @@ try {
             } else {
                 currentY += 50; // Original spacing
             } 
+            // Show original subtotal (before discount)
             doc.font(bodyFont).fontSize(bodyFontSize)
                 .text('Sub Total', summaryStartX, currentY)
                 .font(bodyFont).fontSize(bodyFontSize)
-                .text(`SGD ${baseAmount.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
+                .text(`SGD ${paymentDetails.originalAmount.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
+
+            // Show promo code discount if applied
+            if (paymentDetails.discount && paymentDetails.discount.discountAmount > 0) {
+                currentY += 20;
+                doc.font(bodyFont).fontSize(bodyFontSize)
+                    .text('Promo Code Discount', summaryStartX, currentY)
+                    .font(bodyFont).fontSize(bodyFontSize)
+                    .text(`-SGD ${paymentDetails.discount.discountAmount.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
+            }
 
             // Show card processing fee if applicable
-            if (isCardPayment) {
+            if (paymentDetails.isCardPayment) {
                 currentY += 20;
                 doc.font(bodyFont).fontSize(bodyFontSize)
                     .text('Card Fee (5%)', summaryStartX, currentY, { width: summaryWidth - 20 })
                     .font(bodyFont).fontSize(bodyFontSize)
-                    .text(`SGD ${feeAmount.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
+                    .text(`SGD ${paymentDetails.cardFee.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
             }
 
             // Show payment method
@@ -293,32 +263,21 @@ try {
             doc.font(bodyFont).fontSize(bodyFontSize)
                 .text('Payment Method', summaryStartX, currentY)
                 .font(bodyFont).fontSize(bodyFontSize)
-                .text(paymentMethod, summaryStartX + summaryWidth - 80, currentY);
+                .text(paymentDetails.paymentMethod, summaryStartX + summaryWidth - 80, currentY);
 
-            // Show promo code discount if applied
-            if (bookingData.discountAmount && bookingData.discountAmount > 0) {
-                currentY += 20;
-                doc.font(bodyFont).fontSize(bodyFontSize)
-                    .text('Promo Code Discount', summaryStartX, currentY)
-                    .font(bodyFont).fontSize(bodyFontSize)
-                    .text(`-SGD ${bookingData.discountAmount.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
-                
-                // Show promo code details if available
-               
-            }
-
+            // Show total
             currentY += 20;
-            const total = amount - (parseFloat(bookingData.discountAmount) || 0);
             doc.font(headerFont).fontSize(sectionHeaderFontSize)
                 .text('Total', summaryStartX, currentY)
                 .font(bodyFont).fontSize(bodyFontSize)
-                .text(`SGD ${total.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
+                .text(`SGD ${paymentDetails.finalTotal.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
 
+            // Show paid amount
             currentY += 20;
             doc.fillColor('#000000').font(headerFont).fontSize(sectionHeaderFontSize)
                 .text('Paid', summaryStartX, currentY)
                 .font(bodyFont).fontSize(bodyFontSize)
-                .text(`SGD ${amount.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
+                .text(`SGD ${paymentDetails.finalTotal.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
 
        
             // const footerY = 650;

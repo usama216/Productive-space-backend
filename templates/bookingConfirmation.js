@@ -136,70 +136,41 @@ const bookingConfirmationTemplate = (userData, bookingData) => ({
             <p><strong>Reference Number:</strong> <span class="highlight">${bookingData.bookingRef || 'N/A'}</span></p>
             
             ${(() => {
-              const totalAmount = parseFloat(bookingData.totalAmount || 0);
-              const totalCost = parseFloat(bookingData.totalCost || 0);
+              const { calculatePaymentDetails } = require('../utils/calculationHelper');
+              const paymentDetails = calculatePaymentDetails(bookingData);
               
-              // Determine payment method more accurately
-              let paymentMethod = 'Unknown';
+              // Convert technical payment method names to user-friendly names
+              let displayPaymentMethod = 'Unknown';
               if (bookingData.paymentMethod) {
                   // Use the actual payment method from payment data
-                  paymentMethod = bookingData.paymentMethod;
+                  displayPaymentMethod = bookingData.paymentMethod;
               } else if (bookingData.paymentDetails && bookingData.paymentDetails.paymentMethod) {
                   // Fallback to payment details
-                  paymentMethod = bookingData.paymentDetails.paymentMethod;
-              } else {
-                  // Smart fallback based on actual payment characteristics
-                  // Check if there's a card processing fee (5% difference)
-                  const cardFee = totalAmount * 0.05;
-                  const subtotalWithCardFee = totalAmount - cardFee;
-                  
-                  if (Math.abs(subtotalWithCardFee - totalCost) < 0.01) {
-                      // Amounts match when accounting for card fee, likely a card payment
-                      paymentMethod = 'Credit Card';
-                  } else if (totalAmount < totalCost) {
-                      // Amount is less than original cost, likely a discount was applied
-                      paymentMethod = 'Pay Now';
-                  } else if (totalAmount === totalCost) {
-                      // Amounts are exactly the same
-                      paymentMethod = 'Pay Now';
-                  } else {
-                      // Default case
-                      paymentMethod = 'Online Payment';
-                  }
+                  displayPaymentMethod = bookingData.paymentDetails.paymentMethod;
               }
               
               // Convert technical payment method names to user-friendly names
-              if (paymentMethod === 'paynow_online') {
-                  paymentMethod = 'Pay Now';
-              } else if (paymentMethod === 'credit_card' || paymentMethod === 'card') {
-                  paymentMethod = 'Credit Card';
+              if (displayPaymentMethod === 'paynow_online') {
+                  displayPaymentMethod = 'Pay Now';
+              } else if (displayPaymentMethod === 'credit_card' || displayPaymentMethod === 'card') {
+                  displayPaymentMethod = 'Credit Card';
               }
               
-              const isCardPayment = paymentMethod.toLowerCase().includes('card') || paymentMethod.toLowerCase().includes('credit');
-              const cardFee = isCardPayment ? totalAmount * 0.05 : 0;
-              const subtotal = totalAmount - cardFee;
-              const discountAmount = parseFloat(bookingData.discountAmount || 0);
-              const promoCodeId = bookingData.promoCodeId;
-              
               return `
-                <p><strong>Original Amount:</strong> <span class="highlight">SGD ${totalCost.toFixed(2)}</span></p>
-                ${discountAmount > 0 ? `<p><strong>Discount Applied:</strong> <span class="highlight">-SGD ${discountAmount.toFixed(2)}</span></p>` : ''}
-                ${promoCodeId ? `<p><strong>Promo Code:</strong> <span class="highlight">${promoCodeId}</span></p>` : ''}
-                ${isCardPayment ? `<p><strong>Card Processing Fee (5%):</strong> <span class="highlight">SGD ${cardFee.toFixed(2)}</span></p>` : ''}
-                <p><strong>Total Amount Paid:</strong> <span class="highlight">SGD ${totalAmount.toFixed(2)}</span></p>
-                <p><strong>Payment Method:</strong> <span class="highlight">${paymentMethod}</span></p>
+                <p><strong>Original Amount:</strong> <span class="highlight">SGD ${paymentDetails.originalAmount.toFixed(2)}</span></p>
+                ${paymentDetails.discount && paymentDetails.discount.discountAmount > 0 ? `
+                  <p><strong>Discount Applied:</strong> <span class="highlight">-SGD ${paymentDetails.discount.discountAmount.toFixed(2)}</span></p>
+                  ${paymentDetails.promoCodeId ? `<p><strong>Promo Code:</strong> <span class="highlight">${paymentDetails.promoCodeId}</span></p>` : ''}
+                ` : ''}
+                ${paymentDetails.isCardPayment ? `<p><strong>Card Processing Fee (5%):</strong> <span class="highlight">SGD ${paymentDetails.cardFee.toFixed(2)}</span></p>` : ''}
+                <p><strong>Total Amount Paid:</strong> <span class="highlight">SGD ${paymentDetails.finalTotal.toFixed(2)}</span></p>
+                <p><strong>Payment Method:</strong> <span class="highlight">${displayPaymentMethod}</span></p>
               `;
             })()}
             
             <p><strong>Payment ID:</strong> <span class="highlight">${bookingData.paymentId || 'N/A'}</span></p>
             <p><strong>Date:</strong> <span class="highlight">${new Date().toLocaleDateString('en-SG', { timeZone: 'Asia/Singapore' })}</span></p>
             <p><strong>Time:</strong> <span class="highlight">${new Date().toLocaleTimeString('en-SG', { timeZone: 'Asia/Singapore' })}</span></p>
-            ${(() => {
-              if (bookingData.promoCodeId && parseFloat(bookingData.discountAmount || 0) > 0) {
-                return `<p><strong>Promo Code Applied:</strong> <span class="highlight">${bookingData.promoCodeId}</span></p>`;
-              }
-              return '';
-            })()}
           </div>
 
           ${bookingData.location || bookingData.startAt || bookingData.endAt || bookingData.seatNumbers || bookingData.pax ? `
