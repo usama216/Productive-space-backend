@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const express = require("express");
 const cors = require("cors");
+const multer = require("multer");
 const { createClient } = require("@supabase/supabase-js");
 
 
@@ -10,6 +11,32 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }))
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/') // Make sure this directory exists
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+    cb(null, file.fieldname + '-' + uniqueSuffix + '.' + file.originalname.split('.').pop())
+  }
+})
+
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  },
+  fileFilter: function (req, file, cb) {
+    // Allow only image files for student verification
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true)
+    } else {
+      cb(new Error('Only image files are allowed for student verification'), false)
+    }
+  }
+})
 
 // Import routes after environment variables are loaded
 const paymentRoutes = require("./routes/payment");
@@ -142,6 +169,102 @@ app.get("/api/user/:userId", async (req, res) => {
 
     } catch (err) {
         console.error('Get user profile error:', err);
+        res.status(500).json({ 
+            error: "Internal server error", 
+            details: err.message 
+        });
+    }
+});
+
+// Update user profile by ID (for profile settings)
+app.put("/api/user/:userId", upload.single('studentVerificationFile'), async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { 
+            firstName, 
+            lastName, 
+            contactNumber, 
+            memberType, 
+            updatedAt 
+        } = req.body;
+        
+        if (!userId) {
+            return res.status(400).json({ 
+                error: "User ID is required",
+                message: "Please provide a valid user ID" 
+            });
+        }
+
+        // Check if user exists
+        const { data: existingUser, error: userError } = await supabase
+            .from("User")
+            .select("id")
+            .eq("id", userId)
+            .single();
+
+        if (userError || !existingUser) {
+            return res.status(404).json({ 
+                error: "User not found",
+                message: "The specified user does not exist" 
+            });
+        }
+
+        // Prepare update data
+        const updateData = {
+            updatedAt: updatedAt || new Date().toISOString()
+        };
+
+        // Add fields only if they are provided
+        if (firstName !== undefined) updateData.firstName = firstName;
+        if (lastName !== undefined) updateData.lastName = lastName;
+        if (contactNumber !== undefined) updateData.contactNumber = contactNumber;
+        if (memberType !== undefined) updateData.memberType = memberType;
+
+        // Handle student verification file upload
+        if (req.file) {
+            // Store the file path in the database
+            updateData.studentVerificationImageUrl = `/uploads/${req.file.filename}`;
+            updateData.studentVerificationDate = new Date().toISOString();
+            updateData.studentVerificationStatus = 'PENDING'; // Set to pending for admin review
+        }
+
+        // Update user in database
+        const { data: updatedUser, error: updateError } = await supabase
+            .from("User")
+            .update(updateData)
+            .eq("id", userId)
+            .select(`
+                id,
+                email,
+                firstName,
+                lastName,
+                memberType,
+                contactNumber,
+                createdAt,
+                updatedAt,
+                studentVerificationImageUrl,
+                studentVerificationDate,
+                studentRejectionReason,
+                studentVerificationStatus
+            `)
+            .single();
+
+        if (updateError) {
+            console.error('Update user profile error:', updateError);
+            return res.status(500).json({ 
+                error: "Failed to update user profile", 
+                details: updateError.message 
+            });
+        }
+
+        res.json({
+            success: true,
+            message: "User profile updated successfully",
+            user: updatedUser
+        });
+
+    } catch (err) {
+        console.error('Update user profile error:', err);
         res.status(500).json({ 
             error: "Internal server error", 
             details: err.message 
