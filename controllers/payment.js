@@ -140,7 +140,8 @@ exports.createPayment = async (req, res) => {
 
 exports.handleWebhook = async (req, res) => {
   try {
-    // console.log("Raw webhook body:", req.body);
+    console.log("=== WEBHOOK RECEIVED ===");
+    console.log("Event:", req.body);
     
     const event = req.body;
     
@@ -148,62 +149,33 @@ exports.handleWebhook = async (req, res) => {
     try {
       const response = await hitpayClient.get(`/v1/payment-requests/${event.payment_request_id}`);
       paymentDetails = response.data;
-      // console.log("Fetched payment details:", paymentDetails);
+      console.log("Payment details:", paymentDetails);
     } catch (apiError) {
       console.error("Failed to fetch payment details:", apiError.response?.data || apiError.message);
     }
 
+    // Determine payment type based on reference number
+    const isPackagePayment = event.reference_number.startsWith('PKG_');
+    const isBookingPayment = event.reference_number.startsWith('ORD_') || event.reference_number.startsWith('BOOK_');
+
+    console.log("Payment type detected:", {
+      reference: event.reference_number,
+      isPackagePayment,
+      isBookingPayment
+    });
+
     // If payment is completed, update the database
     if (event.status === 'completed') {
-      // Update payment record
-      const { error: paymentUpdateError } = await supabase
-        .from('Payment')
-        .update({
-          paidAt: new Date(),
-          paymentMethod: event.payment_method || paymentDetails?.payment_methods?.[0] || "Online",
-          updatedAt: new Date()
-        })
-        .eq('bookingRef', event.reference_number);
-
-      if (paymentUpdateError) {
-        console.error("Payment update error:", paymentUpdateError);
-      }
-
-      // Update booking to confirm payment
-      const { error: bookingUpdateError } = await supabase
-        .from('Booking')
-        .update({
-          confirmedPayment: true,
-          updatedAt: new Date()
-        })
-        .eq('bookingRef', event.reference_number);
-
-      if (bookingUpdateError) {
-        console.error("Booking update error:", bookingUpdateError);
+      if (isPackagePayment) {
+        // Handle package payment completion
+        await handlePackagePaymentCompletion(event, paymentDetails);
+      } else if (isBookingPayment) {
+        // Handle booking payment completion
+        await handleBookingPaymentCompletion(event, paymentDetails);
+      } else {
+        console.log("Unknown payment type for reference:", event.reference_number);
       }
     }
-
-    const userData = {
-      name: paymentDetails?.name || event.customer_name || "Customer",
-      email: paymentDetails?.email || event.customer_email
-    };
-
-    const bookingData = {
-      reference_number: event.reference_number,
-      amount: event.amount,
-      location: paymentDetails?.purpose || event.location, 
-      seats: [],
-      payment_method: event.payment_method || paymentDetails?.payment_methods?.[0] || "Online",
-      status: event.status,
-      totalAmount: event.amount
-    };
-
-    // if (event.status === 'completed' && userData.email) {
-    //   await sendBookingConfirmation(userData, bookingData);
-    //   console.log("Confirmation email sent to:", userData.email);
-    // } else {
-    //   console.log("Email not sent - Status:", event.status, "Email:", userData.email);
-    // }
 
     res.status(200).send("OK");
   } catch (err) {
@@ -211,3 +183,165 @@ exports.handleWebhook = async (req, res) => {
     res.status(500).send("Internal Server Error");
   }
 };
+
+// Handle booking payment completion
+async function handleBookingPaymentCompletion(event, paymentDetails) {
+  try {
+    console.log("Processing booking payment completion...");
+    
+    // Update payment record
+    const { error: paymentUpdateError } = await supabase
+      .from('Payment')
+      .update({
+        paidAt: new Date(),
+        paymentMethod: event.payment_method || paymentDetails?.payment_methods?.[0] || "Online",
+        updatedAt: new Date()
+      })
+      .eq('bookingRef', event.reference_number);
+
+    if (paymentUpdateError) {
+      console.error("Payment update error:", paymentUpdateError);
+    }
+
+    // Update booking to confirm payment
+    const { error: bookingUpdateError } = await supabase
+      .from('Booking')
+      .update({
+        confirmedPayment: true,
+        updatedAt: new Date()
+      })
+      .eq('bookingRef', event.reference_number);
+
+    if (bookingUpdateError) {
+      console.error("Booking update error:", bookingUpdateError);
+    }
+
+    console.log("Booking payment completed successfully");
+  } catch (error) {
+    console.error("Error handling booking payment completion:", error);
+  }
+}
+
+// Handle package payment completion
+async function handlePackagePaymentCompletion(event, paymentDetails) {
+  try {
+    console.log("Processing package payment completion...");
+    
+    // Find package purchase by order ID
+    const { data: packagePurchase, error: findError } = await supabase
+      .from("PackagePurchase")
+      .select(`
+        *,
+        Package (
+          id,
+          name,
+          packagetype,
+          targetrole,
+          packagecontents,
+          validitydays
+        )
+      `)
+      .eq("orderid", event.reference_number)
+      .single();
+
+    if (findError || !packagePurchase) {
+      console.error("Package purchase not found for order:", event.reference_number);
+      return;
+    }
+
+    // Update package purchase to completed
+    const { error: updateError } = await supabase
+      .from("PackagePurchase")
+      .update({
+        paymentstatus: "COMPLETED",
+        paymentmethod: event.payment_method || paymentDetails?.payment_methods?.[0] || "Online",
+        hitpayreference: event.payment_request_id,
+        activatedat: new Date().toISOString(),
+        expiresat: new Date(Date.now() + (packagePurchase.Package.validitydays * 24 * 60 * 60 * 1000)).toISOString(),
+        updatedat: new Date().toISOString()
+      })
+      .eq("id", packagePurchase.id);
+
+    if (updateError) {
+      console.error("Package purchase update error:", updateError);
+      return;
+    }
+
+    // Create UserPass records based on package contents
+    await createUserPasses(packagePurchase);
+
+    console.log("Package payment completed successfully:", packagePurchase.id);
+  } catch (error) {
+    console.error("Error handling package payment completion:", error);
+  }
+}
+
+// Helper function to create user passes (same as in packagePaymentController)
+async function createUserPasses(packagePurchase) {
+  try {
+    const { v4: uuidv4 } = require("uuid");
+    const packageContents = packagePurchase.Package.packagecontents;
+    const userPasses = [];
+
+    // Create half-day passes
+    if (packageContents.halfDayPasses && packageContents.halfDayPasses > 0) {
+      for (let i = 0; i < packageContents.halfDayPasses; i++) {
+        userPasses.push({
+          id: uuidv4(),
+          packagepurchaseid: packagePurchase.id,
+          passtype: "HALF_DAY",
+          hours: packageContents.halfDayHours || 6,
+          status: "ACTIVE",
+          createdat: new Date().toISOString(),
+          updatedat: new Date().toISOString()
+        });
+      }
+    }
+
+    // Create full-day passes
+    if (packageContents.fullDayPasses && packageContents.fullDayPasses > 0) {
+      for (let i = 0; i < packageContents.fullDayPasses; i++) {
+        userPasses.push({
+          id: uuidv4(),
+          packagepurchaseid: packagePurchase.id,
+          passtype: "FULL_DAY",
+          hours: packageContents.fullDayHours || 12,
+          status: "ACTIVE",
+          createdat: new Date().toISOString(),
+          updatedat: new Date().toISOString()
+        });
+      }
+    }
+
+    // Create semester passes (if applicable)
+    if (packagePurchase.Package.packagetype === "SEMESTER_BUNDLE") {
+      userPasses.push({
+        id: uuidv4(),
+        packagepurchaseid: packagePurchase.id,
+        passtype: "SEMESTER",
+        hours: packageContents.totalHours || 200,
+        status: "ACTIVE",
+        createdat: new Date().toISOString(),
+        updatedat: new Date().toISOString()
+      });
+    }
+
+    // Insert all user passes
+    if (userPasses.length > 0) {
+      const { error: insertError } = await supabase
+        .from("UserPass")
+        .insert(userPasses);
+
+      if (insertError) {
+        console.error("Error creating user passes:", insertError);
+        throw insertError;
+      }
+
+      console.log(`Created ${userPasses.length} user passes for package purchase:`, packagePurchase.id);
+    }
+
+  } catch (error) {
+    console.error("Error in createUserPasses:", error);
+    throw error;
+  }
+}

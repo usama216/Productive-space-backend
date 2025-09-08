@@ -44,8 +44,11 @@ const bookingRoutes = require("./routes/booking");
 const promoCodeRoutes = require("./routes/promoCode");
 const studentVerificationRoutes = require("./routes/studentVerification");
 const packageRoutes = require("./routes/packages");
-const enhancedPromoRoutes = require("./routes/enhancedPromoCode");
-const enhancedPromoAdminRoutes = require("./routes/enhancedPromoCodeAdmin");
+const newPackageRoutes = require("./routes/newPackages");
+const packagePaymentRoutes = require("./routes/packagePayment");
+
+// Swagger documentation setup
+const { swaggerUi, specs } = require('./swagger');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
@@ -106,9 +109,40 @@ app.use("/api/booking", bookingRoutes);
 app.use("/api/promocode", promoCodeRoutes);
 app.use("/api/student", studentVerificationRoutes);
 app.use("/api/packages", packageRoutes);
-app.use("/api/enhanced-promo", enhancedPromoRoutes);
-app.use("/api/enhanced-promo-admin", enhancedPromoAdminRoutes);
+app.use("/api/packages", packagePaymentRoutes);
+app.use("/api/new-packages", newPackageRoutes);
 
+// Swagger API Documentation
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(specs, {
+  explorer: true,
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: "Productive Space API Documentation"
+}));
+
+/**
+ * @swagger
+ * /users:
+ *   get:
+ *     summary: Get all users (Admin only)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of all users
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/User'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // Get all users (admin only)
 app.get("/users", async (req, res) => {
     const { data, error } = await supabase.from("User").select("*");
@@ -116,6 +150,50 @@ app.get("/users", async (req, res) => {
     res.json(data);
 });
 
+/**
+ * @swagger
+ * /api/user/{userId}:
+ *   get:
+ *     summary: Get user profile by ID
+ *     tags: [Authentication]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID
+ *     responses:
+ *       200:
+ *         description: User profile retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 user:
+ *                   $ref: '#/components/schemas/User'
+ *       400:
+ *         description: Bad request - User ID required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: User not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // Get single user profile by ID (for profile settings)
 app.get("/api/user/:userId", async (req, res) => {
     try {
@@ -176,6 +254,76 @@ app.get("/api/user/:userId", async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/user/{userId}:
+ *   put:
+ *     summary: Update user profile by ID
+ *     tags: [Authentication]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               firstName:
+ *                 type: string
+ *                 description: User first name
+ *               lastName:
+ *                 type: string
+ *                 description: User last name
+ *               contactNumber:
+ *                 type: string
+ *                 description: User contact number
+ *               memberType:
+ *                 type: string
+ *                 enum: [STUDENT, REGULAR]
+ *                 description: Type of membership
+ *               studentVerificationFile:
+ *                 type: string
+ *                 format: binary
+ *                 description: Student verification image file
+ *     responses:
+ *       200:
+ *         description: User profile updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 user:
+ *                   $ref: '#/components/schemas/User'
+ *       400:
+ *         description: Bad request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: User not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // Update user profile by ID (for profile settings)
 app.put("/api/user/:userId", upload.single('studentVerificationFile'), async (req, res) => {
     try {

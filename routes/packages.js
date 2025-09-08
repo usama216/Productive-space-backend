@@ -22,9 +22,64 @@ const {
 
 // 🎯 Package Management Routes
 
+/**
+ * @swagger
+ * /api/packages:
+ *   get:
+ *     summary: Get all available packages
+ *     tags: [Packages]
+ *     responses:
+ *       200:
+ *         description: List of all available packages
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Package'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // GET /api/packages - Get all available packages
 router.get("/", getPackages);
 
+/**
+ * @swagger
+ * /api/packages/{id}:
+ *   get:
+ *     summary: Get specific package by ID
+ *     tags: [Packages]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Package ID
+ *     responses:
+ *       200:
+ *         description: Package details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Package'
+ *       404:
+ *         description: Package not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // GET /api/packages/:id - Get specific package by ID
 router.get("/:id", getPackageById);
 
@@ -32,10 +87,10 @@ router.get("/:id", getPackageById);
 router.post("/purchase", purchasePackage);
 
 // POST /api/packages/payment - Create payment for package (same as booking)
-router.post("/payment", require("../controllers/packageController").createPackagePaymentRequest);
+router.post("/payment", require("../controllers/packagePaymentController").createPackagePayment);
 
 // POST /api/packages/confirm - Confirm package purchase after payment
-router.post("/confirm", confirmPackagePurchase);
+router.post("/confirm", require("../controllers/packagePaymentController").confirmPackagePayment);
 
 // 🎯 Package Purchase Flow Routes
 
