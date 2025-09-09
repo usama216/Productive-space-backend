@@ -8,6 +8,7 @@ const {
   getPackageById,
   purchasePackage,
   getUserPackages,
+  getUserPackageUsage,
   
   // Admin APIs
   getAllPackages,
@@ -118,6 +119,74 @@ router.post("/purchase", purchasePackage);
 
 // GET /api/packages/user/:userId - Get user's package purchases
 router.get("/user/:userId", getUserPackages);
+
+/**
+ * @swagger
+ * /api/new-packages/usage/:userId:
+ *   get:
+ *     summary: Get user's package usage summary
+ *     tags: [Packages]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID
+ *     responses:
+ *       200:
+ *         description: Package usage summary retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 packageUsage:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       purchaseId:
+ *                         type: string
+ *                       packageName:
+ *                         type: string
+ *                       packageType:
+ *                         type: string
+ *                       targetRole:
+ *                         type: string
+ *                       totalPasses:
+ *                         type: number
+ *                       usedPasses:
+ *                         type: number
+ *                       activePasses:
+ *                         type: number
+ *                       expiredPasses:
+ *                         type: number
+ *                       isExpired:
+ *                         type: boolean
+ *                       activatedAt:
+ *                         type: string
+ *                         format: date-time
+ *                       expiresAt:
+ *                         type: string
+ *                         format: date-time
+ *       400:
+ *         description: Bad request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+// GET /api/packages/usage/:userId - Get user's package usage summary
+router.get("/usage/:userId", getUserPackageUsage);
 
 // ==================== ADMIN ROUTES ====================
 

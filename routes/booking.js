@@ -4,6 +4,7 @@ const {
   getAllBookings, 
   getBookingById, 
   confirmBookingPayment, 
+  confirmBookingWithPackage,
   getBookedSeats, 
   getUserBookingStats,
   // User Dashboard functions
@@ -192,6 +193,98 @@ router.get("/getById/:id", getBookingById);
  *               $ref: '#/components/schemas/Error'
  */
 router.post("/confirmBooking", confirmBookingPayment);
+
+/**
+ * @swagger
+ * /api/booking/confirmWithPackage:
+ *   post:
+ *     summary: Confirm booking with package usage
+ *     tags: [Bookings]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - bookingId
+ *               - userId
+ *               - packageId
+ *               - hoursUsed
+ *             properties:
+ *               bookingId:
+ *                 type: string
+ *                 description: Booking ID to confirm
+ *               userId:
+ *                 type: string
+ *                 description: User ID
+ *               packageId:
+ *                 type: string
+ *                 description: Package ID to use
+ *               hoursUsed:
+ *                 type: number
+ *                 description: Hours used in the booking
+ *               location:
+ *                 type: string
+ *                 description: Booking location
+ *               startTime:
+ *                 type: string
+ *                 format: date-time
+ *                 description: Booking start time
+ *               endTime:
+ *                 type: string
+ *                 format: date-time
+ *                 description: Booking end time
+ *               paymentId:
+ *                 type: string
+ *                 description: Payment ID (optional)
+ *     responses:
+ *       200:
+ *         description: Booking confirmed successfully with package usage
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 booking:
+ *                   $ref: '#/components/schemas/Booking'
+ *                 packageUsage:
+ *                   type: object
+ *                   properties:
+ *                     passUsed:
+ *                       type: string
+ *                     hoursCovered:
+ *                       type: number
+ *                     excessHours:
+ *                       type: number
+ *                     excessCharge:
+ *                       type: number
+ *                     remainingPasses:
+ *                       type: number
+ *       400:
+ *         description: Bad request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Booking not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.post("/confirmWithPackage", confirmBookingWithPackage);
 
 /**
  * @swagger

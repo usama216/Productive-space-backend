@@ -2,6 +2,7 @@ const { createClient } = require("@supabase/supabase-js");
 const { v4: uuidv4 } = require("uuid");
 const { sendBookingConfirmation } = require("../utils/email");
 const { applyPromoCodeToBooking } = require("./promoCodeController");
+const { handlePackageUsage, calculateExcessCharge } = require("../utils/packageUsageHelper");
 
 const supabase = require("../config/database");
 
@@ -1861,5 +1862,129 @@ exports.deleteUser = async (req, res) => {
   } catch (err) {
     console.error('deleteUser error:', err);
     res.status(500).json({ error: 'Failed to delete user', details: err.message });
+  }
+};
+
+// 🎯 Confirm booking with package usage tracking
+exports.confirmBookingWithPackage = async (req, res) => {
+  try {
+    const {
+      bookingId,
+      userId,
+      packageId,
+      hoursUsed,
+      location,
+      startTime,
+      endTime,
+      paymentId
+    } = req.body;
+
+    // Validate required fields
+    if (!bookingId || !userId || !packageId || !hoursUsed) {
+      return res.status(400).json({
+        error: "Missing required fields",
+        message: "bookingId, userId, packageId, and hoursUsed are required"
+      });
+    }
+
+    // Check if booking exists and is not already confirmed
+    const { data: booking, error: bookingError } = await supabase
+      .from("Booking")
+      .select("*")
+      .eq("id", bookingId)
+      .eq("userId", userId)
+      .single();
+
+    if (bookingError || !booking) {
+      return res.status(404).json({
+        error: "Booking not found",
+        message: "The specified booking does not exist"
+      });
+    }
+
+    if (booking.confirmedPayment) {
+      return res.status(409).json({
+        error: "Booking already confirmed",
+        message: "This booking has already been confirmed"
+      });
+    }
+
+    // Handle package usage
+    const packageUsageResult = await handlePackageUsage(
+      userId,
+      packageId,
+      hoursUsed,
+      bookingId,
+      location || booking.location,
+      startTime || booking.startAt,
+      endTime || booking.endAt
+    );
+
+    if (!packageUsageResult.success) {
+      return res.status(400).json({
+        error: "Package usage failed",
+        message: packageUsageResult.error
+      });
+    }
+
+    // Calculate total amount including excess charges
+    let totalAmount = parseFloat(booking.totalAmount || 0);
+    if (packageUsageResult.excessCharge > 0) {
+      totalAmount += packageUsageResult.excessCharge;
+    }
+
+    // Update booking with confirmation and package usage details
+    const { data: updatedBooking, error: updateError } = await supabase
+      .from("Booking")
+      .update({
+        confirmedPayment: true,
+        paymentId: paymentId || "PACKAGE_USED",
+        totalAmount: totalAmount,
+        packageUsed: packageId,
+        packagePassUsed: packageUsageResult.passUsed,
+        hoursCovered: packageUsageResult.hoursCovered,
+        excessHours: packageUsageResult.excessHours,
+        excessCharge: packageUsageResult.excessCharge,
+        updatedAt: new Date().toISOString()
+      })
+      .eq("id", bookingId)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error("Error updating booking:", updateError);
+      return res.status(500).json({
+        error: "Failed to update booking",
+        message: updateError.message
+      });
+    }
+
+    // Send confirmation email
+    try {
+      await sendBookingConfirmation(updatedBooking);
+    } catch (emailError) {
+      console.error("Error sending confirmation email:", emailError);
+      // Don't fail the booking confirmation if email fails
+    }
+
+    res.json({
+      success: true,
+      message: "Booking confirmed successfully with package usage",
+      booking: updatedBooking,
+      packageUsage: {
+        passUsed: packageUsageResult.passUsed,
+        hoursCovered: packageUsageResult.hoursCovered,
+        excessHours: packageUsageResult.excessHours,
+        excessCharge: packageUsageResult.excessCharge,
+        remainingPasses: packageUsageResult.remainingPasses
+      }
+    });
+
+  } catch (err) {
+    console.error("confirmBookingWithPackage error:", err);
+    res.status(500).json({
+      error: "Internal server error",
+      message: err.message
+    });
   }
 };

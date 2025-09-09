@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require("uuid");
 const supabase = require("../config/database");
+const { getUserPackageUsage } = require("../utils/packageUsageHelper");
 
 // ==================== CLIENT APIs ====================
 
@@ -763,6 +764,41 @@ exports.getAllPackagePurchases = async (req, res) => {
     res.status(500).json({
       error: "Server error",
       message: "Failed to fetch package purchases"
+    });
+  }
+};
+
+// 🎯 Get user's package usage summary
+exports.getUserPackageUsage = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({
+        error: "Missing user ID",
+        message: "User ID is required"
+      });
+    }
+
+    const result = await getUserPackageUsage(userId);
+
+    if (!result.success) {
+      return res.status(500).json({
+        error: "Failed to fetch package usage",
+        message: result.error
+      });
+    }
+
+    res.json({
+      success: true,
+      packageUsage: result.packageUsage
+    });
+
+  } catch (err) {
+    console.error("getUserPackageUsage error:", err.message);
+    res.status(500).json({
+      error: "Server error",
+      message: "Failed to fetch package usage"
     });
   }
 };

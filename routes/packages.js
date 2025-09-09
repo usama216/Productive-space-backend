@@ -86,11 +86,11 @@ router.get("/:id", getPackageById);
 // POST /api/packages/purchase - Create package purchase record (NO payment)
 router.post("/purchase", purchasePackage);
 
-// POST /api/packages/payment - Create payment for package (same as booking)
-router.post("/payment", require("../controllers/packagePaymentController").createPackagePayment);
+// POST /api/packages/payment - Create payment for package (same as booking) - DEPRECATED
+// router.post("/payment", require("../controllers/packageController").createPackagePaymentRequest);
 
-// POST /api/packages/confirm - Confirm package purchase after payment
-router.post("/confirm", require("../controllers/packagePaymentController").confirmPackagePayment);
+// POST /api/packages/confirm - Confirm package purchase after payment - DEPRECATED
+// router.post("/confirm", confirmPackagePurchase);
 
 // 🎯 Package Purchase Flow Routes
 
