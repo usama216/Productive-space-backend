@@ -493,11 +493,12 @@ exports.getUserBookings = async (req, res) => {
       return res.status(400).json({ error: "userId is required" });
     }
 
-    // Build the base query - only for this specific user
+    // Build the base query - only for this specific user and only confirmed payments
     let query = supabase
       .from('Booking')
       .select('*', { count: 'exact' })
-      .eq('userId', userId); // This ensures only user's own bookings
+      .eq('userId', userId) // This ensures only user's own bookings
+      .eq('confirmedPayment', true); // Only show confirmed payments by default
 
     // Apply status filters
     if (status) {
@@ -781,22 +782,16 @@ exports.getUserDashboardSummary = async (req, res) => {
     const monthSpent = monthBookings
       .reduce((sum, b) => sum + parseFloat(b.totalAmount || 0), 0);
 
-    // Upcoming bookings for this user only
+    // Upcoming bookings for this user only (confirmed payments only)
     const { count: upcomingCount } = await supabase
       .from('Booking')
       .select('*', { count: 'exact', head: true })
       .eq('userId', userId) // Only this user's bookings
+      .eq('confirmedPayment', true) // Only confirmed payments
       .gt('startAt', now.toISOString());
 
-    // Pending payments for this user only
-    const { data: pendingBookings } = await supabase
-      .from('Booking')
-      .select('totalAmount')
-      .eq('userId', userId) // Only this user's bookings
-      .eq('confirmedPayment', false);
-
-    const pendingAmount = pendingBookings
-      .reduce((sum, b) => sum + parseFloat(b.totalAmount || 0), 0);
+    // No pending payments - all bookings must be paid immediately
+    const pendingAmount = 0;
 
     res.json({
       userId,
