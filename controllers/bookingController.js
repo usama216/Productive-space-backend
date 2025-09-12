@@ -93,6 +93,76 @@ exports.createBooking = async (req, res) => {
       }
     }
 
+    // Check for seat conflicts - prevent booking seats that are already taken during overlapping times
+    if (seatNumbers && seatNumbers.length > 0) {
+      console.log(`🔍 Checking seat conflicts for seats: ${seatNumbers.join(', ')}`);
+      
+      const { data: conflictingBookings, error: seatConflictError } = await supabase
+        .from("Booking")
+        .select("seatNumbers, startAt, endAt, bookingRef, userId, confirmedPayment, createdAt")
+        .eq("location", location)
+        .in("confirmedPayment", [true, false]) // Include both confirmed and pending payments
+        .lt("startAt", endAt)  // Booking starts before requested end time
+        .gt("endAt", startAt); // Booking ends after requested start time
+
+      if (seatConflictError) {
+        console.error("Seat conflict check error:", seatConflictError);
+        return res.status(500).json({
+          error: "Failed to check seat availability",
+          message: "Unable to verify seat availability"
+        });
+      }
+
+      // Check if any of the requested seats are already booked (both confirmed and pending)
+      const allBookedSeats = conflictingBookings
+        ?.flatMap(b => b.seatNumbers || [])
+        .filter((seat, index, self) => self.indexOf(seat) === index) || [];
+
+      const conflictingSeats = seatNumbers.filter(seat => allBookedSeats.includes(seat));
+
+      if (conflictingSeats.length > 0) {
+        // Separate confirmed vs pending conflicts for better error messaging
+        const confirmedConflicts = conflictingBookings?.filter(b => 
+          b.confirmedPayment && b.seatNumbers?.some(seat => conflictingSeats.includes(seat))
+        ) || [];
+        
+        const pendingConflicts = conflictingBookings?.filter(b => 
+          !b.confirmedPayment && b.seatNumbers?.some(seat => conflictingSeats.includes(seat))
+        ) || [];
+
+        console.log(`❌ Seat conflict detected for seats: ${conflictingSeats.join(', ')}`);
+        console.log(`   - Confirmed bookings: ${confirmedConflicts.length}`);
+        console.log(`   - Pending payment bookings: ${pendingConflicts.length}`);
+        
+        return res.status(409).json({
+          error: "Seat conflict detected",
+          message: `The following seats are already booked or reserved during this time: ${conflictingSeats.join(', ')}`,
+          conflictingSeats,
+          conflictDetails: {
+            confirmed: confirmedConflicts.map(b => ({
+              bookingRef: b.bookingRef,
+              seats: b.seatNumbers,
+              startAt: b.startAt,
+              endAt: b.endAt
+            })),
+            pending: pendingConflicts.map(b => ({
+              bookingRef: b.bookingRef,
+              seats: b.seatNumbers,
+              startAt: b.startAt,
+              endAt: b.endAt,
+              createdAt: b.createdAt
+            }))
+          },
+          availableSeats: allBookedSeats.length > 0 ? 
+            ['A1', 'A2', 'A3', 'A4', 'B1', 'B2', 'B3', 'B4', 'C1', 'C2', 'C3', 'C4', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10', 'S11', 'S12']
+              .filter(seat => !allBookedSeats.includes(seat)) : 
+            ['A1', 'A2', 'A3', 'A4', 'B1', 'B2', 'B3', 'B4', 'C1', 'C2', 'C3', 'C4', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10', 'S11', 'S12']
+        });
+      }
+
+      console.log(`✅ No seat conflicts detected for seats: ${seatNumbers.join(', ')}`);
+    }
+
     // Basic promo code validation if provided
     // Full validation will happen during payment confirmation
     if (promoCodeId) {
@@ -449,25 +519,55 @@ exports.getBookedSeats = async (req, res) => {
       return res.status(400).json({ error: "location, startAt and endAt are required" });
     }
 
+    console.log(`🔍 Checking seat availability for ${location} from ${startAt} to ${endAt}`);
+
+    // Find all bookings that have time overlap with the requested time range
+    // A booking overlaps if: startAt < requested_endAt AND endAt > requested_startAt
+    // Include BOTH confirmed payments AND pending payments to block seats during payment process
     const { data: bookings, error } = await supabase
       .from("Booking")
-      .select("seatNumbers")
+      .select("seatNumbers, startAt, endAt, bookingRef, confirmedPayment, createdAt")
       .eq("location", location)
-      .eq("confirmedPayment", true) 
-      .or(
-        `and(startAt.lte.${endAt},endAt.gte.${startAt})`
-      );
+      .in("confirmedPayment", [true, false]) // Include both confirmed and pending payments
+      .lt("startAt", endAt)  // Booking starts before requested end time
+      .gt("endAt", startAt); // Booking ends after requested start time
 
     if (error) {
-      console.error(error);
+      console.error("Database error:", error);
       return res.status(400).json({ error: error.message });
     }
 
-    const bookedSeats = bookings
-      .flatMap(b => b.seatNumbers || [])
-      .filter((seat, index, self) => self.indexOf(seat) === index); // unique
+    console.log(`📊 Found ${bookings?.length || 0} overlapping bookings`);
 
-    res.status(200).json({ bookedSeats });
+    // Extract all seat numbers from overlapping bookings (both confirmed and pending)
+    const bookedSeats = bookings
+      ?.flatMap(b => b.seatNumbers || [])
+      .filter((seat, index, self) => self.indexOf(seat) === index) || []; // unique seats
+
+    // Separate confirmed vs pending bookings for better tracking
+    const confirmedBookings = bookings?.filter(b => b.confirmedPayment) || [];
+    const pendingBookings = bookings?.filter(b => !b.confirmedPayment) || [];
+
+    console.log(`🚫 Booked seats: ${bookedSeats.join(', ')}`);
+    console.log(`✅ Confirmed bookings: ${confirmedBookings.length}`);
+    console.log(`⏳ Pending payment bookings: ${pendingBookings.length}`);
+
+    res.status(200).json({ 
+      bookedSeats,
+      overlappingBookings: bookings?.map(b => ({
+        bookingRef: b.bookingRef,
+        startAt: b.startAt,
+        endAt: b.endAt,
+        seats: b.seatNumbers,
+        confirmedPayment: b.confirmedPayment,
+        createdAt: b.createdAt
+      })) || [],
+      summary: {
+        totalOverlapping: bookings?.length || 0,
+        confirmed: confirmedBookings.length,
+        pending: pendingBookings.length
+      }
+    });
   } catch (err) {
     console.error("getBookedSeats error:", err.message);
     res.status(500).json({ error: "Internal Server Error" });
