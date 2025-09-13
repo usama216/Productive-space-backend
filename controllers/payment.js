@@ -238,10 +238,10 @@ async function handlePackagePaymentCompletion(event, paymentDetails) {
           packagetype,
           targetrole,
           packagecontents,
-          validitydays
+          validityDays
         )
       `)
-      .eq("orderid", event.reference_number)
+      .eq("orderId", event.reference_number)
       .single();
 
     if (findError || !packagePurchase) {
@@ -253,12 +253,12 @@ async function handlePackagePaymentCompletion(event, paymentDetails) {
     const { error: updateError } = await supabase
       .from("PackagePurchase")
       .update({
-        paymentstatus: "COMPLETED",
+        paymentStatus: "COMPLETED",
         paymentmethod: event.payment_method || paymentDetails?.payment_methods?.[0] || "Online",
-        hitpayreference: event.payment_request_id,
-        activatedat: new Date().toISOString(),
-        expiresat: new Date(Date.now() + (packagePurchase.Package.validitydays * 24 * 60 * 60 * 1000)).toISOString(),
-        updatedat: new Date().toISOString()
+        hitPayReference: event.payment_request_id,
+        activatedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + (packagePurchase.Package.validityDays * 24 * 60 * 60 * 1000)).toISOString(),
+        updatedAt: new Date().toISOString()
       })
       .eq("id", packagePurchase.id);
 
@@ -292,8 +292,8 @@ async function createUserPasses(packagePurchase) {
           passtype: "HALF_DAY",
           hours: packageContents.halfDayHours || 6,
           status: "ACTIVE",
-          createdat: new Date().toISOString(),
-          updatedat: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
         });
       }
     }
@@ -307,8 +307,8 @@ async function createUserPasses(packagePurchase) {
           passtype: "FULL_DAY",
           hours: packageContents.fullDayHours || 12,
           status: "ACTIVE",
-          createdat: new Date().toISOString(),
-          updatedat: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
         });
       }
     }
@@ -321,8 +321,8 @@ async function createUserPasses(packagePurchase) {
         passtype: "SEMESTER",
         hours: packageContents.totalHours || 200,
         status: "ACTIVE",
-        createdat: new Date().toISOString(),
-        updatedat: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       });
     }
 

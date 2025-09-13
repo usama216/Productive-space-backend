@@ -5,7 +5,8 @@ const cors = require("cors");
 const multer = require("multer");
 const { createClient } = require("@supabase/supabase-js");
 
-
+// Import scheduled cleanup
+const { cleanupUnpaidBookings } = require('./scheduledCleanup');
 
 const app = express();
 app.use(cors());
@@ -46,6 +47,8 @@ const studentVerificationRoutes = require("./routes/studentVerification");
 const packageRoutes = require("./routes/packages");
 const newPackageRoutes = require("./routes/newPackages");
 const packagePaymentRoutes = require("./routes/packagePayment");
+const packageUsageRoutes = require("./routes/packageUsage");
+const adminPackageRoutes = require("./routes/adminPackages");
 
 // Swagger documentation setup
 const { swaggerUi, specs } = require('./swagger');
@@ -111,6 +114,19 @@ app.use("/api/student", studentVerificationRoutes);
 app.use("/api/packages", packageRoutes);
 app.use("/api/packages", packagePaymentRoutes);
 app.use("/api/new-packages", newPackageRoutes);
+app.use("/api/packages", packageUsageRoutes);
+app.use("/api/admin/packages", adminPackageRoutes);
+
+// Manual cleanup endpoint for testing
+app.post('/api/cleanup-unpaid-bookings', async (req, res) => {
+  try {
+    await cleanupUnpaidBookings();
+    res.json({ success: true, message: 'Cleanup completed' });
+  } catch (error) {
+    console.error('Manual cleanup error:', error);
+    res.status(500).json({ error: 'Cleanup failed', details: error.message });
+  }
+});
 
 // Swagger API Documentation
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(specs, {

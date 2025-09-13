@@ -7,6 +7,10 @@ const {
   confirmBookingWithPackage,
   getBookedSeats, 
   getUserBookingStats,
+  // Count-based Package functions
+  validatePassForBooking,
+  applyPassToBooking,
+  getUserPassBalance,
   // User Dashboard functions
   getUserBookings,
   getUserBookingAnalytics,
@@ -334,6 +338,190 @@ router.post("/confirmWithPackage", confirmBookingWithPackage);
  *               $ref: '#/components/schemas/Error'
  */
 router.post("/getBookedSeats", getBookedSeats);
+
+// ==================== COUNT-BASED PACKAGE ROUTES ====================
+
+/**
+ * @swagger
+ * /api/booking/validatePass:
+ *   post:
+ *     summary: Validate pass usage for booking
+ *     tags: [Bookings]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - userId
+ *               - passType
+ *               - startTime
+ *               - endTime
+ *               - pax
+ *             properties:
+ *               userId:
+ *                 type: string
+ *                 description: User ID
+ *               passType:
+ *                 type: string
+ *                 enum: [DAY_PASS, HALF_DAY_PASS]
+ *                 description: Type of pass to validate
+ *               startTime:
+ *                 type: string
+ *                 format: date-time
+ *                 description: Booking start time
+ *               endTime:
+ *                 type: string
+ *                 format: date-time
+ *                 description: Booking end time
+ *               pax:
+ *                 type: integer
+ *                 description: Number of people
+ *     responses:
+ *       200:
+ *         description: Pass validation successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 validation:
+ *                   type: object
+ *                   properties:
+ *                     passId:
+ *                       type: string
+ *                     passType:
+ *                       type: string
+ *                     originalCharge:
+ *                       type: number
+ *                     passDiscount:
+ *                       type: number
+ *                     remainingCharge:
+ *                       type: number
+ *                     passUsed:
+ *                       type: boolean
+ *                     remainingQuantity:
+ *                       type: integer
+ *       400:
+ *         description: Validation failed
+ *       500:
+ *         description: Server error
+ */
+router.post("/validatePass", validatePassForBooking);
+
+/**
+ * @swagger
+ * /api/booking/applyPass:
+ *   post:
+ *     summary: Apply pass to booking
+ *     tags: [Bookings]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - userId
+ *               - passId
+ *               - bookingId
+ *               - location
+ *               - startTime
+ *               - endTime
+ *               - pax
+ *             properties:
+ *               userId:
+ *                 type: string
+ *                 description: User ID
+ *               passId:
+ *                 type: string
+ *                 description: Pass ID to apply
+ *               bookingId:
+ *                 type: string
+ *                 description: Booking ID
+ *               location:
+ *                 type: string
+ *                 description: Booking location
+ *               startTime:
+ *                 type: string
+ *                 format: date-time
+ *                 description: Booking start time
+ *               endTime:
+ *                 type: string
+ *                 format: date-time
+ *                 description: Booking end time
+ *               pax:
+ *                 type: integer
+ *                 description: Number of people
+ *     responses:
+ *       200:
+ *         description: Pass applied successfully
+ *       400:
+ *         description: Application failed
+ *       500:
+ *         description: Server error
+ */
+router.post("/applyPass", applyPassToBooking);
+
+/**
+ * @swagger
+ * /api/booking/passBalance/{userId}:
+ *   get:
+ *     summary: Get user's pass balance
+ *     tags: [Bookings]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID
+ *     responses:
+ *       200:
+ *         description: Pass balance retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 balance:
+ *                   type: object
+ *                   properties:
+ *                     passBalances:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           passType:
+ *                             type: string
+ *                           totalQuantity:
+ *                             type: integer
+ *                           remainingQuantity:
+ *                             type: integer
+ *                           passes:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 id:
+ *                                   type: string
+ *                                 packageName:
+ *                                   type: string
+ *                                 packageCode:
+ *                                   type: string
+ *                                 remainingQuantity:
+ *                                   type: integer
+ *       400:
+ *         description: Bad request
+ *       500:
+ *         description: Server error
+ */
+router.get("/passBalance/:userId", getUserPassBalance);
 
 /**
  * @swagger

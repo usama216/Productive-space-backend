@@ -61,6 +61,73 @@ CREATE TABLE IF NOT EXISTS "Payment" (
     updatedAt TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- ==================== PACKAGE SYSTEM TABLES ====================
+
+-- Package table for count-based packages
+CREATE TABLE IF NOT EXISTS "Package" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    packageType VARCHAR(50) NOT NULL CHECK (packageType IN ('HALF_DAY', 'FULL_DAY', 'SEMESTER_BUNDLE')),
+    targetRole VARCHAR(50) NOT NULL CHECK (targetRole IN ('MEMBER', 'TUTOR', 'STUDENT')),
+    price DECIMAL(10,2) NOT NULL,
+    originalPrice DECIMAL(10,2),
+    outletFee DECIMAL(10,2) DEFAULT 5.00,
+    passCount INTEGER NOT NULL DEFAULT 1, -- Number of passes in this package
+    validityDays INTEGER DEFAULT 30, -- Validity period in days
+    isActive BOOLEAN DEFAULT TRUE,
+    createdAt TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updatedAt TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- PackagePurchase table - tracks when users buy packages
+CREATE TABLE IF NOT EXISTS "PackagePurchase" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    userId UUID NOT NULL REFERENCES "User"(id),
+    packageId UUID NOT NULL REFERENCES "Package"(id),
+    quantity INTEGER DEFAULT 1,
+    totalAmount DECIMAL(10,2) NOT NULL,
+    paymentStatus VARCHAR(20) DEFAULT 'PENDING' CHECK (paymentStatus IN ('PENDING', 'COMPLETED', 'FAILED', 'CANCELLED')),
+    paymentMethod VARCHAR(50),
+    hitPayReference VARCHAR(255),
+    paymentId UUID,
+    customerInfo JSONB,
+    isActive BOOLEAN DEFAULT TRUE,
+    activatedAt TIMESTAMP WITH TIME ZONE,
+    expiresAt TIMESTAMP WITH TIME ZONE,
+    orderId VARCHAR(255) UNIQUE NOT NULL,
+    createdAt TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updatedAt TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- UserPass table - tracks individual passes for count-based system
+CREATE TABLE IF NOT EXISTS "UserPass" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    packagePurchaseId UUID NOT NULL REFERENCES "PackagePurchase"(id),
+    userId UUID NOT NULL REFERENCES "User"(id),
+    passType VARCHAR(50) NOT NULL CHECK (passType IN ('HALF_DAY', 'FULL_DAY', 'SEMESTER')),
+    totalCount INTEGER NOT NULL, -- Total passes in this package
+    remainingCount INTEGER NOT NULL, -- Remaining passes
+    status VARCHAR(20) DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'USED', 'EXPIRED')),
+    usedAt TIMESTAMP WITH TIME ZONE,
+    bookingId UUID REFERENCES "Booking"(id),
+    locationId VARCHAR(255),
+    startTime TIMESTAMP WITH TIME ZONE,
+    endTime TIMESTAMP WITH TIME ZONE,
+    expiresAt TIMESTAMP WITH TIME ZONE, -- When this pass expires
+    createdAt TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updatedAt TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- BookingPassUse table - tracks when passes are used in bookings
+CREATE TABLE IF NOT EXISTS "BookingPassUse" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    bookingId UUID NOT NULL REFERENCES "Booking"(id),
+    userPassId UUID NOT NULL REFERENCES "UserPass"(id),
+    minutesApplied INTEGER, -- How many minutes this pass covered
+    usedAt TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- ==================== NEW TABLES FOR PROMO CODE SYSTEM ====================
 
 -- PromoCode table

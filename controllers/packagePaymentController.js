@@ -62,12 +62,12 @@ exports.createPackagePayment = async (req, res) => {
     const { error: updateError } = await supabase
       .from("PackagePurchase")
       .update({
-        paymentstatus: "PENDING",
-        paymentmethod: paymentMethod,
-        updatedat: new Date().toISOString()
+        paymentStatus: "PENDING",
+        paymentMethod: paymentMethod,
+        updatedAt: new Date().toISOString()
       })
       .eq("id", userPackageId)
-      .eq("orderid", orderId);
+      .eq("orderId", orderId);
 
     if (updateError) {
       console.error("Package purchase update error:", updateError);
@@ -116,12 +116,12 @@ exports.handlePackageWebhook = async (req, res) => {
         Package (
           id,
           name,
-          packagetype,
-          targetrole,
-          packagecontents
+          packageType,
+          targetRole,
+          passCount
         )
       `)
-      .eq("orderid", event.reference_number)
+      .eq("orderId", event.reference_number)
       .single();
 
     if (findError || !packagePurchase) {
@@ -132,20 +132,24 @@ exports.handlePackageWebhook = async (req, res) => {
     // Update payment status based on webhook event
     if (event.status === 'completed') {
       // Calculate if this was a card payment (check if amount includes 5% fee)
-      const originalAmount = parseFloat(packagePurchase.totalamount);
+      const originalAmount = parseFloat(packagePurchase.totalAmount);
       const paidAmount = parseFloat(event.amount);
       const isCardPayment = paidAmount > originalAmount && Math.abs(paidAmount - (originalAmount * 1.05)) < 0.01;
       
+      // Calculate activatedAt and expiresAt
+      const activatedAt = new Date().toISOString();
+      const validityDays = packagePurchase.Package.validityDays || 30;
+      const expiresAt = new Date(Date.now() + (validityDays * 24 * 60 * 60 * 1000)).toISOString();
+
       // Update package purchase to completed
       const { error: updateError } = await supabase
         .from("PackagePurchase")
         .update({
-          paymentstatus: "COMPLETED",
-          paymentmethod: event.payment_method || paymentDetails?.payment_methods?.[0] || "Online",
-          hitpayreference: event.payment_request_id,
-          activatedat: new Date().toISOString(),
-          expiresat: new Date(Date.now() + (packagePurchase.Package.validitydays * 24 * 60 * 60 * 1000)).toISOString(),
-          updatedat: new Date().toISOString()
+          paymentStatus: "COMPLETED",
+          paymentMethod: event.payment_method || paymentDetails?.payment_methods?.[0] || "Online",
+          activatedAt: activatedAt,
+          expiresAt: expiresAt,
+          updatedAt: new Date().toISOString()
         })
         .eq("id", packagePurchase.id);
 
@@ -164,8 +168,8 @@ exports.handlePackageWebhook = async (req, res) => {
       const { error: updateError } = await supabase
         .from("PackagePurchase")
         .update({
-          paymentstatus: "FAILED",
-          updatedat: new Date().toISOString()
+          paymentStatus: "FAILED",
+          updatedAt: new Date().toISOString()
         })
         .eq("id", packagePurchase.id);
 
@@ -186,51 +190,34 @@ exports.handlePackageWebhook = async (req, res) => {
 // 🎯 Helper function to create UserPass records
 async function createUserPasses(packagePurchase) {
   try {
-    const packageContents = packagePurchase.Package.packagecontents;
     const userPasses = [];
 
-    // Create half-day passes
-    if (packageContents.halfDayPasses && packageContents.halfDayPasses > 0) {
-      for (let i = 0; i < packageContents.halfDayPasses; i++) {
-        userPasses.push({
-          id: uuidv4(),
-          packagepurchaseid: packagePurchase.id,
-          passtype: "HALF_DAY",
-          hours: packageContents.halfDayHours || 6,
-          status: "ACTIVE",
-          createdat: new Date().toISOString(),
-          updatedat: new Date().toISOString()
-        });
-      }
-    }
-
-    // Create full-day passes
-    if (packageContents.fullDayPasses && packageContents.fullDayPasses > 0) {
-      for (let i = 0; i < packageContents.fullDayPasses; i++) {
-        userPasses.push({
-          id: uuidv4(),
-          packagepurchaseid: packagePurchase.id,
-          passtype: "FULL_DAY",
-          hours: packageContents.fullDayHours || 12,
-          status: "ACTIVE",
-          createdat: new Date().toISOString(),
-          updatedat: new Date().toISOString()
-        });
-      }
-    }
-
-    // Create semester passes (if applicable)
-    if (packagePurchase.Package.packagetype === "SEMESTER_BUNDLE") {
+    // Create count-based passes using the new schema
+    const passCount = packagePurchase.Package.passCount || 0;
+    
+    if (passCount > 0) {
+      // Create a single UserPass record with count-based system
       userPasses.push({
         id: uuidv4(),
         packagepurchaseid: packagePurchase.id,
-        passtype: "SEMESTER",
-        hours: packageContents.totalHours || 200,
+        userid: packagePurchase.userId,
+        passtype: packagePurchase.Package.packageType, // HALF_DAY, FULL_DAY, or SEMESTER
+        totalCount: passCount, // Total number of passes
+        remainingCount: passCount, // Remaining passes
         status: "ACTIVE",
+        usedat: null,
+        bookingid: null,
+        locationid: null,
+        starttime: null,
+        endtime: null,
+        expiresat: new Date(Date.now() + (packagePurchase.Package.validityDays * 24 * 60 * 60 * 1000)).toISOString(), // When this pass expires
         createdat: new Date().toISOString(),
         updatedat: new Date().toISOString()
       });
     }
+
+    // Semester bundle already handled above with count-based system
+
 
     // Insert all user passes
     if (userPasses.length > 0) {
@@ -264,11 +251,11 @@ exports.getPackagePaymentStatus = async (req, res) => {
         Package (
           id,
           name,
-          packagetype,
-          targetrole
+          packageType,
+          targetRole
         )
       `)
-      .eq("orderid", orderId)
+      .eq("orderId", orderId)
       .single();
 
     if (error || !packagePurchase) {
@@ -280,15 +267,15 @@ exports.getPackagePaymentStatus = async (req, res) => {
 
     res.json({
       success: true,
-      orderId: packagePurchase.orderid,
-      paymentStatus: packagePurchase.paymentstatus,
+      orderId: packagePurchase.orderId,
+      paymentStatus: packagePurchase.paymentStatus,
       packageName: packagePurchase.Package.name,
-      packageType: packagePurchase.Package.packagetype,
-      targetRole: packagePurchase.Package.targetrole,
-      totalAmount: packagePurchase.totalamount,
-      activatedAt: packagePurchase.activatedat,
-      expiresAt: packagePurchase.expiresat,
-      isExpired: packagePurchase.expiresat ? new Date() > new Date(packagePurchase.expiresat) : false
+      packageType: packagePurchase.Package.packageType,
+      targetRole: packagePurchase.Package.targetRole,
+      totalAmount: packagePurchase.totalAmount,
+      activatedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + (packagePurchase.Package.validityDays * 24 * 60 * 60 * 1000)).toISOString(),
+      isExpired: false
     });
 
   } catch (err) {
@@ -322,10 +309,10 @@ exports.confirmPackagePayment = async (req, res) => {
         Package (
           id,
           name,
-          packagetype,
-          targetrole,
-          packagecontents,
-          validitydays
+          packageType,
+          targetRole,
+          passCount,
+          validityDays
         ),
         User (
           id,
@@ -347,10 +334,10 @@ exports.confirmPackagePayment = async (req, res) => {
           Package (
             id,
             name,
-            packagetype,
-            targetrole,
-            packagecontents,
-            validitydays
+            packageType,
+            targetRole,
+            passCount,
+            validityDays
           ),
           User (
             id,
@@ -360,7 +347,7 @@ exports.confirmPackagePayment = async (req, res) => {
             memberType
           )
         `)
-        .eq("orderid", orderId)
+        .eq("orderId", orderId)
         .single();
       
       packagePurchase = packagePurchaseByOrder;
@@ -376,24 +363,24 @@ exports.confirmPackagePayment = async (req, res) => {
       });
     }
 
-    console.log("Found package purchase:", packagePurchase.id, packagePurchase.orderid);
+    console.log("Found package purchase:", packagePurchase.id, packagePurchase.orderId);
 
     // Check if payment is already completed
-    if (packagePurchase.paymentstatus === "COMPLETED") {
+    if (packagePurchase.paymentStatus === "COMPLETED") {
       return res.json({
         success: true,
         message: "Payment already confirmed",
         data: {
           userPackageId: packagePurchase.id,
-          orderId: packagePurchase.orderid,
-          paymentStatus: packagePurchase.paymentstatus,
-          hitpayReference: packagePurchase.hitpayreference,
+          orderId: packagePurchase.orderId,
+          paymentStatus: packagePurchase.paymentStatus,
+          hitpayReference: hitpayReference,
           packageName: packagePurchase.Package.name,
-          packageType: packagePurchase.Package.packagetype,
-          targetRole: packagePurchase.Package.targetrole,
-          totalAmount: parseFloat(packagePurchase.totalamount),
-          activatedAt: packagePurchase.activatedat,
-          expiresAt: packagePurchase.expiresat,
+          packageType: packagePurchase.Package.packageType,
+          targetRole: packagePurchase.Package.targetRole,
+          totalAmount: parseFloat(packagePurchase.totalAmount),
+          activatedAt: packagePurchase.activatedAt || new Date().toISOString(),
+          expiresAt: packagePurchase.expiresAt || new Date(Date.now() + (packagePurchase.Package.validityDays * 24 * 60 * 60 * 1000)).toISOString(),
           userInfo: {
             email: packagePurchase.User.email,
             name: `${packagePurchase.User.firstName} ${packagePurchase.User.lastName}`,
@@ -403,15 +390,19 @@ exports.confirmPackagePayment = async (req, res) => {
       });
     }
 
-    // Update payment status to completed
+    // Calculate activatedAt and expiresAt
+    const activatedAt = new Date().toISOString();
+    const validityDays = packagePurchase.Package.validityDays || 30;
+    const expiresAt = new Date(Date.now() + (validityDays * 24 * 60 * 60 * 1000)).toISOString();
+
+    // Update payment status to completed with activation dates
     const { error: updateError } = await supabase
       .from("PackagePurchase")
       .update({
-        paymentstatus: "COMPLETED",
-        hitpayreference: hitpayReference || packagePurchase.hitpayreference,
-        activatedat: new Date().toISOString(),
-        expiresat: new Date(Date.now() + (packagePurchase.Package.validitydays * 24 * 60 * 60 * 1000)).toISOString(),
-        updatedat: new Date().toISOString()
+        paymentStatus: "COMPLETED",
+        activatedAt: activatedAt,
+        expiresAt: expiresAt,
+        updatedAt: new Date().toISOString()
       })
       .eq("id", userPackageId);
 
@@ -431,21 +422,22 @@ exports.confirmPackagePayment = async (req, res) => {
       message: "Package payment confirmed successfully",
       data: {
         userPackageId: packagePurchase.id,
-        orderId: packagePurchase.orderid,
+        orderId: packagePurchase.orderId,
         paymentStatus: "COMPLETED",
-        hitpayReference: hitpayReference || packagePurchase.hitpayreference,
+        hitpayReference: hitpayReference,
         packageName: packagePurchase.Package.name,
-        packageType: packagePurchase.Package.packagetype,
-        targetRole: packagePurchase.Package.targetrole,
-        totalAmount: parseFloat(packagePurchase.totalamount),
-        activatedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + (packagePurchase.Package.validitydays * 24 * 60 * 60 * 1000)).toISOString(),
+        packageType: packagePurchase.Package.packageType,
+        targetRole: packagePurchase.Package.targetRole,
+        totalAmount: parseFloat(packagePurchase.totalAmount),
+        activatedAt: activatedAt,
+        expiresAt: expiresAt,
         userInfo: {
           email: packagePurchase.User.email,
           name: `${packagePurchase.User.firstName} ${packagePurchase.User.lastName}`,
           memberType: packagePurchase.User.memberType
         },
-        packageContents: packagePurchase.Package.packagecontents
+        passCount: packagePurchase.Package.passCount,
+        validityDays: packagePurchase.Package.validityDays
       }
     });
 
@@ -478,10 +470,10 @@ exports.manualCompletePayment = async (req, res) => {
         Package (
           id,
           name,
-          packagetype,
-          targetrole,
-          packagecontents,
-          validitydays
+          packageType,
+          targetRole,
+          passCount,
+          validityDays
         )
       `)
       .eq("id", userPackageId)
@@ -498,11 +490,8 @@ exports.manualCompletePayment = async (req, res) => {
     const { error: updateError } = await supabase
       .from("PackagePurchase")
       .update({
-        paymentstatus: "COMPLETED",
-        hitpayreference: hitpayReference,
-        activatedat: new Date().toISOString(),
-        expiresat: new Date(Date.now() + (packagePurchase.Package.validitydays * 24 * 60 * 60 * 1000)).toISOString(),
-        updatedat: new Date().toISOString()
+        paymentStatus: "COMPLETED",
+        updatedAt: new Date().toISOString()
       })
       .eq("id", userPackageId);
 
@@ -522,11 +511,11 @@ exports.manualCompletePayment = async (req, res) => {
       message: "Payment completed successfully",
       data: {
         userPackageId: userPackageId,
-        orderId: packagePurchase.orderid,
+        orderId: packagePurchase.orderId,
         paymentStatus: "COMPLETED",
         hitpayReference: hitpayReference,
         activatedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + (packagePurchase.Package.validitydays * 24 * 60 * 60 * 1000)).toISOString()
+        expiresAt: new Date(Date.now() + (packagePurchase.Package.validityDays * 24 * 60 * 60 * 1000)).toISOString()
       }
     });
 

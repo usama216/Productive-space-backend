@@ -20,9 +20,9 @@ exports.getPackagesByRole = async (req, res) => {
     const { data: packages, error } = await supabase
       .from("Package")
       .select("*")
-      .eq("targetrole", role.toUpperCase())
-      .eq("isactive", true)
-      .order("packagetype", { ascending: true })
+      .eq("targetRole", role.toUpperCase())
+      .eq("isActive", true)
+      .order("packageType", { ascending: true })
       .order("price", { ascending: true });
 
     if (error) {
@@ -38,14 +38,14 @@ exports.getPackagesByRole = async (req, res) => {
       id: pkg.id,
       name: pkg.name,
       description: pkg.description,
-      packageType: pkg.packagetype,
-      targetRole: pkg.targetrole,
+      packageType: pkg.packageType,
+      targetRole: pkg.targetRole,
       price: parseFloat(pkg.price),
-      originalPrice: parseFloat(pkg.originalprice),
-      outletFee: parseFloat(pkg.outletfee),
-      packageContents: pkg.packagecontents,
-      validityDays: pkg.validitydays,
-      discount: pkg.originalprice ? Math.round(((pkg.originalprice - pkg.price) / pkg.originalprice) * 100) : 0
+      originalPrice: parseFloat(pkg.originalPrice),
+      outletFee: parseFloat(pkg.outletFee),
+      passCount: pkg.passCount,
+      validityDays: pkg.validityDays,
+      discount: pkg.originalPrice ? Math.round(((pkg.originalPrice - pkg.price) / pkg.originalPrice) * 100) : 0
     }));
 
     res.json({
@@ -73,7 +73,7 @@ exports.getPackageById = async (req, res) => {
       .from("Package")
       .select("*")
       .eq("id", id)
-      .eq("isactive", true)
+      .eq("isActive", true)
       .single();
 
     if (error || !package) {
@@ -88,14 +88,14 @@ exports.getPackageById = async (req, res) => {
       id: package.id,
       name: package.name,
       description: package.description,
-      packageType: package.packagetype,
-      targetRole: package.targetrole,
+      packageType: package.packageType,
+      targetRole: package.targetRole,
       price: parseFloat(package.price),
-      originalPrice: parseFloat(package.originalprice),
-      outletFee: parseFloat(package.outletfee),
-      packageContents: package.packagecontents,
-      validityDays: package.validitydays,
-      discount: package.originalprice ? Math.round(((package.originalprice - package.price) / package.originalprice) * 100) : 0
+      originalPrice: parseFloat(package.originalPrice),
+      outletFee: parseFloat(package.outletFee),
+      passCount: package.passCount,
+      validityDays: package.validityDays,
+      discount: package.originalPrice ? Math.round(((package.originalPrice - package.price) / package.originalPrice) * 100) : 0
     };
 
     res.json({
@@ -135,7 +135,7 @@ exports.purchasePackage = async (req, res) => {
       .from("Package")
       .select("*")
       .eq("id", packageId)
-      .eq("isactive", true)
+      .eq("isActive", true)
       .single();
 
     if (packageError || !package) {
@@ -161,7 +161,7 @@ exports.purchasePackage = async (req, res) => {
 
     // Calculate total amount
     const baseAmount = parseFloat(package.price) * quantity;
-    const outletFee = parseFloat(package.outletfee) * quantity;
+    const outletFee = parseFloat(package.outletFee) * quantity;
     const totalAmount = baseAmount + outletFee;
 
     // Generate order ID
@@ -172,15 +172,15 @@ exports.purchasePackage = async (req, res) => {
       .from("PackagePurchase")
       .insert([{
         id: uuidv4(),
-        userid: userId,
-        packageid: packageId,
+        userId: userId,
+        packageId: packageId,
         quantity: quantity,
-        totalamount: totalAmount,
-        paymentstatus: "PENDING",
-        customerinfo: customerInfo,
-        orderid: orderId,
-        createdat: new Date().toISOString(),
-        updatedat: new Date().toISOString()
+        totalAmount: totalAmount,
+        paymentStatus: "PENDING",
+        customerInfo: customerInfo,
+        orderId: orderId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       }])
       .select()
       .single();
@@ -200,8 +200,8 @@ exports.purchasePackage = async (req, res) => {
         purchaseId: packagePurchase.id,
         orderId: orderId,
         packageName: package.name,
-        packageType: package.packagetype,
-        targetRole: package.targetrole,
+        packageType: package.packageType,
+        targetRole: package.targetRole,
         quantity: quantity,
         totalAmount: totalAmount,
         paymentStatus: "PENDING"
@@ -238,14 +238,15 @@ exports.getUserPackages = async (req, res) => {
           id,
           name,
           description,
-          packagetype,
-          targetrole,
-          packagecontents
+          packageType,
+          targetRole,
+          passCount,
+          validityDays
         )
       `)
-      .eq("userid", userId)
-      .eq("isactive", true)
-      .order("createdat", { ascending: false });
+      .eq("userId", userId)
+      .eq("isActive", true)
+      .order("createdAt", { ascending: false });
 
     if (error) {
       console.error("Error fetching user packages:", error);
@@ -260,7 +261,7 @@ exports.getUserPackages = async (req, res) => {
       purchases.map(async (purchase) => {
         const { data: passes, error: passesError } = await supabase
           .from("UserPass")
-          .select("status")
+          .select("status, totalCount, remainingCount")
           .eq("packagepurchaseid", purchase.id);
 
         if (passesError) {
@@ -268,32 +269,50 @@ exports.getUserPackages = async (req, res) => {
           return purchase;
         }
 
-        const totalPasses = passes.length;
-        const activePasses = passes.filter(p => p.status === "ACTIVE").length;
-        const usedPasses = passes.filter(p => p.status === "USED").length;
-        const expiredPasses = passes.filter(p => p.status === "EXPIRED").length;
+        // Count-based system: use totalCount and remainingCount
+        const totalPasses = passes.reduce((sum, pass) => sum + (pass.totalCount || 0), 0);
+        const activePasses = passes.filter(p => p.status === "ACTIVE").reduce((sum, pass) => sum + (pass.remainingCount || 0), 0);
+        const usedPasses = passes.reduce((sum, pass) => sum + ((pass.totalCount || 0) - (pass.remainingCount || 0)), 0);
+        const expiredPasses = passes.filter(p => p.status === "EXPIRED").reduce((sum, pass) => sum + (pass.totalCount || 0), 0);
+
+        // Calculate activatedAt and expiresAt for completed packages
+        let activatedAt = purchase.activatedAt;
+        let expiresAt = purchase.expiresAt;
+        
+        if (purchase.paymentStatus === 'COMPLETED' && !activatedAt) {
+          // If package is completed but no activatedAt, set it to createdAt
+          activatedAt = purchase.createdAt;
+        }
+        
+        if (purchase.paymentStatus === 'COMPLETED' && !expiresAt) {
+          // If package is completed but no expiresAt, calculate it
+          const validityDays = purchase.Package.validityDays || 30;
+          const activatedDate = activatedAt ? new Date(activatedAt) : new Date(purchase.createdAt);
+          expiresAt = new Date(activatedDate.getTime() + (validityDays * 24 * 60 * 60 * 1000)).toISOString();
+        }
 
         return {
           id: purchase.id,
-          orderId: purchase.orderid,
-          packageId: purchase.packageid,
+          orderId: purchase.orderId,
+          packageId: purchase.packageId,
           packageName: purchase.Package.name,
-          packageType: purchase.Package.packagetype,
-          targetRole: purchase.Package.targetrole,
+          packageType: purchase.Package.packageType,
+          targetRole: purchase.Package.targetRole,
           description: purchase.Package.description,
-          packageContents: purchase.Package.packagecontents,
+          passCount: purchase.Package.passCount,
+          validityDays: purchase.Package.validityDays,
           quantity: purchase.quantity,
-          totalAmount: parseFloat(purchase.totalamount),
-          paymentStatus: purchase.paymentstatus,
-          paymentMethod: purchase.paymentmethod,
-          activatedAt: purchase.activatedat,
-          expiresAt: purchase.expiresat,
-          isExpired: purchase.expiresat ? new Date() > new Date(purchase.expiresat) : false,
-          totalPasses,
-          usedPasses,
+          totalAmount: parseFloat(purchase.totalAmount),
+          paymentStatus: purchase.paymentStatus,
+          paymentMethod: purchase.paymentMethod,
+          activatedAt: activatedAt,
+          expiresAt: expiresAt,
+          isExpired: expiresAt ? new Date() > new Date(expiresAt) : false,
+          totalPasses: totalPasses,
+          usedPasses: usedPasses,
           remainingPasses: activePasses,
-          expiredPasses,
-          createdAt: purchase.createdat
+          expiredPasses: expiredPasses,
+          createdAt: purchase.createdAt
         };
       })
     );
@@ -326,9 +345,9 @@ exports.getAllPackages = async (req, res) => {
       .select("*", { count: 'exact' });
 
     // Apply filters
-    if (role) query = query.eq("targetrole", role.toUpperCase());
-    if (packageType) query = query.eq("packagetype", packageType.toUpperCase());
-    if (isActive !== undefined) query = query.eq("isactive", isActive === 'true');
+    if (role) query = query.eq("targetRole", role.toUpperCase());
+    if (packageType) query = query.eq("packageType", packageType.toUpperCase());
+    if (isActive !== undefined) query = query.eq("isActive", isActive === 'true');
 
     // Apply pagination
     const pageNum = parseInt(page);
@@ -336,7 +355,7 @@ exports.getAllPackages = async (req, res) => {
     const offset = (pageNum - 1) * limitNum;
 
     query = query
-      .order("createdat", { ascending: false })
+      .order("createdAt", { ascending: false })
       .range(offset, offset + limitNum - 1);
 
     const { data: packages, error, count } = await query;
@@ -354,17 +373,17 @@ exports.getAllPackages = async (req, res) => {
       id: pkg.id,
       name: pkg.name,
       description: pkg.description,
-      packageType: pkg.packagetype,
-      targetRole: pkg.targetrole,
+      packageType: pkg.packageType,
+      targetRole: pkg.targetRole,
       price: parseFloat(pkg.price),
-      originalPrice: parseFloat(pkg.originalprice),
-      outletFee: parseFloat(pkg.outletfee),
-      packageContents: pkg.packagecontents,
-      validityDays: pkg.validitydays,
-      isActive: pkg.isactive,
-      discount: pkg.originalprice ? Math.round(((pkg.originalprice - pkg.price) / pkg.originalprice) * 100) : 0,
-      createdAt: pkg.createdat,
-      updatedAt: pkg.updatedat
+      originalPrice: parseFloat(pkg.originalPrice),
+      outletFee: parseFloat(pkg.outletFee),
+      passCount: pkg.passCount,
+      validityDays: pkg.validityDays,
+      isActive: pkg.isActive,
+      discount: pkg.originalPrice ? Math.round(((pkg.originalPrice - pkg.price) / pkg.originalPrice) * 100) : 0,
+      createdAt: pkg.createdAt,
+      updatedAt: pkg.updatedAt
     }));
 
     // Calculate pagination info
@@ -414,10 +433,10 @@ exports.createPackage = async (req, res) => {
     } = req.body;
 
     // Validate required fields
-    if (!name || !packageType || !targetRole || !price || !packageContents) {
+    if (!name || !packageType || !targetRole || !price) {
       return res.status(400).json({
         error: "Missing required fields",
-        message: "name, packageType, targetRole, price, and packageContents are required"
+        message: "name, packageType, targetRole, and price are required"
       });
     }
 
@@ -441,17 +460,18 @@ exports.createPackage = async (req, res) => {
       id: uuidv4(),
       name: name,
       description: description,
-      packagetype: packageType,
-      targetrole: targetRole,
+      packageType: packageType,
+      targetRole: targetRole,
       price: parseFloat(price),
-      originalprice: originalPrice ? parseFloat(originalPrice) : null,
-      outletfee: parseFloat(outletFee),
-      packagecontents: packageContents,
-      validitydays: parseInt(validityDays),
-      isactive: true,
-      createdat: new Date().toISOString(),
-      updatedat: new Date().toISOString()
+      originalPrice: originalPrice ? parseFloat(originalPrice) : null,
+      outletFee: parseFloat(outletFee),
+      passCount: parseInt(packageContents?.passCount || 1),
+      validityDays: parseInt(validityDays),
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
+
 
     console.log("Creating package with data:", packageData);
 
@@ -478,15 +498,15 @@ exports.createPackage = async (req, res) => {
         id: newPackage.id,
         name: newPackage.name,
         description: newPackage.description,
-        packageType: newPackage.packagetype,
-        targetRole: newPackage.targetrole,
+        packageType: newPackage.packageType,
+        targetRole: newPackage.targetRole,
         price: parseFloat(newPackage.price),
-        originalPrice: parseFloat(newPackage.originalprice),
-        outletFee: parseFloat(newPackage.outletfee),
-        packageContents: newPackage.packagecontents,
-        validityDays: newPackage.validitydays,
-        isActive: newPackage.isactive,
-        createdAt: newPackage.createdat
+        originalPrice: parseFloat(newPackage.originalPrice),
+        outletFee: parseFloat(newPackage.outletFee),
+        passCount: newPackage.passCount,
+        validityDays: newPackage.validityDays,
+        isActive: newPackage.isActive,
+        createdAt: newPackage.createdAt
       }
     });
 
@@ -524,6 +544,16 @@ exports.updatePackage = async (req, res) => {
       });
     }
 
+    // Validate passCount if provided
+    if (packageContents && packageContents.passCount) {
+      if (packageContents.passCount <= 0) {
+        return res.status(400).json({
+          error: "Invalid passCount",
+          message: "passCount must be greater than 0"
+        });
+      }
+    }
+
     if (targetRole && !['MEMBER', 'TUTOR', 'STUDENT'].includes(targetRole)) {
       return res.status(400).json({
         error: "Invalid targetRole",
@@ -535,15 +565,15 @@ exports.updatePackage = async (req, res) => {
     const updateData = {
       name: name,
       description: description,
-      packagetype: packageType,
-      targetrole: targetRole,
+      packageType: packageType,
+      targetRole: targetRole,
       price: price ? parseFloat(price) : undefined,
-      originalprice: originalPrice ? parseFloat(originalPrice) : undefined,
-      outletfee: outletFee ? parseFloat(outletFee) : undefined,
-      packagecontents: packageContents,
-      validitydays: validityDays ? parseInt(validityDays) : undefined,
-      isactive: isActive,
-      updatedat: new Date().toISOString()
+      originalPrice: originalPrice ? parseFloat(originalPrice) : undefined,
+      outletFee: outletFee ? parseFloat(outletFee) : undefined,
+      passCount: packageContents?.passCount ? parseInt(packageContents.passCount) : undefined,
+      validityDays: validityDays ? parseInt(validityDays) : undefined,
+      isActive: isActive,
+      updatedAt: new Date().toISOString()
     };
 
     // Remove undefined values
@@ -587,15 +617,15 @@ exports.updatePackage = async (req, res) => {
         id: updatedPackage.id,
         name: updatedPackage.name,
         description: updatedPackage.description,
-        packageType: updatedPackage.packagetype,
-        targetRole: updatedPackage.targetrole,
+        packageType: updatedPackage.packageType,
+        targetRole: updatedPackage.targetRole,
         price: parseFloat(updatedPackage.price),
-        originalPrice: parseFloat(updatedPackage.originalprice),
-        outletFee: parseFloat(updatedPackage.outletfee),
-        packageContents: updatedPackage.packagecontents,
-        validityDays: updatedPackage.validitydays,
-        isActive: updatedPackage.isactive,
-        updatedAt: updatedPackage.updatedat
+        originalPrice: parseFloat(updatedPackage.originalPrice),
+        outletFee: parseFloat(updatedPackage.outletFee),
+        passCount: updatedPackage.passCount,
+        validityDays: updatedPackage.validityDays,
+        isActive: updatedPackage.isActive,
+        updatedAt: updatedPackage.updatedAt
       }
     });
 
@@ -617,7 +647,7 @@ exports.deletePackage = async (req, res) => {
     const { data: purchases, error: checkError } = await supabase
       .from("PackagePurchase")
       .select("id")
-      .eq("packageid", id)
+      .eq("packageId", id)
       .limit(1);
 
     if (checkError) {
@@ -689,10 +719,10 @@ exports.getAllPackagePurchases = async (req, res) => {
       `, { count: 'exact' });
 
     // Apply filters
-    if (userId) query = query.eq("userid", userId);
-    if (packageId) query = query.eq("packageid", packageId);
-    if (paymentStatus) query = query.eq("paymentstatus", paymentStatus.toUpperCase());
-    if (role) query = query.eq("Package.targetrole", role.toUpperCase());
+    if (userId) query = query.eq("userId", userId);
+    if (packageId) query = query.eq("packageId", packageId);
+    if (paymentStatus) query = query.eq("paymentStatus", paymentStatus.toUpperCase());
+    if (role) query = query.eq("Package.targetRole", role.toUpperCase());
 
     // Apply pagination
     const pageNum = parseInt(page);
@@ -700,7 +730,7 @@ exports.getAllPackagePurchases = async (req, res) => {
     const offset = (pageNum - 1) * limitNum;
 
     query = query
-      .order("createdat", { ascending: false })
+      .order("createdAt", { ascending: false })
       .range(offset, offset + limitNum - 1);
 
     const { data: purchases, error, count } = await query;
@@ -716,25 +746,25 @@ exports.getAllPackagePurchases = async (req, res) => {
     // Format purchases
     const formattedPurchases = purchases.map(purchase => ({
       id: purchase.id,
-      orderId: purchase.orderid,
-      userId: purchase.userid,
+      orderId: purchase.orderId,
+      userId: purchase.userId,
       userEmail: purchase.User.email,
       userName: `${purchase.User.firstname} ${purchase.User.lastname}`,
       userMemberType: purchase.User.membertype,
-      packageId: purchase.packageid,
+      packageId: purchase.packageId,
       packageName: purchase.Package.name,
-      packageType: purchase.Package.packagetype,
-      targetRole: purchase.Package.targetrole,
+      packageType: purchase.Package.packageType,
+      targetRole: purchase.Package.targetRole,
       quantity: purchase.quantity,
-      totalAmount: parseFloat(purchase.totalamount),
-      paymentStatus: purchase.paymentstatus,
+      totalAmount: parseFloat(purchase.totalAmount),
+      paymentStatus: purchase.paymentStatus,
       paymentMethod: purchase.paymentmethod,
       hitpayReference: purchase.hitpayreference,
-      isActive: purchase.isactive,
+      isActive: purchase.isActive,
       activatedAt: purchase.activatedat,
       expiresAt: purchase.expiresat,
-      customerInfo: purchase.customerinfo,
-      createdAt: purchase.createdat
+      customerInfo: purchase.customerInfo,
+      createdAt: purchase.createdAt
     }));
 
     // Calculate pagination info

@@ -1,10 +1,10 @@
 const supabase = require("../config/database");
 
 /**
- * 🎯 Handle package usage when booking is confirmed
+ * 🎯 Handle package usage when booking is confirmed (Count-based system)
  * @param {string} userId - User ID
  * @param {string} packageId - Package ID used
- * @param {number} hoursUsed - Hours used in the booking
+ * @param {number} hoursUsed - Hours used in the booking (for reference only)
  * @param {string} bookingId - Booking ID
  * @param {string} location - Booking location
  * @param {string} startTime - Booking start time
@@ -13,7 +13,7 @@ const supabase = require("../config/database");
  */
 exports.handlePackageUsage = async (userId, packageId, hoursUsed, bookingId, location, startTime, endTime) => {
   try {
-    console.log(`🎯 Handling package usage for user ${userId}, package ${packageId}, hours ${hoursUsed}`);
+    console.log(`🎯 Handling count-based package usage for user ${userId}, package ${packageId}`);
 
     // Get user's active package purchases
     const { data: userPackages, error: packageError } = await supabase
@@ -25,11 +25,11 @@ exports.handlePackageUsage = async (userId, packageId, hoursUsed, bookingId, loc
           name,
           packagetype,
           targetrole,
-          packagecontents,
+          passcount,
           validitydays
         )
       `)
-      .eq("userid", userId)
+      .eq("userId", userId)
       .eq("packageid", packageId)
       .eq("paymentstatus", "COMPLETED")
       .eq("isactive", true)
@@ -49,9 +49,10 @@ exports.handlePackageUsage = async (userId, packageId, hoursUsed, bookingId, loc
     const { data: availablePasses, error: passesError } = await supabase
       .from("UserPass")
       .select("*")
-      .eq("packagepurchaseid", userPackages[0].id)
+      .eq("packagePurchaseId", userPackages[0].id)
       .eq("status", "ACTIVE")
-      .order("createdat", { ascending: true }); // Use oldest first
+      .gt("remainingCount", 0) // Has remaining passes
+      .order("createdAt", { ascending: true }); // Use oldest first
 
     if (passesError) {
       console.error("Error fetching available passes:", passesError);
@@ -62,83 +63,87 @@ exports.handlePackageUsage = async (userId, packageId, hoursUsed, bookingId, loc
       return { success: false, error: "No available passes found" };
     }
 
-    const packageContents = userPackages[0].Package.packagecontents;
     const packageType = userPackages[0].Package.packagetype;
+    const passCount = userPackages[0].Package.passcount;
     
-    // Determine which pass to use based on package type and hours
-    let passToUse = null;
-    let hoursCovered = 0;
-    let excessHours = 0;
+    // Find the first available pass with remaining count
+    const passToUse = availablePasses[0];
 
-    if (packageType === "HALF_DAY") {
-      // For half-day packages, use half-day passes
-      passToUse = availablePasses.find(pass => pass.passtype === "HALF_DAY");
-      if (passToUse) {
-        hoursCovered = Math.min(hoursUsed, passToUse.hours);
-        excessHours = Math.max(0, hoursUsed - passToUse.hours);
-      }
-    } else if (packageType === "FULL_DAY") {
-      // For full-day packages, use full-day passes
-      passToUse = availablePasses.find(pass => pass.passtype === "FULL_DAY");
-      if (passToUse) {
-        hoursCovered = Math.min(hoursUsed, passToUse.hours);
-        excessHours = Math.max(0, hoursUsed - passToUse.hours);
-      }
-    } else if (packageType === "SEMESTER_BUNDLE") {
-      // For semester packages, use semester passes
-      passToUse = availablePasses.find(pass => pass.passtype === "SEMESTER");
-      if (passToUse) {
-        hoursCovered = Math.min(hoursUsed, passToUse.hours);
-        excessHours = Math.max(0, hoursUsed - passToUse.hours);
-      }
+    if (!passToUse || passToUse.remainingCount <= 0) {
+      return { success: false, error: "No remaining passes available" };
     }
 
-    if (!passToUse) {
-      return { success: false, error: "No suitable pass available for this package type" };
+    // Decrement the remaining count
+    const newRemainingCount = passToUse.remainingCount - 1;
+    const isPassFullyUsed = newRemainingCount <= 0;
+
+    // Update the pass with new remaining count
+    const updateData = {
+      remainingCount: newRemainingCount,
+      updatedAt: new Date().toISOString()
+    };
+
+    // If pass is fully used, mark it as used
+    if (isPassFullyUsed) {
+      updateData.status = "USED";
+      updateData.usedAt = new Date().toISOString();
+      updateData.bookingId = bookingId;
+      updateData.locationId = location;
+      updateData.startTime = startTime;
+      updateData.endTime = endTime;
     }
 
-    // Mark the pass as used
     const { error: updatePassError } = await supabase
       .from("UserPass")
-      .update({
-        status: "USED",
-        usedat: new Date().toISOString(),
-        bookingid: bookingId,
-        locationid: location,
-        starttime: startTime,
-        endtime: endTime,
-        updatedat: new Date().toISOString()
-      })
+      .update(updateData)
       .eq("id", passToUse.id);
 
     if (updatePassError) {
-      console.error("Error updating pass status:", updatePassError);
-      return { success: false, error: "Failed to update pass status" };
+      console.error("Error updating pass:", updatePassError);
+      return { success: false, error: "Failed to update pass" };
     }
 
-    // Calculate excess charges if applicable
-    let excessCharge = 0;
-    if (excessHours > 0) {
-      // Calculate excess charge based on hourly rate
-      // You can adjust this rate as needed
-      const hourlyRate = 15; // SGD per hour for excess
-      excessCharge = excessHours * hourlyRate;
+    // Create booking pass use record
+    const { v4: uuidv4 } = require("uuid");
+    const { error: useError } = await supabase
+      .from("BookingPassUse")
+      .insert([{
+        id: uuidv4(),
+        bookingId: bookingId,
+        userpassid: passToUse.id,
+        minutesapplied: 0, // Not used in count-based system
+        usedAt: new Date().toISOString()
+      }]);
+
+    if (useError) {
+      console.error("Error creating booking pass use:", useError);
+      // Rollback pass update
+      await supabase
+        .from("UserPass")
+        .update({
+          remainingCount: passToUse.remainingCount,
+          status: "ACTIVE",
+          updatedAt: new Date().toISOString()
+        })
+        .eq("id", passToUse.id);
+      
+      return { success: false, error: "Failed to record pass usage" };
     }
 
-    console.log(`✅ Package usage handled successfully:`);
+    console.log(`✅ Count-based package usage handled successfully:`);
     console.log(`   - Pass used: ${passToUse.id}`);
-    console.log(`   - Hours covered: ${hoursCovered}`);
-    console.log(`   - Excess hours: ${excessHours}`);
-    console.log(`   - Excess charge: $${excessCharge}`);
+    console.log(`   - Remaining count: ${newRemainingCount}`);
+    console.log(`   - Pass fully used: ${isPassFullyUsed}`);
 
     return {
       success: true,
       passUsed: passToUse.id,
-      hoursCovered: hoursCovered,
-      excessHours: excessHours,
-      excessCharge: excessCharge,
+      passType: passToUse.passType,
+      remainingCount: newRemainingCount,
+      isPassFullyUsed: isPassFullyUsed,
       packageType: packageType,
-      remainingPasses: availablePasses.length - 1
+      totalPasses: passCount,
+      remainingPasses: availablePasses.reduce((sum, pass) => sum + pass.remainingCount, 0) - 1
     };
 
   } catch (error) {
@@ -180,15 +185,15 @@ exports.getUserPackageUsage = async (userId) => {
         ),
         UserPass (
           id,
-          passtype,
+          passType,
           hours,
           status,
-          usedat,
-          bookingid,
-          locationid
+          usedAt,
+          bookingId,
+          locationId
         )
       `)
-      .eq("userid", userId)
+      .eq("userId", userId)
       .eq("paymentstatus", "COMPLETED")
       .eq("isactive", true)
       .order("activatedat", { ascending: false });
