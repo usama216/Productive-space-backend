@@ -49,6 +49,8 @@ const newPackageRoutes = require("./routes/newPackages");
 const packagePaymentRoutes = require("./routes/packagePayment");
 const packageUsageRoutes = require("./routes/packageUsage");
 const adminPackageRoutes = require("./routes/adminPackages");
+const adminPackageUsageRoutes = require("./routes/adminPackageUsage");
+const simpleTestRoutes = require("./routes/simpleTest");
 
 // Swagger documentation setup
 const { swaggerUi, specs } = require('./swagger');
@@ -115,7 +117,10 @@ app.use("/api/packages", packageRoutes);
 app.use("/api/packages", packagePaymentRoutes);
 app.use("/api/new-packages", newPackageRoutes);
 app.use("/api/packages", packageUsageRoutes);
+app.use("/api/admin/packages", adminPackageUsageRoutes);
 app.use("/api/admin/packages", adminPackageRoutes);
+app.use("/api/test", simpleTestRoutes);
+app.use("/api/booking", require('./routes/packageApplication'));
 
 // Manual cleanup endpoint for testing
 app.post('/api/cleanup-unpaid-bookings', async (req, res) => {

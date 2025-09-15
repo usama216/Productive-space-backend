@@ -30,7 +30,7 @@ exports.handlePackageUsage = async (userId, packageId, hoursUsed, bookingId, loc
         )
       `)
       .eq("userId", userId)
-      .eq("packageid", packageId)
+      .eq("packageId", packageId)
       .eq("paymentstatus", "COMPLETED")
       .eq("isactive", true)
       .gte("expiresat", new Date().toISOString()) // Not expired
@@ -49,10 +49,10 @@ exports.handlePackageUsage = async (userId, packageId, hoursUsed, bookingId, loc
     const { data: availablePasses, error: passesError } = await supabase
       .from("UserPass")
       .select("*")
-      .eq("packagePurchaseId", userPackages[0].id)
+      .eq("packagepurchaseid", userPackages[0].id)
       .eq("status", "ACTIVE")
       .gt("remainingCount", 0) // Has remaining passes
-      .order("createdAt", { ascending: true }); // Use oldest first
+      .order("createdat", { ascending: true }); // Use oldest first
 
     if (passesError) {
       console.error("Error fetching available passes:", passesError);
@@ -80,17 +80,17 @@ exports.handlePackageUsage = async (userId, packageId, hoursUsed, bookingId, loc
     // Update the pass with new remaining count
     const updateData = {
       remainingCount: newRemainingCount,
-      updatedAt: new Date().toISOString()
+      updatedat: new Date().toISOString()
     };
 
     // If pass is fully used, mark it as used
     if (isPassFullyUsed) {
       updateData.status = "USED";
-      updateData.usedAt = new Date().toISOString();
-      updateData.bookingId = bookingId;
-      updateData.locationId = location;
-      updateData.startTime = startTime;
-      updateData.endTime = endTime;
+      updateData.usedat = new Date().toISOString();
+      updateData.bookingid = bookingId;
+      updateData.locationid = location;
+      updateData.starttime = startTime;
+      updateData.endtime = endTime;
     }
 
     const { error: updatePassError } = await supabase

@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS "Booking" (
     paymentId UUID,
     promoCodeId UUID, -- NEW: Reference to applied promo code
     discountAmount DECIMAL(10,2) DEFAULT 0, -- NEW: Amount discounted by promo code
+    packageId UUID, -- NEW: Package ID used for count tracking
+    packageUsed BOOLEAN DEFAULT FALSE, -- NEW: Whether package was used
     createdAt TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updatedAt TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

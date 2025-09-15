@@ -36,7 +36,9 @@ exports.createBooking = async (req, res) => {
       confirmedPayment,
       paymentId,
       promoCodeId, // Promo code ID
-      discountAmount // Discount amount applied
+      discountAmount, // Discount amount applied
+      packageId, // Package ID for count tracking
+      packageUsed // Package used flag
     } = req.body;
 
     // Check if booking with this ID already exists
@@ -246,6 +248,8 @@ exports.createBooking = async (req, res) => {
           paymentId,
           promocodeid: promoCodeId, // Use schema field name
           discountamount: discountAmount, // Use schema field name
+          packageId: packageId, // Package ID for count tracking
+          packageUsed: packageUsed, // Package used flag
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }
@@ -484,6 +488,53 @@ exports.confirmBookingPayment = async (req, res) => {
       } catch (promoError) {
         console.error("❌ Error recording promo code usage:", promoError);
         // Don't fail the payment confirmation if promo code tracking fails
+      }
+    }
+
+    // Handle package usage if package was used
+    if (data.packageId && data.packageUsed) {
+      try {
+        console.log(`📦 Processing package usage for booking ${data.id}, package ${data.packageId}`);
+        
+        // Calculate hours used from booking duration
+        const startTime = new Date(data.startAt);
+        const endTime = new Date(data.endAt);
+        const hoursUsed = (endTime - startTime) / (1000 * 60 * 60); // Convert to hours
+        
+        // Import the package usage helper
+        const { handlePackageUsage } = require('../utils/packageUsageHelper');
+        
+        const packageUsageResult = await handlePackageUsage(
+          data.userId,
+          data.packageId,
+          hoursUsed,
+          data.id,
+          data.location,
+          data.startAt,
+          data.endAt
+        );
+
+        if (packageUsageResult.success) {
+          console.log(`✅ Package usage recorded: ${packageUsageResult.passUsed} passes used, ${packageUsageResult.remainingCount} remaining`);
+          
+          // Update booking with package usage details
+          await supabase
+            .from("Booking")
+            .update({
+              packagePassUsed: packageUsageResult.passUsed,
+              passType: packageUsageResult.passType,
+              remainingCount: packageUsageResult.remainingCount,
+              isPassFullyUsed: packageUsageResult.isPassFullyUsed,
+              updatedAt: new Date().toISOString()
+            })
+            .eq("id", data.id);
+        } else {
+          console.error("❌ Error recording package usage:", packageUsageResult.error);
+          // Don't fail the payment confirmation if package tracking fails
+        }
+      } catch (packageError) {
+        console.error("❌ Error recording package usage:", packageError);
+        // Don't fail the payment confirmation if package tracking fails
       }
     }
 

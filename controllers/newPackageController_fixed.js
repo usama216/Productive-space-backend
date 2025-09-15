@@ -172,7 +172,7 @@ exports.purchasePackage = async (req, res) => {
       .insert([{
         id: uuidv4(),
         userid: userId,
-        packageid: packageId,
+        packageId: packageId,
         quantity: quantity,
         totalamount: totalAmount,
         paymentstatus: "PENDING",
@@ -260,7 +260,7 @@ exports.getUserPackages = async (req, res) => {
         const { data: passes, error: passesError } = await supabase
           .from("UserPass")
           .select("status")
-          .eq("packagepurchaseid", purchase.id);
+          .eq("packagePurchaseId", purchase.id);
 
         if (passesError) {
           console.error("Error fetching passes:", passesError);
@@ -275,7 +275,7 @@ exports.getUserPackages = async (req, res) => {
         return {
           id: purchase.id,
           orderId: purchase.orderid,
-          packageId: purchase.packageid,
+          packageId: purchase.packageId,
           packageName: purchase.Package.name,
           packageType: purchase.Package.packagetype,
           targetRole: purchase.Package.targetrole,
@@ -565,7 +565,7 @@ exports.deletePackage = async (req, res) => {
     const { data: purchases, error: checkError } = await supabase
       .from("PackagePurchase")
       .select("id")
-      .eq("packageid", id)
+      .eq("packageId", id)
       .limit(1);
 
     if (checkError) {
@@ -638,7 +638,7 @@ exports.getAllPackagePurchases = async (req, res) => {
 
     // Apply filters
     if (userId) query = query.eq("userid", userId);
-    if (packageId) query = query.eq("packageid", packageId);
+    if (packageId) query = query.eq("packageId", packageId);
     if (paymentStatus) query = query.eq("paymentstatus", paymentStatus.toUpperCase());
     if (role) query = query.eq("Package.targetrole", role.toUpperCase());
 
@@ -669,7 +669,7 @@ exports.getAllPackagePurchases = async (req, res) => {
       userEmail: purchase.User.email,
       userName: `${purchase.User.firstName} ${purchase.User.lastName}`,
       userMemberType: purchase.User.memberType,
-      packageId: purchase.packageid,
+      packageId: purchase.packageId,
       packageName: purchase.Package.name,
       packageType: purchase.Package.packagetype,
       targetRole: purchase.Package.targetrole,

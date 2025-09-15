@@ -221,20 +221,20 @@ async function createUserPasses(packagePurchase) {
       // Create a single UserPass record with count-based system
       userPasses.push({
         id: uuidv4(),
-        packagePurchaseId: packagePurchase.id,
+        packagepurchaseid: packagePurchase.id,
         userId: packagePurchase.userId,
-        passType: packageType, // HALF_DAY, FULL_DAY, or SEMESTER_BUNDLE
+        passtype: packageType, // HALF_DAY, FULL_DAY, or SEMESTER_BUNDLE
         totalCount: passCount, // Total number of passes
         remainingCount: passCount, // Remaining passes
         status: "ACTIVE",
-        usedAt: null,
-        bookingId: null,
-        locationId: null,
-        startTime: null,
-        endTime: null,
+        usedat: null,
+        bookingid: null,
+        locationid: null,
+        starttime: null,
+        endtime: null,
         expiresAt: new Date(Date.now() + (validityDays * 24 * 60 * 60 * 1000)).toISOString(), // When this pass expires
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        createdat: new Date().toISOString(),
+        updatedat: new Date().toISOString()
       });
     }
 
@@ -452,7 +452,9 @@ exports.confirmPackagePayment = async (req, res) => {
 
     // Create UserPass records based on package contents
     try {
+      console.log("Creating UserPass records for package purchase:", packagePurchase.id);
       await createUserPasses(packagePurchase);
+      console.log("UserPass records created successfully");
     } catch (createPassesError) {
       console.error("Error creating user passes on first attempt:", createPassesError);
       

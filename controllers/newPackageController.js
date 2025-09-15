@@ -279,15 +279,27 @@ exports.getUserPackages = async (req, res) => {
           .eq("packagepurchaseid", purchase.id);
 
         if (passesError) {
-          console.error("Error fetching passes:", passesError);
+          console.error("Error fetching passes for purchase", purchase.id, ":", passesError);
           return purchase;
         }
+
+        console.log(`Found ${passes.length} passes for purchase ${purchase.id}:`, passes);
 
         // Count-based system: use totalCount and remainingCount
         const totalPasses = passes.reduce((sum, pass) => sum + (pass.totalCount || 0), 0);
         const activePasses = passes.filter(p => p.status === "ACTIVE").reduce((sum, pass) => sum + (pass.remainingCount || 0), 0);
         const usedPasses = passes.reduce((sum, pass) => sum + ((pass.totalCount || 0) - (pass.remainingCount || 0)), 0);
         const expiredPasses = passes.filter(p => p.status === "EXPIRED").reduce((sum, pass) => sum + (pass.totalCount || 0), 0);
+
+        console.log(`Purchase ${purchase.id} - Total: ${totalPasses}, Active: ${activePasses}, Used: ${usedPasses}, Expired: ${expiredPasses}`);
+
+        // If no UserPass records found, use package passCount as fallback
+        const finalTotalPasses = totalPasses > 0 ? totalPasses : (purchase.Package.passCount || 0);
+        const finalActivePasses = activePasses > 0 ? activePasses : (purchase.Package.passCount || 0);
+        const finalUsedPasses = usedPasses;
+        const finalExpiredPasses = expiredPasses;
+
+        console.log(`Purchase ${purchase.id} - Final Total: ${finalTotalPasses}, Final Active: ${finalActivePasses}, Used: ${finalUsedPasses}, Expired: ${finalExpiredPasses}`);
 
         // Calculate activatedAt and expiresAt for completed packages
         let activatedAt = purchase.activatedAt;
@@ -322,10 +334,10 @@ exports.getUserPackages = async (req, res) => {
           activatedAt: activatedAt,
           expiresAt: expiresAt,
           isExpired: expiresAt ? new Date() > new Date(expiresAt) : false,
-          totalPasses: totalPasses,
-          usedPasses: usedPasses,
-          remainingPasses: activePasses,
-          expiredPasses: expiredPasses,
+          totalPasses: finalTotalPasses,
+          usedPasses: finalUsedPasses,
+          remainingPasses: finalActivePasses,
+          expiredPasses: finalExpiredPasses,
           createdAt: purchase.createdAt
         };
       })
