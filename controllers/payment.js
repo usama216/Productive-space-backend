@@ -288,10 +288,18 @@ async function createUserPasses(packagePurchase) {
       for (let i = 0; i < packageContents.halfDayPasses; i++) {
         userPasses.push({
           id: uuidv4(),
-          packagepurchaseid: packagePurchase.id,
-          passtype: "HALF_DAY",
-          hours: packageContents.halfDayHours || 6,
+          packagePurchaseId: packagePurchase.id,
+          userId: packagePurchase.userId,
+          passType: "HALF_DAY",
+          totalCount: 1,
+          remainingCount: 1,
           status: "ACTIVE",
+          usedAt: null,
+          bookingId: null,
+          locationId: null,
+          startTime: null,
+          endTime: null,
+          expiresAt: new Date(Date.now() + (packagePurchase.Package.validityDays * 24 * 60 * 60 * 1000)).toISOString(),
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         });
@@ -303,10 +311,18 @@ async function createUserPasses(packagePurchase) {
       for (let i = 0; i < packageContents.fullDayPasses; i++) {
         userPasses.push({
           id: uuidv4(),
-          packagepurchaseid: packagePurchase.id,
-          passtype: "FULL_DAY",
-          hours: packageContents.fullDayHours || 12,
+          packagePurchaseId: packagePurchase.id,
+          userId: packagePurchase.userId,
+          passType: "FULL_DAY",
+          totalCount: 1,
+          remainingCount: 1,
           status: "ACTIVE",
+          usedAt: null,
+          bookingId: null,
+          locationId: null,
+          startTime: null,
+          endTime: null,
+          expiresAt: new Date(Date.now() + (packagePurchase.Package.validityDays * 24 * 60 * 60 * 1000)).toISOString(),
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         });
@@ -317,10 +333,18 @@ async function createUserPasses(packagePurchase) {
     if (packagePurchase.Package.packagetype === "SEMESTER_BUNDLE") {
       userPasses.push({
         id: uuidv4(),
-        packagepurchaseid: packagePurchase.id,
-        passtype: "SEMESTER",
-        hours: packageContents.totalHours || 200,
+        packagePurchaseId: packagePurchase.id,
+        userId: packagePurchase.userId,
+        passType: "SEMESTER",
+        totalCount: 1,
+        remainingCount: 1,
         status: "ACTIVE",
+        usedAt: null,
+        bookingId: null,
+        locationId: null,
+        startTime: null,
+        endTime: null,
+        expiresAt: new Date(Date.now() + (packagePurchase.Package.validityDays * 24 * 60 * 60 * 1000)).toISOString(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });

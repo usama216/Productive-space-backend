@@ -119,7 +119,9 @@ exports.purchasePackage = async (req, res) => {
       userId,
       packageId,
       quantity = 1,
-      customerInfo
+      customerInfo,
+      totalAmount, // Optional: if provided, use this instead of calculating
+      paymentMethod // Optional: payment method used
     } = req.body;
 
     // Validate required fields
@@ -162,7 +164,18 @@ exports.purchasePackage = async (req, res) => {
     // Calculate total amount
     const baseAmount = parseFloat(package.price) * quantity;
     const outletFee = parseFloat(package.outletFee) * quantity;
-    const totalAmount = baseAmount + outletFee;
+    const calculatedTotalAmount = baseAmount + outletFee;
+    
+    // Use provided totalAmount if available (includes card fees), otherwise use calculated amount
+    const finalTotalAmount = totalAmount ? parseFloat(totalAmount) : calculatedTotalAmount;
+    
+    console.log('Package purchase amount calculation:', {
+      baseAmount,
+      outletFee,
+      calculatedTotalAmount,
+      providedTotalAmount: totalAmount,
+      finalTotalAmount
+    });
 
     // Generate order ID
     const orderId = `PKG_${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
@@ -175,8 +188,9 @@ exports.purchasePackage = async (req, res) => {
         userId: userId,
         packageId: packageId,
         quantity: quantity,
-        totalAmount: totalAmount,
+        totalAmount: finalTotalAmount,
         paymentStatus: "PENDING",
+        paymentMethod: paymentMethod, // Store payment method
         customerInfo: customerInfo,
         orderId: orderId,
         createdAt: new Date().toISOString(),
@@ -203,7 +217,7 @@ exports.purchasePackage = async (req, res) => {
         packageType: package.packageType,
         targetRole: package.targetRole,
         quantity: quantity,
-        totalAmount: totalAmount,
+        totalAmount: finalTotalAmount,
         paymentStatus: "PENDING"
       }
     });

@@ -52,3 +52,4 @@ SELECT
 FROM "UserPass";
 
 SELECT 'UserPass migration to count-based system completed!' as status;
+

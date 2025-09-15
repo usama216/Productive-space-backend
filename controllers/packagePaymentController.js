@@ -190,29 +190,51 @@ exports.handlePackageWebhook = async (req, res) => {
 // 🎯 Helper function to create UserPass records
 async function createUserPasses(packagePurchase) {
   try {
+    console.log("createUserPasses called with packagePurchase:", JSON.stringify(packagePurchase, null, 2));
+    
+    // Validate required data
+    if (!packagePurchase || !packagePurchase.Package) {
+      throw new Error("Package data is missing or incomplete");
+    }
+    
+    if (!packagePurchase.id || !packagePurchase.userId) {
+      throw new Error("Package purchase ID or user ID is missing");
+    }
+    
     const userPasses = [];
 
     // Create count-based passes using the new schema
     const passCount = packagePurchase.Package.passCount || 0;
+    console.log("Pass count from package:", passCount);
     
     if (passCount > 0) {
+      // Validate package type
+      const packageType = packagePurchase.Package.packageType;
+      if (!packageType || !['HALF_DAY', 'FULL_DAY', 'SEMESTER_BUNDLE'].includes(packageType)) {
+        throw new Error(`Invalid package type: ${packageType}`);
+      }
+      
+      // Validate validity days
+      const validityDays = packagePurchase.Package.validityDays || 30;
+      console.log("Package type:", packageType, "Validity days:", validityDays);
+      
       // Create a single UserPass record with count-based system
       userPasses.push({
         id: uuidv4(),
-        packagepurchaseid: packagePurchase.id,
-        userid: packagePurchase.userId,
-        passtype: packagePurchase.Package.packageType, // HALF_DAY, FULL_DAY, or SEMESTER
+        packagePurchaseId: packagePurchase.id,
+        userId: packagePurchase.userId,
+        passType: packageType, // HALF_DAY, FULL_DAY, or SEMESTER_BUNDLE
         totalCount: passCount, // Total number of passes
         remainingCount: passCount, // Remaining passes
         status: "ACTIVE",
-        usedat: null,
-        bookingid: null,
-        locationid: null,
-        starttime: null,
-        endtime: null,
-        expiresat: new Date(Date.now() + (packagePurchase.Package.validityDays * 24 * 60 * 60 * 1000)).toISOString(), // When this pass expires
-        createdat: new Date().toISOString(),
-        updatedat: new Date().toISOString()
+        usedAt: null,
+        bookingId: null,
+        locationId: null,
+        startTime: null,
+        endTime: null,
+        expiresAt: new Date(Date.now() + (validityDays * 24 * 60 * 60 * 1000)).toISOString(), // When this pass expires
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       });
     }
 
@@ -221,16 +243,21 @@ async function createUserPasses(packagePurchase) {
 
     // Insert all user passes
     if (userPasses.length > 0) {
+      console.log("Attempting to insert user passes:", JSON.stringify(userPasses, null, 2));
+      
       const { error: insertError } = await supabase
         .from("UserPass")
         .insert(userPasses);
 
       if (insertError) {
         console.error("Error creating user passes:", insertError);
+        console.error("Insert data was:", JSON.stringify(userPasses, null, 2));
         throw insertError;
       }
 
       console.log(`Created ${userPasses.length} user passes for package purchase:`, packagePurchase.id);
+    } else {
+      console.log("No user passes to create for package purchase:", packagePurchase.id);
     }
 
   } catch (error) {
@@ -363,7 +390,13 @@ exports.confirmPackagePayment = async (req, res) => {
       });
     }
 
-    console.log("Found package purchase:", packagePurchase.id, packagePurchase.orderId);
+    console.log("Found package purchase:", {
+      id: packagePurchase.id,
+      orderId: packagePurchase.orderId,
+      totalAmount: packagePurchase.totalAmount,
+      paymentMethod: packagePurchase.paymentMethod,
+      paymentStatus: packagePurchase.paymentStatus
+    });
 
     // Check if payment is already completed
     if (packagePurchase.paymentStatus === "COMPLETED") {
@@ -379,13 +412,16 @@ exports.confirmPackagePayment = async (req, res) => {
           packageType: packagePurchase.Package.packageType,
           targetRole: packagePurchase.Package.targetRole,
           totalAmount: parseFloat(packagePurchase.totalAmount),
+          paymentMethod: packagePurchase.paymentMethod, // Add payment method
           activatedAt: packagePurchase.activatedAt || new Date().toISOString(),
           expiresAt: packagePurchase.expiresAt || new Date(Date.now() + (packagePurchase.Package.validityDays * 24 * 60 * 60 * 1000)).toISOString(),
           userInfo: {
             email: packagePurchase.User.email,
             name: `${packagePurchase.User.firstName} ${packagePurchase.User.lastName}`,
             memberType: packagePurchase.User.memberType
-          }
+          },
+          passCount: packagePurchase.Package.passCount,
+          validityDays: packagePurchase.Package.validityDays
         }
       });
     }
@@ -415,30 +451,60 @@ exports.confirmPackagePayment = async (req, res) => {
     }
 
     // Create UserPass records based on package contents
-    await createUserPasses(packagePurchase);
+    try {
+      await createUserPasses(packagePurchase);
+    } catch (createPassesError) {
+      console.error("Error creating user passes on first attempt:", createPassesError);
+      
+      // Retry once after a short delay (race condition handling)
+      try {
+        console.log("Retrying user passes creation after 1 second delay...");
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await createUserPasses(packagePurchase);
+        console.log("User passes created successfully on retry");
+      } catch (retryError) {
+        console.error("Error creating user passes on retry:", retryError);
+        // Don't fail the entire payment confirmation if user passes creation fails
+        // The payment is still valid, just log the error
+      }
+    }
+
+    console.log('Package purchase data for response:', {
+      id: packagePurchase.id,
+      totalAmount: packagePurchase.totalAmount,
+      paymentMethod: packagePurchase.paymentMethod
+    });
+
+    const responseData = {
+      userPackageId: packagePurchase.id,
+      orderId: packagePurchase.orderId,
+      paymentStatus: "COMPLETED",
+      hitpayReference: hitpayReference,
+      packageName: packagePurchase.Package.name,
+      packageType: packagePurchase.Package.packageType,
+      targetRole: packagePurchase.Package.targetRole,
+      totalAmount: parseFloat(packagePurchase.totalAmount),
+      paymentMethod: packagePurchase.paymentMethod, // Add payment method
+      activatedAt: activatedAt,
+      expiresAt: expiresAt,
+      userInfo: {
+        email: packagePurchase.User.email,
+        name: `${packagePurchase.User.firstName} ${packagePurchase.User.lastName}`,
+        memberType: packagePurchase.User.memberType
+      },
+      passCount: packagePurchase.Package.passCount,
+      validityDays: packagePurchase.Package.validityDays
+    };
+
+    console.log('Response data being sent:', {
+      paymentMethod: responseData.paymentMethod,
+      totalAmount: responseData.totalAmount
+    });
 
     res.json({
       success: true,
       message: "Package payment confirmed successfully",
-      data: {
-        userPackageId: packagePurchase.id,
-        orderId: packagePurchase.orderId,
-        paymentStatus: "COMPLETED",
-        hitpayReference: hitpayReference,
-        packageName: packagePurchase.Package.name,
-        packageType: packagePurchase.Package.packageType,
-        targetRole: packagePurchase.Package.targetRole,
-        totalAmount: parseFloat(packagePurchase.totalAmount),
-        activatedAt: activatedAt,
-        expiresAt: expiresAt,
-        userInfo: {
-          email: packagePurchase.User.email,
-          name: `${packagePurchase.User.firstName} ${packagePurchase.User.lastName}`,
-          memberType: packagePurchase.User.memberType
-        },
-        passCount: packagePurchase.Package.passCount,
-        validityDays: packagePurchase.Package.validityDays
-      }
+      data: responseData
     });
 
   } catch (err) {
