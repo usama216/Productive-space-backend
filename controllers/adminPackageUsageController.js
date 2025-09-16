@@ -123,17 +123,17 @@ exports.getPackageUsageAnalytics = async (req, res) => {
     const packageUsages = await Promise.all((allPurchases || []).map(async (purchase) => {
       try {
         // Get UserPass records for this specific purchase
-        const { data: userPasses, error: passesError } = await supabase
-          .from('UserPass')
-          .select(`
-            id,
-            totalCount,
-            remainingCount,
-            status,
-            usedAt,
-            createdAt
-          `)
-          .eq('packagepurchaseid', purchase.id);
+         const { data: userPasses, error: passesError } = await supabase
+           .from('UserPass')
+           .select(`
+             id,
+             totalCount,
+             remainingCount,
+             status,
+             usedat,
+             createdat
+           `)
+           .eq('packagepurchaseid', purchase.id);
 
         if (passesError) {
           console.error(`Error fetching UserPass for purchase ${purchase.id}:`, passesError);
@@ -164,14 +164,14 @@ exports.getPackageUsageAnalytics = async (req, res) => {
         let usedPasses = 0;
         let lastUsed = null;
 
-        for (const pass of userPasses || []) {
-          totalPasses += pass.totalCount || 0;
-          usedPasses += (pass.totalCount || 0) - (pass.remainingCount || 0);
-          
-          if (pass.usedAt && (!lastUsed || new Date(pass.usedAt) > new Date(lastUsed))) {
-            lastUsed = pass.usedAt;
-          }
-        }
+         for (const pass of userPasses || []) {
+           totalPasses += pass.totalCount || 0;
+           usedPasses += (pass.totalCount || 0) - (pass.remainingCount || 0);
+           
+           if (pass.usedat && (!lastUsed || new Date(pass.usedat) > new Date(lastUsed))) {
+             lastUsed = pass.usedat;
+           }
+         }
 
         const remainingPasses = totalPasses - usedPasses;
         const usagePercentage = totalPasses > 0 ? (usedPasses / totalPasses) * 100 : 0;

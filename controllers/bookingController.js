@@ -492,18 +492,33 @@ exports.confirmBookingPayment = async (req, res) => {
     }
 
     // Handle package usage if package was used
+    console.log(`\n🎯 ===== PACKAGE USAGE CHECK =====`);
+    console.log(`📋 Booking ID: ${data.id}`);
+    console.log(`📋 User ID: ${data.userId}`);
+    console.log(`📋 Package ID: ${data.packageId}`);
+    console.log(`📋 Package Used: ${data.packageUsed}`);
+    console.log(`📋 Confirmed Payment: ${data.confirmedPayment}`);
+    
     if (data.packageId && data.packageUsed) {
       try {
-        console.log(`📦 Processing package usage for booking ${data.id}, package ${data.packageId}`);
+        console.log(`\n📦 ===== PROCESSING PACKAGE USAGE =====`);
+        console.log(`📦 Booking: ${data.id}`);
+        console.log(`📦 Package: ${data.packageId}`);
+        console.log(`📦 User: ${data.userId}`);
         
         // Calculate hours used from booking duration
         const startTime = new Date(data.startAt);
         const endTime = new Date(data.endAt);
         const hoursUsed = (endTime - startTime) / (1000 * 60 * 60); // Convert to hours
+        console.log(`📦 Hours Used: ${hoursUsed}`);
+        console.log(`📦 Location: ${data.location}`);
+        console.log(`📦 Start Time: ${data.startAt}`);
+        console.log(`📦 End Time: ${data.endAt}`);
         
         // Import the package usage helper
         const { handlePackageUsage } = require('../utils/packageUsageHelper');
         
+        console.log(`📦 Calling handlePackageUsage...`);
         const packageUsageResult = await handlePackageUsage(
           data.userId,
           data.packageId,
@@ -514,11 +529,18 @@ exports.confirmBookingPayment = async (req, res) => {
           data.endAt
         );
 
+        console.log(`📦 Package usage result:`, JSON.stringify(packageUsageResult, null, 2));
+
         if (packageUsageResult.success) {
-          console.log(`✅ Package usage recorded: ${packageUsageResult.passUsed} passes used, ${packageUsageResult.remainingCount} remaining`);
+          console.log(`\n✅ ===== PACKAGE USAGE SUCCESS =====`);
+          console.log(`✅ Pass Used: ${packageUsageResult.passUsed}`);
+          console.log(`✅ Remaining Count: ${packageUsageResult.remainingCount}`);
+          console.log(`✅ Pass Type: ${packageUsageResult.passType}`);
+          console.log(`✅ Is Pass Fully Used: ${packageUsageResult.isPassFullyUsed}`);
           
           // Update booking with package usage details
-          await supabase
+          console.log(`📦 Updating booking with package usage details...`);
+          const { error: updateError } = await supabase
             .from("Booking")
             .update({
               packagePassUsed: packageUsageResult.passUsed,
@@ -528,15 +550,29 @@ exports.confirmBookingPayment = async (req, res) => {
               updatedAt: new Date().toISOString()
             })
             .eq("id", data.id);
+          
+          if (updateError) {
+            console.error(`❌ Error updating booking:`, updateError);
+          } else {
+            console.log(`✅ Booking updated successfully with package usage details`);
+          }
         } else {
-          console.error("❌ Error recording package usage:", packageUsageResult.error);
+          console.error(`\n❌ ===== PACKAGE USAGE FAILED =====`);
+          console.error(`❌ Error: ${packageUsageResult.error}`);
+          console.error(`❌ Full result:`, JSON.stringify(packageUsageResult, null, 2));
           // Don't fail the payment confirmation if package tracking fails
         }
       } catch (packageError) {
-        console.error("❌ Error recording package usage:", packageError);
+        console.error(`\n❌ ===== PACKAGE USAGE EXCEPTION =====`);
+        console.error(`❌ Exception:`, packageError);
+        console.error(`❌ Stack:`, packageError.stack);
         // Don't fail the payment confirmation if package tracking fails
       }
+    } else {
+      console.log(`\n⚠️ ===== PACKAGE USAGE SKIPPED =====`);
+      console.log(`⚠️ Reason: packageId=${data.packageId}, packageUsed=${data.packageUsed}`);
     }
+    console.log(`🎯 ===== END PACKAGE USAGE CHECK =====\n`);
 
     const userData = {
       name: "Customer", 

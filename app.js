@@ -122,6 +122,51 @@ app.use("/api/admin/packages", adminPackageRoutes);
 app.use("/api/test", simpleTestRoutes);
 app.use("/api/booking", require('./routes/packageApplication'));
 
+// Test endpoint for package usage
+app.post('/api/test-package-usage', async (req, res) => {
+  try {
+    const { handlePackageUsage } = require('./utils/packageUsageHelper');
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+    
+    // First check if UserPass records exist
+    const { data: userPasses, error: checkError } = await supabase
+      .from('UserPass')
+      .select('*')
+      .eq('packagepurchaseid', req.body.packageId);
+    
+    console.log('UserPass records for package:', userPasses);
+    console.log('Check error:', checkError);
+    
+    // Try a simple update test
+    if (userPasses && userPasses.length > 0) {
+      const testPass = userPasses[0];
+      console.log('Testing simple update on pass:', testPass.id);
+      
+      const { error: testError } = await supabase
+        .from('UserPass')
+        .update({ remainingCount: testPass.remainingCount - 1 })
+        .eq('id', testPass.id);
+      
+      console.log('Test update error:', testError);
+    }
+    
+    const result = await handlePackageUsage(
+      req.body.userId,
+      req.body.packageId,
+      req.body.hoursUsed || 5,
+      req.body.bookingId || `test-${Date.now()}`,
+      req.body.location || 'Kovan',
+      req.body.startTime || new Date().toISOString(),
+      req.body.endTime || new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString()
+    );
+    
+    res.json({ success: true, result, userPasses });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Manual cleanup endpoint for testing
 app.post('/api/cleanup-unpaid-bookings', async (req, res) => {
   try {
