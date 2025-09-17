@@ -1,182 +1,13 @@
-// Package Usage Controller for Admin Dashboard
 const { createClient } = require('@supabase/supabase-js');
-
-/**
- * @swagger
- * components:
- *   schemas:
- *     PackageUsageData:
- *       type: object
- *       properties:
- *         id:
- *           type: string
- *           description: Package purchase ID
- *         userId:
- *           type: string
- *           description: User ID who purchased the package
- *         userName:
- *           type: string
- *           description: User's full name
- *         userEmail:
- *           type: string
- *           description: User's email address
- *         packageName:
- *           type: string
- *           description: Name of the package
- *         packageType:
- *           type: string
- *           enum: [HALF_DAY, FULL_DAY, SEMESTER_BUNDLE]
- *           description: Type of package
- *         targetRole:
- *           type: string
- *           enum: [MEMBER, STUDENT, TUTOR]
- *           description: Target role for the package
- *         totalPasses:
- *           type: integer
- *           description: Total number of passes in the package
- *         usedPasses:
- *           type: integer
- *           description: Number of passes used
- *         activePasses:
- *           type: integer
- *           description: Number of active passes remaining
- *         expiredPasses:
- *           type: integer
- *           description: Number of expired passes
- *         totalAmount:
- *           type: number
- *           description: Total amount paid for the package
- *         purchaseDate:
- *           type: string
- *           format: date-time
- *           description: Date when package was purchased
- *         expiryDate:
- *           type: string
- *           format: date-time
- *           description: Date when package expires
- *         isExpired:
- *           type: boolean
- *           description: Whether the package has expired
- *         usagePercentage:
- *           type: number
- *           description: Percentage of passes used
- *     
- *     PackageStats:
- *       type: object
- *       properties:
- *         totalPurchases:
- *           type: integer
- *           description: Total number of package purchases
- *         totalRevenue:
- *           type: number
- *           description: Total revenue from packages
- *         totalActivePasses:
- *           type: integer
- *           description: Total number of active passes
- *         totalUsedPasses:
- *           type: integer
- *           description: Total number of used passes
- *         averageUsageRate:
- *           type: number
- *           description: Average usage rate across all packages
- *     
- *     PackageAnalytics:
- *       type: object
- *       properties:
- *         packageId:
- *           type: string
- *           description: Package ID
- *         packageName:
- *           type: string
- *           description: Package name
- *         packageType:
- *           type: string
- *           enum: [HALF_DAY, FULL_DAY, SEMESTER_BUNDLE]
- *           description: Package type
- *         targetRole:
- *           type: string
- *           enum: [MEMBER, STUDENT, TUTOR]
- *           description: Target role
- *         price:
- *           type: number
- *           description: Current price
- *         originalPrice:
- *           type: number
- *           description: Original price before discount
- *         totalPurchases:
- *           type: integer
- *           description: Total number of purchases
- *         totalRevenue:
- *           type: number
- *           description: Total revenue from this package
- *         averageRevenuePerPurchase:
- *           type: number
- *           description: Average revenue per purchase
- *         totalPasses:
- *           type: integer
- *           description: Total passes across all purchases
- *         usedPasses:
- *           type: integer
- *           description: Total used passes
- *         usageRate:
- *           type: number
- *           description: Usage rate percentage
- *         discount:
- *           type: integer
- *           description: Discount percentage
- */
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_KEY
 );
 
-/**
- * @swagger
- * /api/packages/admin/usage:
- *   get:
- *     summary: Get comprehensive package usage data for admin
- *     description: Retrieves detailed package usage information across all users for admin dashboard
- *     tags: [Package Usage]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Package usage data retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 usage:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/PackageUsageData'
- *                 stats:
- *                   $ref: '#/components/schemas/PackageStats'
- *       500:
- *         description: Internal server error
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: false
- *                 error:
- *                   type: string
- *                   example: "Internal server error"
- */
-// Get comprehensive package usage data for admin
 exports.getPackageUsageData = async (req, res) => {
   try {
-    console.log('📊 Fetching package usage data for admin...');
-
-    // Get all package purchases with related data
+   
     const { data: purchases, error: purchasesError } = await supabase
       .from('PackagePurchase')
       .select(`
@@ -216,7 +47,6 @@ exports.getPackageUsageData = async (req, res) => {
       .order('createdAt', { ascending: false });
 
     if (purchasesError) {
-      console.error('Error fetching package purchases:', purchasesError);
       return res.status(500).json({
         success: false,
         error: 'Failed to fetch package purchases',
@@ -224,18 +54,14 @@ exports.getPackageUsageData = async (req, res) => {
       });
     }
 
-    // Process the data to create usage summary for count-based system
     const usageData = purchases.map(purchase => {
-      // For count-based system, we get totals from UserPass records
       let totalPasses = 0;
       let usedPasses = 0;
       let activePasses = 0;
       let expiredPasses = 0;
       
       if (purchase.UserPass && purchase.UserPass.length > 0) {
-        // For current UserPass structure (still using hours column)
         purchase.UserPass.forEach(pass => {
-          // Each UserPass record represents one pass (regardless of hours)
           totalPasses += 1;
           if (pass.status === 'USED') {
             usedPasses += 1;
@@ -246,9 +72,8 @@ exports.getPackageUsageData = async (req, res) => {
           }
         });
       } else {
-        // Fallback to package passCount if no UserPass records
         totalPasses = purchase.Package?.passCount || 0;
-        activePasses = totalPasses; // Assume all are active if no UserPass records
+        activePasses = totalPasses; 
       }
       
       const isExpired = purchase.expiresAt ? new Date() > new Date(purchase.expiresAt) : false;
@@ -270,11 +95,11 @@ exports.getPackageUsageData = async (req, res) => {
         purchaseDate: purchase.createdAt,
         expiryDate: purchase.expiresAt,
         isExpired,
-        usagePercentage: Math.round(usagePercentage * 10) / 10 // Round to 1 decimal place
+        usagePercentage: Math.round(usagePercentage * 10) / 10
       };
     });
 
-    // Calculate statistics
+ 
     const stats = {
       totalPurchases: usageData.length,
       totalRevenue: usageData.reduce((sum, item) => sum + item.totalAmount, 0),
@@ -285,7 +110,6 @@ exports.getPackageUsageData = async (req, res) => {
         : 0
     };
 
-    console.log(`✅ Package usage data fetched: ${usageData.length} purchases, $${stats.totalRevenue.toFixed(2)} revenue`);
 
     res.json({
       success: true,
@@ -297,7 +121,6 @@ exports.getPackageUsageData = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error in getPackageUsageData:', error);
     res.status(500).json({
       success: false,
       error: 'Internal server error',
@@ -306,45 +129,6 @@ exports.getPackageUsageData = async (req, res) => {
   }
 };
 
-/**
- * @swagger
- * /api/packages/user/{userId}:
- *   get:
- *     summary: Get package usage for specific user
- *     description: Retrieves package usage information for a specific user
- *     tags: [Package Usage]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: userId
- *         required: true
- *         schema:
- *           type: string
- *         description: User ID
- *     responses:
- *       200:
- *         description: User package usage data retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 usage:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/PackageUsageData'
- *                 stats:
- *                   $ref: '#/components/schemas/PackageStats'
- *       400:
- *         description: Bad request - User ID is required
- *       500:
- *         description: Internal server error
- */
-// Get package usage summary by user
 exports.getUserPackageUsage = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -356,9 +140,7 @@ exports.getUserPackageUsage = async (req, res) => {
       });
     }
 
-    console.log(`📊 Fetching package usage for user: ${userId}`);
-
-    // Get user's package purchases
+   
     const { data: purchases, error: purchasesError } = await supabase
       .from('PackagePurchase')
       .select(`
@@ -391,7 +173,6 @@ exports.getUserPackageUsage = async (req, res) => {
       .order('createdAt', { ascending: false });
 
     if (purchasesError) {
-      console.error('Error fetching user package purchases:', purchasesError);
       return res.status(500).json({
         success: false,
         error: 'Failed to fetch user package purchases',
@@ -399,18 +180,14 @@ exports.getUserPackageUsage = async (req, res) => {
       });
     }
 
-    // Process user's package usage for count-based system
     const userUsage = purchases.map(purchase => {
-      // For count-based system, calculate from UserPass records
       let totalPasses = 0;
       let usedPasses = 0;
       let activePasses = 0;
       let expiredPasses = 0;
       
       if (purchase.UserPass && purchase.UserPass.length > 0) {
-        // For current UserPass structure (still using hours column)
         purchase.UserPass.forEach(pass => {
-          // Each UserPass record represents one pass (regardless of hours)
           totalPasses += 1;
           if (pass.status === 'USED') {
             usedPasses += 1;
@@ -421,9 +198,8 @@ exports.getUserPackageUsage = async (req, res) => {
           }
         });
       } else {
-        // Fallback to package passCount if no UserPass records
         totalPasses = purchase.Package?.passCount || 0;
-        activePasses = totalPasses; // Assume all are active if no UserPass records
+        activePasses = totalPasses; 
       }
       
       const isExpired = purchase.expiresAt ? new Date() > new Date(purchase.expiresAt) : false;
@@ -446,7 +222,7 @@ exports.getUserPackageUsage = async (req, res) => {
       };
     });
 
-    // Calculate user statistics
+   
     const userStats = {
       totalPurchases: userUsage.length,
       totalSpent: userUsage.reduce((sum, item) => sum + item.totalAmount, 0),
@@ -476,39 +252,9 @@ exports.getUserPackageUsage = async (req, res) => {
   }
 };
 
-/**
- * @swagger
- * /api/packages/admin/analytics:
- *   get:
- *     summary: Get package performance analytics
- *     description: Retrieves analytics data for all packages including revenue, usage rates, and performance metrics
- *     tags: [Package Usage]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Package analytics retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 analytics:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/PackageAnalytics'
- *       500:
- *         description: Internal server error
- */
-// Get package performance analytics
 exports.getPackageAnalytics = async (req, res) => {
   try {
-    console.log('📈 Fetching package analytics...');
-
-    // Get all packages with their purchase data
+   
     const { data: packages, error: packagesError } = await supabase
       .from('Package')
       .select(`
@@ -534,7 +280,6 @@ exports.getPackageAnalytics = async (req, res) => {
       .order('createdat', { ascending: false });
 
     if (packagesError) {
-      console.error('Error fetching packages:', packagesError);
       return res.status(500).json({
         success: false,
         error: 'Failed to fetch packages',
@@ -542,7 +287,7 @@ exports.getPackageAnalytics = async (req, res) => {
       });
     }
 
-    // Process package analytics
+   
     const analytics = packages.map(pkg => {
       const purchases = pkg.PackagePurchase || [];
       const completedPurchases = purchases.filter(p => p.paymentstatus === 'COMPLETED');
@@ -550,7 +295,6 @@ exports.getPackageAnalytics = async (req, res) => {
       const totalPurchases = completedPurchases.length;
       const totalRevenue = completedPurchases.reduce((sum, p) => sum + parseFloat(p.totalamount || 0), 0);
       
-      // Calculate pass usage across all purchases
       let totalPasses = 0;
       let usedPasses = 0;
       
@@ -580,7 +324,6 @@ exports.getPackageAnalytics = async (req, res) => {
       };
     });
 
-    // Sort by total revenue
     analytics.sort((a, b) => b.totalRevenue - a.totalRevenue);
 
     res.json({

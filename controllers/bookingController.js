@@ -15,7 +15,7 @@ exports.createBooking = async (req, res) => {
   try {
 
     const {
-      id, // Allow custom ID if provided
+      id, 
       bookingRef,
       userId,
       location,
@@ -35,13 +35,12 @@ exports.createBooking = async (req, res) => {
       bookedForEmails,
       confirmedPayment,
       paymentId,
-      promoCodeId, // Promo code ID
-      discountAmount, // Discount amount applied
-      packageId, // Package ID for count tracking
-      packageUsed // Package used flag
+      promoCodeId, 
+      discountAmount, 
+      packageId, 
+      packageUsed 
     } = req.body;
 
-    // Check if booking with this ID already exists
     if (id) {
       const { data: existingBooking, error: checkError } = await supabase
         .from("Booking")
@@ -58,7 +57,6 @@ exports.createBooking = async (req, res) => {
       }
     }
 
-    // Check if booking with this reference number already exists
     if (bookingRef) {
       const { data: existingRef, error: refError } = await supabase
         .from("Booking")
@@ -75,7 +73,6 @@ exports.createBooking = async (req, res) => {
       }
     }
 
-    // Check for duplicate bookings (same user, same time, same location)
     const { data: duplicateBookings, error: duplicateError } = await supabase
       .from("Booking")
       .select("id, bookingRef, startAt, endAt, location, userId")
@@ -84,10 +81,9 @@ exports.createBooking = async (req, res) => {
       .overlaps("startAt", startAt, "endAt", endAt);
 
     if (!duplicateError && duplicateBookings && duplicateBookings.length > 0) {
-      // Check if any of these are the same booking (same ID) or if they're truly duplicates
       const isSameBooking = duplicateBookings.some(booking => 
         booking.id === id || 
-        (Math.abs(new Date(booking.startAt) - new Date(startAt)) < 60000 && // Within 1 minute
+        (Math.abs(new Date(booking.startAt) - new Date(startAt)) < 60000 &&
          Math.abs(new Date(booking.endAt) - new Date(endAt)) < 60000)
       );
 
@@ -100,7 +96,6 @@ exports.createBooking = async (req, res) => {
       }
     }
 
-    // Check for seat conflicts - prevent booking seats that are already taken during overlapping times
     if (seatNumbers && seatNumbers.length > 0) {
       console.log(`🔍 Checking seat conflicts for seats: ${seatNumbers.join(', ')}`);
       
@@ -108,19 +103,17 @@ exports.createBooking = async (req, res) => {
         .from("Booking")
         .select("seatNumbers, startAt, endAt, bookingRef, userId, confirmedPayment, createdAt")
         .eq("location", location)
-        .in("confirmedPayment", [true, false]) // Include both confirmed and pending payments
-        .lt("startAt", endAt)  // Booking starts before requested end time
-        .gt("endAt", startAt); // Booking ends after requested start time
+        .in("confirmedPayment", [true, false])
+        .lt("startAt", endAt)  
+        .gt("endAt", startAt); 
 
       if (seatConflictError) {
-        console.error("Seat conflict check error:", seatConflictError);
         return res.status(500).json({
           error: "Failed to check seat availability",
           message: "Unable to verify seat availability"
         });
       }
 
-      // Check if any of the requested seats are already booked (both confirmed and pending)
       const allBookedSeats = conflictingBookings
         ?.flatMap(b => b.seatNumbers || [])
         .filter((seat, index, self) => self.indexOf(seat) === index) || [];
@@ -128,7 +121,6 @@ exports.createBooking = async (req, res) => {
       const conflictingSeats = seatNumbers.filter(seat => allBookedSeats.includes(seat));
 
       if (conflictingSeats.length > 0) {
-        // Separate confirmed vs pending conflicts for better error messaging
         const confirmedConflicts = conflictingBookings?.filter(b => 
           b.confirmedPayment && b.seatNumbers?.some(seat => conflictingSeats.includes(seat))
         ) || [];
@@ -137,10 +129,6 @@ exports.createBooking = async (req, res) => {
           !b.confirmedPayment && b.seatNumbers?.some(seat => conflictingSeats.includes(seat))
         ) || [];
 
-        console.log(`❌ Seat conflict detected for seats: ${conflictingSeats.join(', ')}`);
-        console.log(`   - Confirmed bookings: ${confirmedConflicts.length}`);
-        console.log(`   - Pending payment bookings: ${pendingConflicts.length}`);
-        
         return res.status(409).json({
           error: "Seat conflict detected",
           message: `The following seats are already booked or reserved during this time: ${conflictingSeats.join(', ')}`,
@@ -167,11 +155,9 @@ exports.createBooking = async (req, res) => {
         });
       }
 
-      console.log(`✅ No seat conflicts detected for seats: ${seatNumbers.join(', ')}`);
+      console.log(`No seat conflicts detected for seats: ${seatNumbers.join(', ')}`);
     }
 
-    // Basic promo code validation if provided
-    // Full validation will happen during payment confirmation
     if (promoCodeId) {
       const { data: promoCode, error: promoError } = await supabase
         .from("PromoCode")
@@ -187,12 +173,11 @@ exports.createBooking = async (req, res) => {
         });
       }
 
-      // Check minimum hours requirement if promo code has one
       if (promoCode.minimum_hours) {
         const startTime = new Date(startAt);
         const endTime = new Date(endAt);
         const durationMs = endTime.getTime() - startTime.getTime();
-        const durationHours = durationMs / (1000 * 60 * 60); // Convert milliseconds to hours
+        const durationHours = durationMs / (1000 * 60 * 60);
 
         if (durationHours < promoCode.minimum_hours) {
           return res.status(400).json({
@@ -201,10 +186,8 @@ exports.createBooking = async (req, res) => {
           });
         }
       }
-      // Note: Full validation (expiry, usage limits, eligibility) happens during payment confirmation
     }
 
-    // Check if this is a payment confirmation (don't create new booking if payment is already confirmed)
     if (confirmedPayment === true && paymentId) {
       const { data: existingPayment, error: paymentCheckError } = await supabase
         .from("Payment")
@@ -226,7 +209,7 @@ exports.createBooking = async (req, res) => {
       .from("Booking")
       .insert([
         {
-          id: id || uuidv4(), // Use provided ID or generate new one
+          id: id || uuidv4(), 
           bookingRef,
           userId,
           location,
@@ -246,10 +229,10 @@ exports.createBooking = async (req, res) => {
           bookedForEmails,
           confirmedPayment,
           paymentId,
-          promocodeid: promoCodeId, // Use schema field name
-          discountamount: discountAmount, // Use schema field name
-          packageId: packageId, // Package ID for count tracking
-          packageUsed: packageUsed, // Package used flag
+          promocodeid: promoCodeId, 
+          discountamount: discountAmount, 
+          packageId: packageId,
+          packageUsed: packageUsed, 
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }
@@ -258,20 +241,16 @@ exports.createBooking = async (req, res) => {
       .single();
 
     if (error) {
-        console.error(error)
       return res.status(400).json({ error: error.message });
     }
 
-    // Note: Promo code usage will be recorded when payment is confirmed
-    // This prevents promo code abuse during booking creation
-
+   
     res.status(201).json({ 
       message: "Booking created successfully", 
       booking: data,
       promoCodeApplied: !!promoCodeId
     });
   } catch (err) {
-    console.error("createBooking error:", err.message);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
@@ -284,13 +263,11 @@ exports.getAllBookings = async (req, res) => {
       .order("createdAt", { ascending: false });
 
     if (error) {
-      console.error(error);
       return res.status(400).json({ error: error.message });
     }
 
     res.status(200).json({ bookings: data });
   } catch (err) {
-    console.error("getAllBookings error:", err.message);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
@@ -306,13 +283,11 @@ exports.getBookingById = async (req, res) => {
       .single();
 
     if (error) {
-      console.error(error);
       return res.status(404).json({ error: "Booking not found" });
     }
 
     res.status(200).json({ booking: data });
   } catch (err) {
-    console.error("getBookingById error:", err.message);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
@@ -320,13 +295,11 @@ exports.getBookingById = async (req, res) => {
 exports.confirmBookingPayment = async (req, res) => {
   try {
     const { bookingId } = req.body;
-    console.log(req.body);
     
     if (!bookingId) {
       return res.status(400).json({ error: "Booking ID is required" });
     }
 
-    // First check if booking exists and get current status
     const { data: existingBooking, error: checkError } = await supabase
       .from("Booking")
       .select("*")
@@ -341,11 +314,7 @@ exports.confirmBookingPayment = async (req, res) => {
       });
     }
 
-    console.log(`Found booking: ${existingBooking.id}, confirmedPayment: ${existingBooking.confirmedPayment}`);
-
-    // Check if payment is already confirmed
     if (existingBooking.confirmedPayment === true || existingBooking.confirmedPayment === "true") {
-      // Get payment information if paymentId exists
       let paymentData = null;
       if (existingBooking.paymentId) {
         const { data: payment, error: paymentError } = await supabase
@@ -359,8 +328,7 @@ exports.confirmBookingPayment = async (req, res) => {
         }
       }
 
-      console.log(`Booking already confirmed for booking ${existingBooking.id}. Cannot confirm again.`);
-
+     
       return res.status(400).json({
         error: "Booking already confirmed",
         message: "This booking has already been confirmed. Cannot confirm again.",
@@ -372,12 +340,11 @@ exports.confirmBookingPayment = async (req, res) => {
         payment: paymentData,
         totalAmount: existingBooking.totalAmount,
         confirmedPayment: true,
-        alreadyConfirmed: true, // Flag to indicate this was already confirmed
+        alreadyConfirmed: true, 
         requestedBookingId: bookingId
       });
     }
 
-    // Check if this booking has a payment record (webhook might have already updated it)
     if (existingBooking.paymentId) {
       const { data: payment, error: paymentError } = await supabase
         .from("Payment")
@@ -386,7 +353,6 @@ exports.confirmBookingPayment = async (req, res) => {
         .single();
 
       if (!paymentError && payment && payment.status === "completed") {
-        // Payment is already completed, just update the booking status
         const { data: updatedBooking, error: updateError } = await supabase
           .from("Booking")
           .update({
@@ -398,11 +364,9 @@ exports.confirmBookingPayment = async (req, res) => {
           .single();
 
         if (updateError) {
-          console.error("Error updating booking:", updateError);
           return res.status(500).json({ error: "Failed to update booking" });
         }
 
-        console.log(`Booking ${bookingId} updated to confirmed (payment was already completed)`);
         
         return res.json({
           success: true,
@@ -414,7 +378,6 @@ exports.confirmBookingPayment = async (req, res) => {
       }
     }
 
-    // Update booking in Supabase
     const { data, error } = await supabase
       .from("Booking")
       .update({
@@ -426,7 +389,6 @@ exports.confirmBookingPayment = async (req, res) => {
       .single();
 
     if (error) {
-      console.error(error);
       return res.status(400).json({ error: error.message });
     }
 
@@ -434,7 +396,6 @@ exports.confirmBookingPayment = async (req, res) => {
       return res.status(404).json({ error: "Booking not found" });
     }
 
-    // Fetch payment information if paymentId exists
     let paymentData = null;
     if (data.paymentId) {
       const { data: payment, error: paymentError } = await supabase
@@ -448,7 +409,6 @@ exports.confirmBookingPayment = async (req, res) => {
       }
     }
 
-    // Fetch promo code details if promo code was applied
     let promoCodeData = null;
     if (data.promocodeid) {
       const { data: promoCode, error: promoError } = await supabase
@@ -459,7 +419,6 @@ exports.confirmBookingPayment = async (req, res) => {
 
       if (!promoError && promoCode) {
         promoCodeData = promoCode;
-        // Add promo code details to the booking data for PDF generation
         data.promoCode = promoCode.code;
         data.promoCodeName = promoCode.name;
         data.promoCodeDescription = promoCode.description;
@@ -468,10 +427,8 @@ exports.confirmBookingPayment = async (req, res) => {
       }
     }
 
-    // Record promo code usage if promo code was applied and payment is confirmed
     if (data.promocodeid && data.discountamount && data.discountamount > 0) {
       try {
-        // Use the new promo code system to record usage
         const promoResult = await applyPromoCodeToBooking(
           data.promocodeid,
           data.userId,
@@ -480,45 +437,24 @@ exports.confirmBookingPayment = async (req, res) => {
         );
 
         if (promoResult.success) {
-          console.log(`✅ Promo code ${promoResult.promoCode.code} usage recorded and count updated`);
+          console.log(`Promo code ${promoResult.promoCode.code} usage recorded and count updated`);
         } else {
-          console.error("❌ Error recording promo code usage:", promoResult.error);
-          // Don't fail the payment confirmation if promo code tracking fails
+          console.error("Error recording promo code usage:", promoResult.error);
         }
       } catch (promoError) {
-        console.error("❌ Error recording promo code usage:", promoError);
-        // Don't fail the payment confirmation if promo code tracking fails
+        console.error("Error recording promo code usage:", promoError);
       }
     }
 
-    // Handle package usage if package was used
-    console.log(`\n🎯 ===== PACKAGE USAGE CHECK =====`);
-    console.log(`📋 Booking ID: ${data.id}`);
-    console.log(`📋 User ID: ${data.userId}`);
-    console.log(`📋 Package ID: ${data.packageId}`);
-    console.log(`📋 Package Used: ${data.packageUsed}`);
-    console.log(`📋 Confirmed Payment: ${data.confirmedPayment}`);
-    
+ 
     if (data.packageId && data.packageUsed) {
       try {
-        console.log(`\n📦 ===== PROCESSING PACKAGE USAGE =====`);
-        console.log(`📦 Booking: ${data.id}`);
-        console.log(`📦 Package: ${data.packageId}`);
-        console.log(`📦 User: ${data.userId}`);
-        
-        // Calculate hours used from booking duration
+   
         const startTime = new Date(data.startAt);
         const endTime = new Date(data.endAt);
-        const hoursUsed = (endTime - startTime) / (1000 * 60 * 60); // Convert to hours
-        console.log(`📦 Hours Used: ${hoursUsed}`);
-        console.log(`📦 Location: ${data.location}`);
-        console.log(`📦 Start Time: ${data.startAt}`);
-        console.log(`📦 End Time: ${data.endAt}`);
-        
-        // Import the package usage helper
+        const hoursUsed = (endTime - startTime) / (1000 * 60 * 60);
         const { handlePackageUsage } = require('../utils/packageUsageHelper');
         
-        console.log(`📦 Calling handlePackageUsage...`);
         const packageUsageResult = await handlePackageUsage(
           data.userId,
           data.packageId,
@@ -529,17 +465,8 @@ exports.confirmBookingPayment = async (req, res) => {
           data.endAt
         );
 
-        console.log(`📦 Package usage result:`, JSON.stringify(packageUsageResult, null, 2));
-
         if (packageUsageResult.success) {
-          console.log(`\n✅ ===== PACKAGE USAGE SUCCESS =====`);
-          console.log(`✅ Pass Used: ${packageUsageResult.passUsed}`);
-          console.log(`✅ Remaining Count: ${packageUsageResult.remainingCount}`);
-          console.log(`✅ Pass Type: ${packageUsageResult.passType}`);
-          console.log(`✅ Is Pass Fully Used: ${packageUsageResult.isPassFullyUsed}`);
           
-          // Update booking with package usage details
-          console.log(`📦 Updating booking with package usage details...`);
           const { error: updateError } = await supabase
             .from("Booking")
             .update({
@@ -552,37 +479,28 @@ exports.confirmBookingPayment = async (req, res) => {
             .eq("id", data.id);
           
           if (updateError) {
-            console.error(`❌ Error updating booking:`, updateError);
+            console.error(`Error updating booking:`, updateError);
           } else {
-            console.log(`✅ Booking updated successfully with package usage details`);
+            console.log(`Booking updated successfully with package usage details`);
           }
         } else {
-          console.error(`\n❌ ===== PACKAGE USAGE FAILED =====`);
-          console.error(`❌ Error: ${packageUsageResult.error}`);
-          console.error(`❌ Full result:`, JSON.stringify(packageUsageResult, null, 2));
-          // Don't fail the payment confirmation if package tracking fails
+          console.error(`Error: ${packageUsageResult.error}`);
         }
       } catch (packageError) {
-        console.error(`\n❌ ===== PACKAGE USAGE EXCEPTION =====`);
-        console.error(`❌ Exception:`, packageError);
-        console.error(`❌ Stack:`, packageError.stack);
-        // Don't fail the payment confirmation if package tracking fails
+ 
+        console.error(`Stack:`, packageError);
       }
     } else {
-      console.log(`\n⚠️ ===== PACKAGE USAGE SKIPPED =====`);
-      console.log(`⚠️ Reason: packageId=${data.packageId}, packageUsed=${data.packageUsed}`);
+      console.log(`\n ==== PACKAGE USAGE SKIPPED =====`);
     }
-    console.log(`🎯 ===== END PACKAGE USAGE CHECK =====\n`);
 
     const userData = {
       name: "Customer", 
       email: data.bookedForEmails?.[0]
     };
 
-    // Add payment method information to the booking data for email
     if (paymentData) {
-      // Try to get the actual payment method from payment data
-      // If not available, we'll let the email template handle it
+     
       data.paymentMethod = paymentData.paymentMethod || null;
       data.paymentDetails = paymentData;
     }
@@ -611,38 +529,24 @@ exports.getBookedSeats = async (req, res) => {
       return res.status(400).json({ error: "location, startAt and endAt are required" });
     }
 
-    console.log(`🔍 Checking seat availability for ${location} from ${startAt} to ${endAt}`);
-
-    // Find all bookings that have time overlap with the requested time range
-    // A booking overlaps if: startAt < requested_endAt AND endAt > requested_startAt
-    // Include BOTH confirmed payments AND pending payments to block seats during payment process
     const { data: bookings, error } = await supabase
       .from("Booking")
       .select("seatNumbers, startAt, endAt, bookingRef, confirmedPayment, createdAt")
       .eq("location", location)
-      .in("confirmedPayment", [true, false]) // Include both confirmed and pending payments
-      .lt("startAt", endAt)  // Booking starts before requested end time
-      .gt("endAt", startAt); // Booking ends after requested start time
+      .in("confirmedPayment", [true, false])
+      .lt("startAt", endAt)  
+      .gt("endAt", startAt);
 
     if (error) {
-      console.error("Database error:", error);
       return res.status(400).json({ error: error.message });
     }
 
-    console.log(`📊 Found ${bookings?.length || 0} overlapping bookings`);
-
-    // Extract all seat numbers from overlapping bookings (both confirmed and pending)
     const bookedSeats = bookings
       ?.flatMap(b => b.seatNumbers || [])
-      .filter((seat, index, self) => self.indexOf(seat) === index) || []; // unique seats
+      .filter((seat, index, self) => self.indexOf(seat) === index) || [];
 
-    // Separate confirmed vs pending bookings for better tracking
     const confirmedBookings = bookings?.filter(b => b.confirmedPayment) || [];
     const pendingBookings = bookings?.filter(b => !b.confirmedPayment) || [];
-
-    console.log(`🚫 Booked seats: ${bookedSeats.join(', ')}`);
-    console.log(`✅ Confirmed bookings: ${confirmedBookings.length}`);
-    console.log(`⏳ Pending payment bookings: ${pendingBookings.length}`);
 
     res.status(200).json({ 
       bookedSeats,
@@ -661,14 +565,11 @@ exports.getBookedSeats = async (req, res) => {
       }
     });
   } catch (err) {
-    console.error("getBookedSeats error:", err.message);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
-// ==================== COUNT-BASED PACKAGE APIs ====================
 
-// Validate pass usage for booking
 exports.validatePassForBooking = async (req, res) => {
   try {
     const { userId, passType, startTime, endTime, pax } = req.body;
@@ -699,7 +600,6 @@ exports.validatePassForBooking = async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Error in validatePassForBooking:', error);
     res.status(500).json({
       success: false,
       error: 'Internal server error',
@@ -708,7 +608,6 @@ exports.validatePassForBooking = async (req, res) => {
   }
 };
 
-// Apply pass to booking
 exports.applyPassToBooking = async (req, res) => {
   try {
     const { userId, passId, bookingId, location, startTime, endTime, pax } = req.body;
@@ -738,7 +637,6 @@ exports.applyPassToBooking = async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Error in applyPassToBooking:', error);
     res.status(500).json({
       success: false,
       error: 'Internal server error',
@@ -747,7 +645,6 @@ exports.applyPassToBooking = async (req, res) => {
   }
 };
 
-// Get user's pass balance
 exports.getUserPassBalance = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -786,9 +683,7 @@ exports.getUserPassBalance = async (req, res) => {
   }
 };
 
-// ==================== USER DASHBOARD APIs ====================
 
-// Get user's own bookings with filters and pagination
 exports.getUserBookings = async (req, res) => {
   try {
     const { userId } = req.body;
@@ -805,14 +700,12 @@ exports.getUserBookings = async (req, res) => {
       return res.status(400).json({ error: "userId is required" });
     }
 
-    // Build the base query - only for this specific user and only confirmed payments
     let query = supabase
       .from('Booking')
       .select('*', { count: 'exact' })
-      .eq('userId', userId) // This ensures only user's own bookings
-      .eq('confirmedPayment', true); // Only show confirmed payments by default
+      .eq('userId', userId)
+      .eq('confirmedPayment', true); 
 
-    // Apply status filters
     if (status) {
       const now = new Date().toISOString();
       if (status === 'upcoming') {
@@ -829,7 +722,6 @@ exports.getUserBookings = async (req, res) => {
       }
     }
 
-    // Apply payment status filter
     if (paymentStatus) {
       if (paymentStatus === 'paid') {
         query = query.eq('confirmedPayment', true);
@@ -838,21 +730,17 @@ exports.getUserBookings = async (req, res) => {
       }
     }
 
-    // Apply sorting
     query = query.order(sortBy, { ascending: sortOrder === 'asc' });
 
-    // Apply pagination
     const offset = (page - 1) * limit;
     query = query.range(offset, offset + limit - 1);
 
     const { data: bookings, error, count } = await query;
 
     if (error) {
-      console.error('getUserBookings error:', error);
       return res.status(500).json({ error: 'Failed to fetch user bookings', details: error.message });
     }
 
-    // Get promo code data for user's bookings
     const promoCodeIds = bookings
       .filter(b => b.promoCodeId)
       .map(b => b.promoCodeId);
@@ -871,7 +759,6 @@ exports.getUserBookings = async (req, res) => {
       }
     }
 
-    // Calculate additional fields for each booking
     const now = new Date();
     const bookingsWithStatus = bookings.map(booking => {
       const startAt = new Date(booking.startAt);
@@ -893,7 +780,6 @@ exports.getUserBookings = async (req, res) => {
         timeUntilBooking = `${remainingHours}h ${remainingMinutes}m`;
       }
 
-      // Add promo code data if available
       const promoCode = booking.promoCodeId ? promoCodeData[booking.promoCodeId] : null;
 
       return {
@@ -909,7 +795,6 @@ exports.getUserBookings = async (req, res) => {
       };
     });
 
-    // Calculate summary statistics for this user only
     const totalBookings = count || 0;
     const upcomingBookings = bookingsWithStatus.filter(b => b.isUpcoming).length;
     const ongoingBookings = bookingsWithStatus.filter(b => b.isOngoing).length;
@@ -941,12 +826,10 @@ exports.getUserBookings = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('getUserBookings error:', err);
     res.status(500).json({ error: 'Failed to fetch user bookings', details: err.message });
   }
 };
 
-// Get user's own booking analytics
 exports.getUserBookingAnalytics = async (req, res) => {
   try {
     const { userId } = req.body;
@@ -979,11 +862,10 @@ exports.getUserBookingAnalytics = async (req, res) => {
     
     endDate = now;
 
-    // Get user's bookings in date range
     const { data: bookings, error } = await supabase
       .from('Booking')
       .select('*')
-      .eq('userId', userId) // Only this user's bookings
+      .eq('userId', userId)
       .gte('startAt', startDate.toISOString())
       .lte('startAt', endDate.toISOString());
 
@@ -992,7 +874,6 @@ exports.getUserBookingAnalytics = async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch user analytics' });
     }
 
-    // Calculate analytics for this user only
     const totalBookings = bookings.length;
     const confirmedBookings = bookings.filter(b => b.confirmedPayment).length;
     const pendingBookings = totalBookings - confirmedBookings;
@@ -1001,7 +882,6 @@ exports.getUserBookingAnalytics = async (req, res) => {
       .reduce((sum, b) => sum + parseFloat(b.totalAmount || 0), 0);
     const averageBookingValue = totalBookings > 0 ? totalSpent / totalBookings : 0;
 
-    // Breakdown by location for this user
     const locationBreakdown = {};
     bookings.forEach(booking => {
       const loc = booking.location || 'Unknown';
@@ -1014,7 +894,6 @@ exports.getUserBookingAnalytics = async (req, res) => {
       }
     });
 
-    // Daily trends for this user
     const dailyTrends = {};
     const currentDate = new Date(startDate);
     while (currentDate <= endDate) {
@@ -1056,12 +935,10 @@ exports.getUserBookingAnalytics = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('getUserBookingAnalytics error:', err);
     res.status(500).json({ error: 'Failed to fetch user analytics' });
   }
 };
 
-// Get user's own dashboard summary
 exports.getUserDashboardSummary = async (req, res) => {
   try {
     const { userId } = req.body;
@@ -1074,19 +951,17 @@ exports.getUserDashboardSummary = async (req, res) => {
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // Today's bookings for this user only
     const { count: todayBookings } = await supabase
       .from('Booking')
       .select('*', { count: 'exact', head: true })
-      .eq('userId', userId) // Only this user's bookings
+      .eq('userId', userId) 
       .gte('startAt', today.toISOString())
       .lt('startAt', new Date(today.getTime() + 24 * 60 * 60 * 1000).toISOString());
 
-    // This month's spending for this user only
     const { data: monthBookings } = await supabase
       .from('Booking')
       .select('totalAmount')
-      .eq('userId', userId) // Only this user's bookings
+      .eq('userId', userId)
       .gte('startAt', startOfMonth.toISOString())
       .lte('startAt', now.toISOString())
       .eq('confirmedPayment', true);
@@ -1094,15 +969,13 @@ exports.getUserDashboardSummary = async (req, res) => {
     const monthSpent = monthBookings
       .reduce((sum, b) => sum + parseFloat(b.totalAmount || 0), 0);
 
-    // Upcoming bookings for this user only (confirmed payments only)
     const { count: upcomingCount } = await supabase
       .from('Booking')
       .select('*', { count: 'exact', head: true })
-      .eq('userId', userId) // Only this user's bookings
-      .eq('confirmedPayment', true) // Only confirmed payments
+      .eq('userId', userId)
+      .eq('confirmedPayment', true) 
       .gt('startAt', now.toISOString());
 
-    // No pending payments - all bookings must be paid immediately
     const pendingAmount = 0;
 
     res.json({
@@ -1128,7 +1001,6 @@ exports.getUserDashboardSummary = async (req, res) => {
   }
 };
 
-// Enhanced user booking stats (keeping the original for backward compatibility)
 exports.getUserBookingStats = async (req, res) => {
   try {
     const { userId } = req.body;
@@ -1159,7 +1031,6 @@ exports.getUserBookingStats = async (req, res) => {
       .lt("endAt", now);
 
     if (pastError) {
-      console.error(pastError);
       return res.status(400).json({ error: pastError.message });
     }
 
@@ -1169,14 +1040,11 @@ exports.getUserBookingStats = async (req, res) => {
       pastBookings: pastCount || 0
     });
   } catch (err) {
-    console.error("getUserBookingStats error:", err.message);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
-// ==================== ADMIN BOOKING MANAGEMENT APIs ====================
 
-// Get all bookings with comprehensive filters (admin) - FIXED VERSION
 exports.getAllBookings = async (req, res) => {
   try {
     const {
@@ -1193,12 +1061,10 @@ exports.getAllBookings = async (req, res) => {
       sortOrder = 'desc'
     } = req.query;
 
-    // Build the base query - Use simple select to avoid relationship issues
     let query = supabase
       .from('Booking')
       .select('*', { count: 'exact' });
 
-    // Apply filters
     if (search) {
       query = query.or(`bookingRef.ilike.%${search}%,location.ilike.%${search}%`);
     }
@@ -1243,21 +1109,17 @@ exports.getAllBookings = async (req, res) => {
       }
     }
 
-    // Apply sorting
     query = query.order(sortBy, { ascending: sortOrder === 'asc' });
 
-    // Apply pagination
     const offset = (page - 1) * limit;
     query = query.range(offset, offset + limit - 1);
 
     const { data: bookings, error, count } = await query;
 
     if (error) {
-      console.error('getAllBookings error:', error);
       return res.status(500).json({ error: 'Failed to fetch bookings', details: error.message });
     }
 
-    // Get user data separately to avoid relationship conflicts
     const userIds = bookings
       .filter(b => b.userId)
       .map(b => b.userId);
@@ -1276,7 +1138,6 @@ exports.getAllBookings = async (req, res) => {
       }
     }
 
-    // Get promo code data separately to avoid relationship conflicts
     const promoCodeIds = bookings
       .filter(b => b.promoCodeId)
       .map(b => b.promoCodeId);
@@ -1295,7 +1156,6 @@ exports.getAllBookings = async (req, res) => {
       }
     }
 
-    // Calculate additional fields for each booking
     const now = new Date();
     const bookingsWithStatus = bookings.map(booking => {
       const startAt = new Date(booking.startAt);
@@ -1317,7 +1177,6 @@ exports.getAllBookings = async (req, res) => {
         timeUntilBooking = `${remainingHours}h ${remainingMinutes}m`;
       }
 
-      // Add user and promo code data if available
       const user = booking.userId ? userData[booking.userId] : null;
       const promoCode = booking.promoCodeId ? promoCodeData[booking.promoCodeId] : null;
 
@@ -1335,7 +1194,6 @@ exports.getAllBookings = async (req, res) => {
       };
     });
 
-    // Calculate summary statistics
     const totalBookings = count || 0;
     const upcomingBookings = bookingsWithStatus.filter(b => b.isUpcoming).length;
     const ongoingBookings = bookingsWithStatus.filter(b => b.isOngoing).length;
@@ -1366,12 +1224,10 @@ exports.getAllBookings = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('getAllBookings error:', err);
     res.status(500).json({ error: 'Failed to fetch bookings', details: err.message });
   }
 };
 
-// Get booking analytics and statistics
 exports.getBookingAnalytics = async (req, res) => {
   try {
     const { period = 'month' } = req.query;
@@ -1399,7 +1255,6 @@ exports.getBookingAnalytics = async (req, res) => {
     
     endDate = now;
 
-    // Get bookings in date range
     const { data: bookings, error } = await supabase
       .from('Booking')
       .select('*')
@@ -1407,11 +1262,9 @@ exports.getBookingAnalytics = async (req, res) => {
       .lte('startAt', endDate.toISOString());
 
     if (error) {
-      console.error('getBookingAnalytics error:', error);
       return res.status(500).json({ error: 'Failed to fetch analytics' });
     }
 
-    // Calculate analytics
     const totalBookings = bookings.length;
     const confirmedBookings = bookings.filter(b => b.confirmedPayment).length;
     const pendingBookings = totalBookings - confirmedBookings;
@@ -1420,7 +1273,6 @@ exports.getBookingAnalytics = async (req, res) => {
       .reduce((sum, b) => sum + parseFloat(b.totalAmount || 0), 0);
     const averageBookingValue = totalBookings > 0 ? totalRevenue / totalBookings : 0;
 
-    // Breakdown by location
     const locationBreakdown = {};
     bookings.forEach(booking => {
       const loc = booking.location || 'Unknown';
@@ -1433,7 +1285,6 @@ exports.getBookingAnalytics = async (req, res) => {
       }
     });
 
-    // Breakdown by member type
     const memberTypeBreakdown = {};
     bookings.forEach(booking => {
       const type = booking.memberType || 'regular';
@@ -1446,7 +1297,6 @@ exports.getBookingAnalytics = async (req, res) => {
       }
     });
 
-    // Daily trends
     const dailyTrends = {};
     const currentDate = new Date(startDate);
     while (currentDate <= endDate) {
@@ -1488,26 +1338,22 @@ exports.getBookingAnalytics = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('getBookingAnalytics error:', err);
     res.status(500).json({ error: 'Failed to fetch analytics' });
   }
 };
 
-// Get dashboard summary
 exports.getDashboardSummary = async (req, res) => {
   try {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // Today's bookings
     const { count: todayBookings } = await supabase
       .from('Booking')
       .select('*', { count: 'exact', head: true })
       .gte('startAt', today.toISOString())
       .lt('startAt', new Date(today.getTime() + 24 * 60 * 60 * 1000).toISOString());
 
-    // This month's revenue
     const { data: monthBookings } = await supabase
       .from('Booking')
       .select('totalAmount')
@@ -1518,13 +1364,11 @@ exports.getDashboardSummary = async (req, res) => {
     const monthRevenue = monthBookings
       .reduce((sum, b) => sum + parseFloat(b.totalAmount || 0), 0);
 
-    // Upcoming bookings
     const { count: upcomingCount } = await supabase
       .from('Booking')
       .select('*', { count: 'exact', head: true })
       .gt('startAt', now.toISOString());
 
-    // Pending payments
     const { data: pendingBookings } = await supabase
       .from('Booking')
       .select('totalAmount')
@@ -1550,18 +1394,15 @@ exports.getDashboardSummary = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('getDashboardSummary error:', err);
     res.status(500).json({ error: 'Failed to fetch dashboard summary' });
   }
 };
 
-// Update booking (admin)
 exports.updateBooking = async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
 
-    // Check if booking exists
     const { data: existingBooking, error: fetchError } = await supabase
       .from('Booking')
       .select('*')
@@ -1572,7 +1413,6 @@ exports.updateBooking = async (req, res) => {
       return res.status(404).json({ error: 'Booking not found' });
     }
 
-    // Update booking
     const { data: updatedBooking, error: updateError } = await supabase
       .from('Booking')
       .update({
@@ -1584,11 +1424,9 @@ exports.updateBooking = async (req, res) => {
       .single();
 
     if (updateError) {
-      console.error('updateBooking error:', updateError);
       return res.status(500).json({ error: 'Failed to update booking' });
     }
 
-    // Get user data separately
     let userData = null;
     if (updatedBooking.userId) {
       const { data: user, error: userError } = await supabase
@@ -1608,7 +1446,6 @@ exports.updateBooking = async (req, res) => {
     };
 
     if (updateError) {
-      console.error('updateBooking error:', updateError);
       return res.status(500).json({ error: 'Failed to update booking' });
     }
 
@@ -1618,18 +1455,15 @@ exports.updateBooking = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('updateBooking error:', err);
     res.status(500).json({ error: 'Failed to update booking' });
   }
 };
 
-// Cancel/Delete booking (admin)
 exports.cancelBooking = async (req, res) => {
   try {
     const { id } = req.params;
     const { reason, refundAmount } = req.body;
 
-    // Check if booking exists
     const { data: existingBooking, error: fetchError } = await supabase
       .from('Booking')
       .select('*')
@@ -1640,7 +1474,6 @@ exports.cancelBooking = async (req, res) => {
       return res.status(404).json({ error: 'Booking not found' });
     }
 
-    // Check if booking is in the future
     const now = new Date();
     const startAt = new Date(existingBooking.startAt);
     
@@ -1648,14 +1481,12 @@ exports.cancelBooking = async (req, res) => {
       return res.status(400).json({ error: 'Cannot cancel past or ongoing bookings' });
     }
 
-    // Delete the booking
     const { error: deleteError } = await supabase
       .from('Booking')
       .delete()
       .eq('id', id);
 
     if (deleteError) {
-      console.error('cancelBooking error:', deleteError);
       return res.status(500).json({ error: 'Failed to cancel booking' });
     }
 
@@ -1670,14 +1501,11 @@ exports.cancelBooking = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('cancelBooking error:', err);
     res.status(500).json({ error: 'Failed to cancel booking' });
   }
 };
 
-// ==================== ADMIN USER MANAGEMENT APIs ====================
 
-// Get all users with comprehensive filters and analytics
 exports.getAllUsers = async (req, res) => {
   try {
     const {
@@ -1690,48 +1518,39 @@ exports.getAllUsers = async (req, res) => {
       includeStats = 'false'
     } = req.query;
 
-    // Build the base query
     let query = supabase
       .from('User')
       .select('*', { count: 'exact' });
 
-    // Apply search filter
     if (search) {
       query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%`);
     }
 
-    // Apply member type filter
     if (memberType) {
       query = query.eq('memberType', memberType);
     }
 
-    // Apply sorting
     query = query.order(sortBy, { ascending: sortOrder === 'asc' });
 
-    // Apply pagination
     const offset = (page - 1) * limit;
     query = query.range(offset, offset + limit - 1);
 
     const { data: users, error, count } = await query;
 
     if (error) {
-      console.error('getAllUsers error:', error);
       return res.status(500).json({ error: 'Failed to fetch users', details: error.message });
     }
 
-    // If includeStats is true, get additional user statistics
     let usersWithStats = users;
     if (includeStats === 'true') {
       const userIds = users.map(user => user.id);
       
-      // Get booking counts for each user
       const { data: bookingCounts, error: bookingError } = await supabase
         .from('Booking')
         .select('userId, confirmedPayment, totalAmount')
         .in('userId', userIds);
 
       if (!bookingError && bookingCounts) {
-        // Group bookings by user
         const userBookings = {};
         bookingCounts.forEach(booking => {
           if (!userBookings[booking.userId]) {
@@ -1748,7 +1567,6 @@ exports.getAllUsers = async (req, res) => {
           }
         });
 
-        // Add stats to users
         usersWithStats = users.map(user => ({
           ...user,
           stats: userBookings[user.id] || {
@@ -1760,7 +1578,6 @@ exports.getAllUsers = async (req, res) => {
       }
     }
 
-    // Calculate summary statistics
     const totalUsers = count || 0;
     const memberTypeBreakdown = {};
     users.forEach(user => {
@@ -1786,12 +1603,10 @@ exports.getAllUsers = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('getAllUsers error:', err);
     res.status(500).json({ error: 'Failed to fetch users', details: err.message });
   }
 };
 
-// Get user analytics and statistics
 exports.getUserAnalytics = async (req, res) => {
   try {
     const { period = 'month' } = req.query;
@@ -1819,19 +1634,16 @@ exports.getUserAnalytics = async (req, res) => {
     
     endDate = now;
 
-    // Get total users
     const { count: totalUsers } = await supabase
       .from('User')
       .select('*', { count: 'exact', head: true });
 
-    // Get new users in date range
     const { count: newUsers } = await supabase
       .from('User')
       .select('*', { count: 'exact', head: true })
       .gte('createdAt', startDate.toISOString())
       .lte('createdAt', endDate.toISOString());
 
-    // Get users by member type
     const { data: usersByType } = await supabase
       .from('User')
       .select('memberType');
@@ -1847,7 +1659,6 @@ exports.getUserAnalytics = async (req, res) => {
       });
     }
 
-    // Get users with bookings
     const { data: usersWithBookings } = await supabase
       .from('User')
       .select('id')
@@ -1859,7 +1670,6 @@ exports.getUserAnalytics = async (req, res) => {
 
     const activeUsers = usersWithBookings ? usersWithBookings.length : 0;
 
-    // Daily user registration trends
     const dailyTrends = {};
     const currentDate = new Date(startDate);
     while (currentDate <= endDate) {
@@ -1868,7 +1678,6 @@ exports.getUserAnalytics = async (req, res) => {
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
-    // Get daily user counts
     const { data: dailyUsers } = await supabase
       .from('User')
       .select('createdAt')
@@ -1905,38 +1714,32 @@ exports.getUserAnalytics = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('getUserAnalytics error:', err);
     res.status(500).json({ error: 'Failed to fetch user analytics' });
   }
 };
 
-// Get user dashboard summary
 exports.getUserManagementSummary = async (req, res) => {
   try {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // Today's new users
     const { count: todayUsers } = await supabase
       .from('User')
       .select('*', { count: 'exact', head: true })
       .gte('createdAt', today.toISOString())
       .lt('createdAt', new Date(today.getTime() + 24 * 60 * 60 * 1000).toISOString());
 
-    // This month's new users
     const { count: monthUsers } = await supabase
       .from('User')
       .select('*', { count: 'exact', head: true })
       .gte('createdAt', startOfMonth.toISOString())
       .lte('createdAt', now.toISOString());
 
-    // Total users
     const { count: totalUsers } = await supabase
       .from('User')
       .select('*', { count: 'exact', head: true });
 
-    // Users by member type
     const { data: memberTypeData } = await supabase
       .from('User')
       .select('memberType');
@@ -1974,17 +1777,11 @@ exports.getUserManagementSummary = async (req, res) => {
   }
 };
 
-// ... existing code ...
-
-// ==================== ADMIN USER VERIFICATION APIs ====================
-
-// Approve/Reject student verification
 exports.verifyStudentAccount = async (req, res) => {
   try {
     const { userId } = req.params;
     const { studentVerificationStatus, rejectionReason } = req.body;
 
-    // Log the request details for debugging
     console.log('verifyStudentAccount request:', {
       userId,
       studentVerificationStatus,
@@ -1992,14 +1789,12 @@ exports.verifyStudentAccount = async (req, res) => {
       body: req.body
     });
 
-    // Validate the status
     if (!['VERIFIED', 'REJECTED'].includes(studentVerificationStatus)) {
       return res.status(400).json({ 
         error: 'Invalid verification status. Must be VERIFIED or REJECTED' 
       });
     }
 
-    // Check if user exists
     const { data: existingUser, error: fetchError } = await supabase
       .from('User')
       .select('*')
@@ -2010,7 +1805,6 @@ exports.verifyStudentAccount = async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Log user details for debugging
     console.log('verifyStudentAccount - User details:', {
       userId,
       memberType: existingUser.memberType,
@@ -2020,31 +1814,25 @@ exports.verifyStudentAccount = async (req, res) => {
       currentVerificationStatus: existingUser.studentVerificationStatus
     });
 
-    // Check if user has uploaded verification document
     if (!existingUser.studentVerificationImageUrl) {
       return res.status(400).json({ 
         error: 'User has not uploaded verification document' 
       });
     }
 
-    // Prepare update data
     const updateData = {
       studentVerificationStatus: studentVerificationStatus,
       studentVerificationDate: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
 
-    // Add rejection reason if status is REJECTED
     if (studentVerificationStatus === 'REJECTED') {
       updateData.studentRejectionReason = rejectionReason || 'Admin rejection - no reason provided';
       updateData.studentVerificationStatus = 'REJECTED';
     } else {
-      // If verified, clear any previous rejection reason
       updateData.studentRejectionReason = null;
     }
 
-    // Update user verification status
-    console.log('Updating user with data:', updateData);
     const { data: updatedUser, error: updateError } = await supabase
       .from('User')
       .update(updateData)
@@ -2053,8 +1841,7 @@ exports.verifyStudentAccount = async (req, res) => {
       .single();
 
     if (updateError) {
-      console.error('verifyStudentAccount error:', updateError);
-      console.error('Update data that failed:', updateData);
+     
       return res.status(500).json({ 
         error: 'Failed to update verification status',
         details: updateError.message,
@@ -2062,7 +1849,6 @@ exports.verifyStudentAccount = async (req, res) => {
       });
     }
 
-    // Prepare response
     const response = {
       message: `Account verification ${studentVerificationStatus.toLowerCase()} successfully`,
       user: {
@@ -2085,17 +1871,14 @@ exports.verifyStudentAccount = async (req, res) => {
     res.json(response);
 
   } catch (err) {
-    console.error('verifyStudentAccount error:', err);
     res.status(500).json({ error: 'Failed to verify student account', details: err.message });
   }
 };
 
-// Delete user (admin)
 exports.deleteUser = async (req, res) => {
   try {
     const { userId } = req.params;
     
-    // Log the request details for debugging
     console.log('deleteUser request:', {
       userId,
       body: req.body,
@@ -2103,15 +1886,11 @@ exports.deleteUser = async (req, res) => {
       bodyType: typeof req.body
     });
     
-    // Validate userId parameter
     if (!userId) {
       return res.status(400).json({ error: 'User ID is required' });
     }
-    
-    // Safely extract reason from req.body, handle case where req.body might be undefined
     const reason = req.body && req.body.reason ? req.body.reason : 'Admin deletion';
 
-    // Check if user exists
     const { data: existingUser, error: fetchError } = await supabase
       .from('User')
       .select('*')
@@ -2122,14 +1901,12 @@ exports.deleteUser = async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Check if user has any bookings
     const { data: userBookings, error: bookingError } = await supabase
       .from('Booking')
       .select('id')
       .eq('userId', userId);
 
     if (bookingError) {
-      console.error('deleteUser error checking bookings:', bookingError);
       return res.status(500).json({ error: 'Failed to check user bookings' });
     }
 
@@ -2141,20 +1918,15 @@ exports.deleteUser = async (req, res) => {
       });
     }
 
-    // Delete the user
-    console.log('Attempting to delete user:', userId);
     const { error: deleteError } = await supabase
       .from('User')
       .delete()
       .eq('id', userId);
 
     if (deleteError) {
-      console.error('deleteUser error:', deleteError);
       return res.status(500).json({ error: 'Failed to delete user' });
     }
     
-    console.log('User deleted successfully:', userId);
-
     res.json({
       message: 'User deleted successfully',
       deletedUser: {
@@ -2167,12 +1939,10 @@ exports.deleteUser = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('deleteUser error:', err);
     res.status(500).json({ error: 'Failed to delete user', details: err.message });
   }
 };
 
-// 🎯 Confirm booking with package usage tracking
 exports.confirmBookingWithPackage = async (req, res) => {
   try {
     const {
@@ -2186,7 +1956,6 @@ exports.confirmBookingWithPackage = async (req, res) => {
       paymentId
     } = req.body;
 
-    // Validate required fields
     if (!bookingId || !userId || !packageId || !hoursUsed) {
       return res.status(400).json({
         error: "Missing required fields",
@@ -2194,7 +1963,6 @@ exports.confirmBookingWithPackage = async (req, res) => {
       });
     }
 
-    // Check if booking exists and is not already confirmed
     const { data: booking, error: bookingError } = await supabase
       .from("Booking")
       .select("*")
@@ -2216,7 +1984,6 @@ exports.confirmBookingWithPackage = async (req, res) => {
       });
     }
 
-    // Handle package usage (count-based system)
     const packageUsageResult = await handlePackageUsage(
       userId,
       packageId,
@@ -2234,10 +2001,8 @@ exports.confirmBookingWithPackage = async (req, res) => {
       });
     }
 
-    // For count-based system, no excess charges - pass covers the entire booking
-    let totalAmount = 0; // Package covers the full booking
+    let totalAmount = 0;
 
-    // Update booking with confirmation and package usage details
     const { data: updatedBooking, error: updateError } = await supabase
       .from("Booking")
       .update({
@@ -2256,19 +2021,16 @@ exports.confirmBookingWithPackage = async (req, res) => {
       .single();
 
     if (updateError) {
-      console.error("Error updating booking:", updateError);
       return res.status(500).json({
         error: "Failed to update booking",
         message: updateError.message
       });
     }
 
-    // Send confirmation email
     try {
       await sendBookingConfirmation(updatedBooking);
     } catch (emailError) {
       console.error("Error sending confirmation email:", emailError);
-      // Don't fail the booking confirmation if email fails
     }
 
     res.json({
@@ -2287,7 +2049,6 @@ exports.confirmBookingWithPackage = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("confirmBookingWithPackage error:", err);
     res.status(500).json({
       error: "Internal server error",
       message: err.message

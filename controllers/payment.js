@@ -10,8 +10,6 @@ const hitpayClient = axios.create({
   }
 });
 
-// console.log(process.env.HITPAY_API_URL);
-
 exports.createPayment = async (req, res) => {
   try {
     const {
@@ -28,10 +26,9 @@ exports.createPayment = async (req, res) => {
       send_email = false,
       send_sms = false,
       allow_repeated_payments = false,
-      bookingId, // Add this to link payment to booking
+      bookingId, 
     } = req.body;
 
-    // Validate required fields
     if (!amount || !currency || !email || !name || !purpose || !reference_number || !redirect_url || !bookingId) {
       return res.status(400).json({
         error: "Missing required fields",
@@ -61,10 +58,8 @@ exports.createPayment = async (req, res) => {
       }
     });
 
-    // Create payment request with HitPay
     const response = await hitpayClient.post("/v1/payment-requests", payload);
     
-    // Create payment record in database
     const { data: paymentData, error: paymentError } = await supabase
       .from('Payment')
       .insert({
@@ -77,7 +72,7 @@ exports.createPayment = async (req, res) => {
         bookingRef: reference_number,
         paidBy: email,
         discountCode: null,
-        paymentMethod: payment_methods[0] || "paynow_online", // Store the intended payment method
+        paymentMethod: payment_methods[0] || "paynow_online",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       })
@@ -106,22 +101,19 @@ exports.createPayment = async (req, res) => {
       });
     }
 
-    // Update booking table with paymentId and totalAmount
     const { error: bookingError } = await supabase
       .from('Booking')
       .update({
         paymentId: paymentData.id,
         totalAmount: parseFloat(amount),
-        confirmedPayment: false // Will be updated to true when webhook confirms payment
+        confirmedPayment: false
       })
       .eq('id', bookingId);
 
     if (bookingError) {
-      console.error("Booking update error:", bookingError);
       return res.status(500).json({ error: "Failed to update booking" });
     }
 
-    // Return HitPay response with additional payment info
     res.json({
       ...response.data,
       paymentId: paymentData.id,
@@ -130,7 +122,6 @@ exports.createPayment = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("HitPay createPayment error:", error.response?.data || error.message);
     res.status(500).json({ 
       error: error.response?.data || error.message,
       details: error.response?.status ? `HTTP ${error.response.status}` : 'Network Error'
@@ -140,37 +131,22 @@ exports.createPayment = async (req, res) => {
 
 exports.handleWebhook = async (req, res) => {
   try {
-    console.log("=== WEBHOOK RECEIVED ===");
-    console.log("Event:", req.body);
-    
     const event = req.body;
-    
     let paymentDetails = null;
     try {
       const response = await hitpayClient.get(`/v1/payment-requests/${event.payment_request_id}`);
       paymentDetails = response.data;
-      console.log("Payment details:", paymentDetails);
     } catch (apiError) {
       console.error("Failed to fetch payment details:", apiError.response?.data || apiError.message);
     }
 
-    // Determine payment type based on reference number
     const isPackagePayment = event.reference_number.startsWith('PKG_');
     const isBookingPayment = event.reference_number.startsWith('ORD_') || event.reference_number.startsWith('BOOK_');
 
-    console.log("Payment type detected:", {
-      reference: event.reference_number,
-      isPackagePayment,
-      isBookingPayment
-    });
-
-    // If payment is completed, update the database
     if (event.status === 'completed') {
       if (isPackagePayment) {
-        // Handle package payment completion
         await handlePackagePaymentCompletion(event, paymentDetails);
       } else if (isBookingPayment) {
-        // Handle booking payment completion
         await handleBookingPaymentCompletion(event, paymentDetails);
       } else {
         console.log("Unknown payment type for reference:", event.reference_number);
@@ -179,17 +155,13 @@ exports.handleWebhook = async (req, res) => {
 
     res.status(200).send("OK");
   } catch (err) {
-    console.error("Webhook handler error:", err.message);
     res.status(500).send("Internal Server Error");
   }
 };
 
-// Handle booking payment completion
 async function handleBookingPaymentCompletion(event, paymentDetails) {
   try {
-    console.log("Processing booking payment completion...");
-    
-    // Update payment record
+   
     const { error: paymentUpdateError } = await supabase
       .from('Payment')
       .update({
@@ -203,7 +175,6 @@ async function handleBookingPaymentCompletion(event, paymentDetails) {
       console.error("Payment update error:", paymentUpdateError);
     }
 
-    // Update booking to confirm payment
     const { error: bookingUpdateError } = await supabase
       .from('Booking')
       .update({
@@ -222,12 +193,9 @@ async function handleBookingPaymentCompletion(event, paymentDetails) {
   }
 }
 
-// Handle package payment completion
 async function handlePackagePaymentCompletion(event, paymentDetails) {
   try {
-    console.log("Processing package payment completion...");
     
-    // Find package purchase by order ID
     const { data: packagePurchase, error: findError } = await supabase
       .from("PackagePurchase")
       .select(`
@@ -249,7 +217,6 @@ async function handlePackagePaymentCompletion(event, paymentDetails) {
       return;
     }
 
-    // Update package purchase to completed
     const { error: updateError } = await supabase
       .from("PackagePurchase")
       .update({
@@ -267,7 +234,6 @@ async function handlePackagePaymentCompletion(event, paymentDetails) {
       return;
     }
 
-    // Create UserPass records based on package contents
     await createUserPasses(packagePurchase);
 
     console.log("Package payment completed successfully:", packagePurchase.id);
@@ -276,14 +242,12 @@ async function handlePackagePaymentCompletion(event, paymentDetails) {
   }
 }
 
-// Helper function to create user passes (same as in packagePaymentController)
 async function createUserPasses(packagePurchase) {
   try {
     const { v4: uuidv4 } = require("uuid");
     const packageContents = packagePurchase.Package.packagecontents;
     const userPasses = [];
 
-    // Create half-day passes
     if (packageContents.halfDayPasses && packageContents.halfDayPasses > 0) {
       for (let i = 0; i < packageContents.halfDayPasses; i++) {
         userPasses.push({
@@ -306,7 +270,6 @@ async function createUserPasses(packagePurchase) {
       }
     }
 
-    // Create full-day passes
     if (packageContents.fullDayPasses && packageContents.fullDayPasses > 0) {
       for (let i = 0; i < packageContents.fullDayPasses; i++) {
         userPasses.push({
@@ -329,7 +292,6 @@ async function createUserPasses(packagePurchase) {
       }
     }
 
-    // Create semester passes (if applicable)
     if (packagePurchase.Package.packagetype === "SEMESTER_BUNDLE") {
       userPasses.push({
         id: uuidv4(),
@@ -350,7 +312,6 @@ async function createUserPasses(packagePurchase) {
       });
     }
 
-    // Insert all user passes
     if (userPasses.length > 0) {
       const { error: insertError } = await supabase
         .from("UserPass")

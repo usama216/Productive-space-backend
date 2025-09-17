@@ -1,27 +1,15 @@
 const { createClient } = require('@supabase/supabase-js');
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-/**
- * Get package usage analytics for admin dashboard
- */
 exports.getPackageUsageAnalytics = async (req, res) => {
   try {
-    console.log('📊 Fetching package usage analytics...');
-    console.log('Environment check:', {
-      hasSupabaseUrl: !!process.env.SUPABASE_URL,
-      hasSupabaseKey: !!process.env.SUPABASE_KEY,
-      supabaseUrl: process.env.SUPABASE_URL?.substring(0, 20) + '...'
-    });
-
-    // First, let's test if we can connect to the database
-    console.log('Testing database connection...');
+   
     const { data: testData, error: testError } = await supabase
       .from('Package')
       .select('count')
       .limit(1);
 
     if (testError) {
-      console.error('Database connection test failed:', testError);
       return res.status(500).json({
         success: false,
         error: 'Database connection failed',
@@ -30,9 +18,7 @@ exports.getPackageUsageAnalytics = async (req, res) => {
       });
     }
 
-    console.log('✅ Database connection successful');
-
-    // Get all packages first (without isActive filter for now)
+   
     const { data: packages, error: packagesError } = await supabase
       .from('Package')
       .select(`
@@ -45,7 +31,6 @@ exports.getPackageUsageAnalytics = async (req, res) => {
       `);
 
     if (packagesError) {
-      console.error('Error fetching packages:', packagesError);
       return res.status(500).json({
         success: false,
         error: 'Database error',
@@ -54,11 +39,8 @@ exports.getPackageUsageAnalytics = async (req, res) => {
       });
     }
 
-    console.log(`Found ${packages.length} packages`);
-
-    // If no packages found, return empty data
+  
     if (!packages || packages.length === 0) {
-      console.log('No packages found, returning empty data');
       return res.json({
         success: true,
         packages: [],
@@ -73,7 +55,6 @@ exports.getPackageUsageAnalytics = async (req, res) => {
       });
     }
 
-    // Get all individual package purchases (not aggregated by package type)
     const { data: allPurchases, error: purchasesError } = await supabase
       .from('PackagePurchase')
       .select(`
@@ -108,7 +89,6 @@ exports.getPackageUsageAnalytics = async (req, res) => {
       .order('createdAt', { ascending: false });
 
     if (purchasesError) {
-      console.error('Error fetching package purchases:', purchasesError);
       return res.status(500).json({
         success: false,
         error: 'Database error',
@@ -117,12 +97,9 @@ exports.getPackageUsageAnalytics = async (req, res) => {
       });
     }
 
-    console.log(`Found ${allPurchases.length} completed package purchases`);
-
-    // Process each individual package purchase
+ 
     const packageUsages = await Promise.all((allPurchases || []).map(async (purchase) => {
       try {
-        // Get UserPass records for this specific purchase
          const { data: userPasses, error: passesError } = await supabase
            .from('UserPass')
            .select(`
@@ -159,7 +136,6 @@ exports.getPackageUsageAnalytics = async (req, res) => {
           };
         }
 
-        // Calculate usage for this specific purchase
         let totalPasses = 0;
         let usedPasses = 0;
         let lastUsed = null;
@@ -197,7 +173,6 @@ exports.getPackageUsageAnalytics = async (req, res) => {
           paymentMethod: purchase.paymentMethod
         };
       } catch (error) {
-        console.error(`Error processing purchase ${purchase.id}:`, error);
         return {
           id: purchase.id,
           packageName: purchase.Package?.name || 'Unknown',
@@ -221,7 +196,6 @@ exports.getPackageUsageAnalytics = async (req, res) => {
       }
     }));
 
-    // Calculate overall statistics
     const stats = {
       totalPackages: packages.length,
       totalPurchases: packageUsages.length,
@@ -233,14 +207,6 @@ exports.getPackageUsageAnalytics = async (req, res) => {
         : 0
     };
 
-    console.log('📊 Package usage analytics calculated:', {
-      totalPackages: stats.totalPackages,
-      totalPurchases: stats.totalPurchases,
-      totalPasses: stats.totalPasses,
-      totalUsed: stats.totalUsed,
-      averageUsage: stats.averageUsage.toFixed(2) + '%'
-    });
-
     res.json({
       success: true,
       packages: packageUsages,
@@ -248,7 +214,6 @@ exports.getPackageUsageAnalytics = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error in getPackageUsageAnalytics:', error);
     res.status(500).json({
       success: false,
       error: 'Internal server error',
@@ -258,9 +223,7 @@ exports.getPackageUsageAnalytics = async (req, res) => {
   }
 };
 
-/**
- * Get individual package usage details
- */
+
 exports.getPackageUsageDetails = async (req, res) => {
   try {
     const { packageId } = req.params;
@@ -272,7 +235,6 @@ exports.getPackageUsageDetails = async (req, res) => {
       });
     }
 
-    // Get package details with all purchases and usage
     const { data: packageData, error: packageError } = await supabase
       .from('Package')
       .select(`
@@ -328,7 +290,6 @@ exports.getPackageUsageDetails = async (req, res) => {
     const purchases = packageData.PackagePurchase || [];
     const completedPurchases = purchases.filter(p => p.paymentStatus === 'COMPLETED');
 
-    // Process detailed usage data
     const usageDetails = completedPurchases.map(purchase => {
       const userPasses = purchase.UserPass || [];
       const totalPasses = userPasses.reduce((sum, pass) => sum + (pass.totalCount || 0), 0);
@@ -398,7 +359,6 @@ exports.getPackageUsageDetails = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error in getPackageUsageDetails:', error);
     res.status(500).json({
       success: false,
       error: 'Internal server error',

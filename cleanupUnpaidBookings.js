@@ -9,7 +9,7 @@ const supabase = createClient(
 
 async function cleanupUnpaidBookings() {
   try {
-    console.log('🧹 Starting cleanup of unpaid bookings...');
+    console.log('Starting cleanup of unpaid bookings...');
     
     // Calculate cutoff time (10 minutes ago)
     const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
@@ -22,12 +22,12 @@ async function cleanupUnpaidBookings() {
       .lt('createdAt', tenMinutesAgo);
     
     if (fetchError) {
-      console.error('❌ Error fetching unpaid bookings:', fetchError);
+      console.error('Error fetching unpaid bookings:', fetchError);
       return;
     }
     
     if (!unpaidBookings || unpaidBookings.length === 0) {
-      console.log('✅ No unpaid bookings to clean up');
+      console.log('No unpaid bookings to clean up');
       return;
     }
     

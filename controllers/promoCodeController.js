@@ -1,11 +1,6 @@
 const supabase = require("../config/database");
 const { v4: uuidv4 } = require('uuid');
 
-// ==================== HELPER FUNCTIONS ====================
-
-/**
- * Check if booking duration meets minimum hours requirement
- */
 function checkMinimumHoursRequirement(promoCode, startAt, endAt) {
   if (!promoCode.minimum_hours) {
     return {
@@ -17,7 +12,7 @@ function checkMinimumHoursRequirement(promoCode, startAt, endAt) {
   const startTime = new Date(startAt);
   const endTime = new Date(endAt);
   const durationMs = endTime.getTime() - startTime.getTime();
-  const durationHours = durationMs / (1000 * 60 * 60); // Convert milliseconds to hours
+  const durationHours = durationMs / (1000 * 60 * 60);
 
   if (durationHours >= promoCode.minimum_hours) {
     return {
@@ -32,14 +27,11 @@ function checkMinimumHoursRequirement(promoCode, startAt, endAt) {
   }
 }
 
-/**
- * Check if a user is eligible for a specific promo code based on business rules
- */
+
 async function checkPromoCodeEligibility(promoCode, userData, userId) {
   try {
     console.log(`Checking eligibility for promo ${promoCode.code} (${promoCode.promoType}/${promoCode.targetGroup})`);
-    
-    // Check user-specific eligibility
+
     if (promoCode.promoType === 'USER_SPECIFIC') {
       if (!promoCode.targetUserIds || !promoCode.targetUserIds.includes(userId)) {
         return {
@@ -48,8 +40,7 @@ async function checkPromoCodeEligibility(promoCode, userData, userId) {
         };
       }
     }
-    
-    // Check group-specific eligibility
+
     if (promoCode.promoType === 'GROUP_SPECIFIC') {
       if (promoCode.targetGroup === 'STUDENT') {
         if (userData.studentVerificationStatus !== 'VERIFIED') {
@@ -67,24 +58,21 @@ async function checkPromoCodeEligibility(promoCode, userData, userId) {
         }
       }
     }
-    
-    // Check welcome code eligibility (only for first booking)
+
     if (promoCode.promoType === 'WELCOME') {
-      // Check if user has ever used ANY promo code (not just this specific one)
       const { data: anyUsageData, error: anyUsageError } = await supabase
         .from("PromoCodeUsage")
         .select("id")
         .eq("userid", userId)
         .limit(1);
-      
+
       if (anyUsageError) {
-        console.error("Welcome code usage check error:", anyUsageError);
         return {
           isEligible: false,
           reason: 'Unable to verify welcome code eligibility'
         };
       }
-      
+
       if (anyUsageData && anyUsageData.length > 0) {
         return {
           isEligible: false,
@@ -92,13 +80,12 @@ async function checkPromoCodeEligibility(promoCode, userData, userId) {
         };
       }
     }
-    
-    // All checks passed
+
     return {
       isEligible: true,
       reason: 'Eligible for this promo code'
     };
-    
+
   } catch (err) {
     console.error("Eligibility check error:", err);
     return {
@@ -108,12 +95,9 @@ async function checkPromoCodeEligibility(promoCode, userData, userId) {
   }
 }
 
-/**
- * Calculate discount amount based on promo code type and value
- */
 function calculateDiscount(promoCode, bookingAmount) {
   let discountAmount = 0;
-  
+
   if (promoCode.discounttype === "percentage") {
     discountAmount = (parseFloat(bookingAmount) * parseFloat(promoCode.discountvalue)) / 100;
     if (promoCode.maxDiscountAmount) {
@@ -122,9 +106,9 @@ function calculateDiscount(promoCode, bookingAmount) {
   } else if (promoCode.discounttype === "fixed") {
     discountAmount = parseFloat(promoCode.discountvalue);
   }
-  
+
   const finalAmount = Math.max(0, parseFloat(bookingAmount) - discountAmount);
-  
+
   return {
     originalAmount: parseFloat(bookingAmount),
     discountAmount: discountAmount,
@@ -132,9 +116,7 @@ function calculateDiscount(promoCode, bookingAmount) {
   };
 }
 
-/**
- * Record promo code usage in the database
- */
+
 async function recordPromoCodeUsage(promoCodeId, userId, bookingId, discountAmount, originalAmount, finalAmount) {
   try {
     const { error } = await supabase
@@ -152,22 +134,17 @@ async function recordPromoCodeUsage(promoCodeId, userId, bookingId, discountAmou
       }]);
 
     if (error) {
-      console.error("Failed to record promo code usage:", error);
       return false;
     }
     return true;
   } catch (err) {
-    console.error("Error recording promo code usage:", err);
     return false;
   }
 }
 
-/**
- * Update promo code usage count
- */
+
 async function updatePromoCodeUsage(promoCodeId) {
   try {
-    // First get current usage
     const { data: promoCode, error: fetchError } = await supabase
       .from("PromoCode")
       .select("currentusage, globalUsageLimit")
@@ -175,17 +152,13 @@ async function updatePromoCodeUsage(promoCodeId) {
       .single();
 
     if (fetchError) {
-      console.error("Failed to fetch promo code:", fetchError);
       return false;
     }
 
-    // Check if we can still use this promo code
     if (promoCode.globalUsageLimit && promoCode.currentusage >= promoCode.globalUsageLimit) {
-      console.error("Promo code usage limit exceeded");
       return false;
     }
 
-    // Update usage count
     const { error: updateError } = await supabase
       .from("PromoCode")
       .update({
@@ -195,23 +168,15 @@ async function updatePromoCodeUsage(promoCodeId) {
       .eq("id", promoCodeId);
 
     if (updateError) {
-      console.error("Failed to update promo code usage:", updateError);
       return false;
     }
 
     return true;
   } catch (err) {
-    console.error("Error updating promo code usage:", err);
     return false;
   }
 }
 
-// ==================== USER/CLIENT APIs ====================
-
-/**
- * Apply promo code during booking
- * POST /api/promocode/apply
- */
 exports.applyPromoCode = async (req, res) => {
   try {
     const { promoCode, userId, bookingAmount, startAt, endAt } = req.body;
@@ -223,13 +188,12 @@ exports.applyPromoCode = async (req, res) => {
       });
     }
 
-    // Get promo code details
     const { data: promoData, error: promoError } = await supabase
       .from("PromoCode")
       .select("*")
       .eq("code", promoCode.toUpperCase())
       .eq("isactive", true)
-      .is("deletedAt", null) // Exclude soft-deleted promo codes
+      .is("deletedAt", null)
       .single();
 
     if (promoError || !promoData) {
@@ -239,7 +203,6 @@ exports.applyPromoCode = async (req, res) => {
       });
     }
 
-    // Get user details for eligibility checking
     const { data: userData, error: userError } = await supabase
       .from("User")
       .select("id, email, firstName, lastName, memberType, studentVerificationStatus")
@@ -253,7 +216,6 @@ exports.applyPromoCode = async (req, res) => {
       });
     }
 
-    // Check if promo code is currently active
     const now = new Date();
     if (promoData.activefrom && new Date(promoData.activefrom) > now) {
       return res.status(400).json({
@@ -269,7 +231,6 @@ exports.applyPromoCode = async (req, res) => {
       });
     }
 
-    // Check minimum booking amount
     if (promoData.minimumamount && parseFloat(bookingAmount) < parseFloat(promoData.minimumamount)) {
       return res.status(400).json({
         error: "Minimum amount not met",
@@ -277,21 +238,19 @@ exports.applyPromoCode = async (req, res) => {
       });
     }
 
-    // Check minimum hours requirement if booking times are provided
     if (startAt && endAt) {
-      // Validate that startAt and endAt are valid dates
       const startTime = new Date(startAt);
       const endTime = new Date(endAt);
-      
+
       if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
         return res.status(400).json({
           error: "Invalid booking times",
           message: "Please provide valid start and end times"
         });
       }
-      
+
       const hoursCheck = checkMinimumHoursRequirement(promoData, startAt, endAt);
-      
+
       if (!hoursCheck.isEligible) {
         return res.status(400).json({
           error: "Minimum hours not met",
@@ -300,9 +259,8 @@ exports.applyPromoCode = async (req, res) => {
       }
     }
 
-    // Check eligibility
     let eligibilityCheck = await checkPromoCodeEligibility(promoData, userData, userId);
-    
+
     if (!eligibilityCheck.isEligible) {
       return res.status(400).json({
         error: "Promo code not eligible",
@@ -310,7 +268,6 @@ exports.applyPromoCode = async (req, res) => {
       });
     }
 
-    // Check if user has already used this promo code
     const { data: usageData, error: usageError } = await supabase
       .from("PromoCodeUsage")
       .select("*")
@@ -318,7 +275,6 @@ exports.applyPromoCode = async (req, res) => {
       .eq("userid", userId);
 
     if (usageError) {
-      console.error("Usage check error:", usageError);
       return res.status(500).json({
         error: "Failed to check promo code usage",
         message: "Please try again"
@@ -332,21 +288,19 @@ exports.applyPromoCode = async (req, res) => {
       });
     }
 
-    // Check if promo code has reached global usage limit
     if (promoData.globalUsageLimit) {
       const { count: globalUsageCount, error: globalCountError } = await supabase
         .from("PromoCodeUsage")
         .select("*", { count: "exact", head: true })
         .eq("promocodeid", promoData.id);
-      
+
       if (globalCountError) {
-        console.error("Global usage count error:", globalCountError);
         return res.status(500).json({
           error: "Failed to check global usage",
           message: "Please try again"
         });
       }
-      
+
       if (globalUsageCount >= promoData.globalUsageLimit) {
         return res.status(400).json({
           error: "Promo code limit reached",
@@ -355,7 +309,6 @@ exports.applyPromoCode = async (req, res) => {
       }
     }
 
-    // Calculate discount amount
     const calculation = calculateDiscount(promoData, bookingAmount);
 
     res.status(200).json({
@@ -386,10 +339,7 @@ exports.applyPromoCode = async (req, res) => {
   }
 };
 
-/**
- * Get available promo codes for a user
- * GET /api/promocode/user/:userId/available
- */
+
 exports.getUserAvailablePromos = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -398,7 +348,6 @@ exports.getUserAvailablePromos = async (req, res) => {
       return res.status(400).json({ error: "User ID is required" });
     }
 
-    // Get user details for eligibility checking
     const { data: userData, error: userError } = await supabase
       .from("User")
       .select("id, email, firstName, lastName, memberType, studentVerificationStatus")
@@ -414,7 +363,6 @@ exports.getUserAvailablePromos = async (req, res) => {
 
     const now = new Date();
 
-    // Get all active promo codes ordered by priority
     const { data: promoCodes, error: promosError } = await supabase
       .from("PromoCode")
       .select(`
@@ -441,37 +389,34 @@ exports.getUserAvailablePromos = async (req, res) => {
         priority
       `)
       .eq("isactive", true)
-      .is("deletedAt", null) // Exclude soft-deleted promo codes
+      .is("deletedAt", null)
       .order("priority", { ascending: false });
 
 
     if (promosError) {
       console.error("Promo codes fetch error:", promosError);
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: "Failed to fetch promo codes",
         details: promosError.message
       });
     }
 
-    // Filter promo codes by date validity
     const validPromoCodes = promoCodes.filter(promo => {
       if (promo.activefrom && new Date(promo.activefrom) > now) {
-        return false; // Not yet active
+        return false;
       }
       if (promo.activeto && new Date(promo.activeto) < now) {
-        return false; // Expired
+        return false;
       }
       return true;
     });
 
-    // Get user's usage for each promo code
     const { data: userUsage, error: usageError } = await supabase
       .from("PromoCodeUsage")
       .select("promocodeid, usedat")
       .eq("userid", userId);
 
     if (usageError) {
-      console.error("User usage fetch error:", usageError);
       return res.status(500).json({
         error: "Failed to fetch user usage",
         details: usageError.message
@@ -480,16 +425,14 @@ exports.getUserAvailablePromos = async (req, res) => {
 
     const userUsageData = userUsage || [];
 
-    // Filter and format available promo codes with eligibility checking
     const availablePromos = [];
-    
+
     for (const promo of validPromoCodes) {
-      // Check eligibility for this specific promo code
       const eligibilityCheck = await checkPromoCodeEligibility(promo, userData, userId);
-      
+
       if (eligibilityCheck.isEligible) {
         const userUsageCount = userUsageData.filter(usage => usage.promocodeid === promo.id).length;
-        
+
         if (userUsageCount < promo.maxusageperuser) {
           availablePromos.push({
             id: promo.id,
@@ -518,7 +461,6 @@ exports.getUserAvailablePromos = async (req, res) => {
       }
     }
 
-    // Sort by priority (highest first) and then by code
     availablePromos.sort((a, b) => {
       if (b.priority !== a.priority) {
         return b.priority - a.priority;
@@ -538,18 +480,14 @@ exports.getUserAvailablePromos = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("getUserAvailablePromos error:", err.message);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Internal Server Error",
       message: err.message
     });
   }
 };
 
-/**
- * Get user's used promo codes
- * GET /api/promocode/user/:userId/used
- */
+
 exports.getUserUsedPromos = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -558,7 +496,6 @@ exports.getUserUsedPromos = async (req, res) => {
       return res.status(400).json({ error: "User ID is required" });
     }
 
-    // Get user's promo code usage with promo code details
     const { data: usedPromos, error: usedError } = await supabase
       .from("PromoCodeUsage")
       .select(`
@@ -594,12 +531,6 @@ exports.getUserUsedPromos = async (req, res) => {
   }
 };
 
-// ==================== ADMIN APIs ====================
-
-/**
- * Create new promo code
- * POST /api/promocode/admin/create
- */
 exports.createPromoCode = async (req, res) => {
   try {
     const {
@@ -610,7 +541,7 @@ exports.createPromoCode = async (req, res) => {
       discountvalue,
       maxDiscountAmount,
       minimumamount,
-      minimum_hours, // New field for minimum booking hours
+      minimum_hours,
       activefrom,
       activeto,
       promoType = 'GENERAL',
@@ -623,7 +554,6 @@ exports.createPromoCode = async (req, res) => {
       priority = 1
     } = req.body;
 
-    // Validate required fields
     if (!code || !name || !discounttype || !discountvalue) {
       return res.status(400).json({
         error: "Missing required fields",
@@ -631,7 +561,6 @@ exports.createPromoCode = async (req, res) => {
       });
     }
 
-    // Validate discount type
     if (!["percentage", "fixed"].includes(discounttype)) {
       return res.status(400).json({
         error: "Invalid discount type",
@@ -639,7 +568,6 @@ exports.createPromoCode = async (req, res) => {
       });
     }
 
-    // Validate promo type
     if (!["GENERAL", "GROUP_SPECIFIC", "USER_SPECIFIC", "WELCOME"].includes(promoType)) {
       return res.status(400).json({
         error: "Invalid promo type",
@@ -647,7 +575,6 @@ exports.createPromoCode = async (req, res) => {
       });
     }
 
-    // Validate target group for group-specific promo codes
     if (promoType === 'GROUP_SPECIFIC' && !targetGroup) {
       return res.status(400).json({
         error: "Target group required",
@@ -655,7 +582,6 @@ exports.createPromoCode = async (req, res) => {
       });
     }
 
-    // Validate target user IDs for user-specific promo codes
     if (promoType === 'USER_SPECIFIC' && (!targetUserIds || !Array.isArray(targetUserIds) || targetUserIds.length === 0)) {
       return res.status(400).json({
         error: "Target user IDs required",
@@ -663,7 +589,6 @@ exports.createPromoCode = async (req, res) => {
       });
     }
 
-    // Validate discount value
     if (discounttype === "percentage" && (parseFloat(discountvalue) <= 0 || parseFloat(discountvalue) > 100)) {
       return res.status(400).json({
         error: "Invalid percentage value",
@@ -678,7 +603,6 @@ exports.createPromoCode = async (req, res) => {
       });
     }
 
-    // Validate minimum hours if provided
     if (minimum_hours && (parseFloat(minimum_hours) <= 0 || parseFloat(minimum_hours) > 24)) {
       return res.status(400).json({
         error: "Invalid minimum hours",
@@ -686,7 +610,6 @@ exports.createPromoCode = async (req, res) => {
       });
     }
 
-    // Check if promo code already exists
     const { data: existingCode, error: checkError } = await supabase
       .from("PromoCode")
       .select("id")
@@ -700,10 +623,9 @@ exports.createPromoCode = async (req, res) => {
       });
     }
 
-    // Validate and process time fields
     let processedActiveFrom = activefrom;
     let processedActiveTo = activeto;
-    
+
     if (activefrom) {
       const fromDate = new Date(activefrom);
       if (isNaN(fromDate.getTime())) {
@@ -716,7 +638,7 @@ exports.createPromoCode = async (req, res) => {
     } else {
       processedActiveFrom = new Date().toISOString();
     }
-    
+
     if (activeto) {
       const toDate = new Date(activeto);
       if (isNaN(toDate.getTime())) {
@@ -725,18 +647,18 @@ exports.createPromoCode = async (req, res) => {
           message: "Please provide a valid date for active to"
         });
       }
-      
+
       if (new Date(processedActiveFrom) >= toDate) {
         return res.status(400).json({
           error: "Invalid date range",
           message: "End date must be after start date"
         });
       }
-      
+
       processedActiveTo = toDate.toISOString();
     }
 
-    // Create promo code
+
     const insertData = {
       code: code.toUpperCase(),
       name: name,
@@ -745,7 +667,7 @@ exports.createPromoCode = async (req, res) => {
       discountvalue: parseFloat(discountvalue),
       maxDiscountAmount: maxDiscountAmount ? parseFloat(maxDiscountAmount) : null,
       minimumamount: minimumamount ? parseFloat(minimumamount) : 0,
-      minimum_hours: minimum_hours ? parseFloat(minimum_hours) : null, // Add minimum hours field
+      minimum_hours: minimum_hours ? parseFloat(minimum_hours) : null,
       activefrom: processedActiveFrom,
       activeto: processedActiveTo,
       promoType: promoType,
@@ -784,10 +706,7 @@ exports.createPromoCode = async (req, res) => {
   }
 };
 
-/**
- * Update promo code
- * PUT /api/promocode/admin/:id
- */
+
 exports.updatePromoCode = async (req, res) => {
   try {
     const { id } = req.params;
@@ -797,7 +716,6 @@ exports.updatePromoCode = async (req, res) => {
       return res.status(400).json({ error: "Promo code ID is required" });
     }
 
-    // Check if promo code exists
     const { data: existingCode, error: checkError } = await supabase
       .from("PromoCode")
       .select("*")
@@ -811,7 +729,6 @@ exports.updatePromoCode = async (req, res) => {
       });
     }
 
-    // Validate promo type if being updated
     if (updateData.promoType && !["GENERAL", "GROUP_SPECIFIC", "USER_SPECIFIC", "WELCOME"].includes(updateData.promoType)) {
       return res.status(400).json({
         error: "Invalid promo type",
@@ -819,7 +736,6 @@ exports.updatePromoCode = async (req, res) => {
       });
     }
 
-    // Validate target group for group-specific promo codes
     if (updateData.promoType === 'GROUP_SPECIFIC' && !updateData.targetGroup) {
       return res.status(400).json({
         error: "Target group required",
@@ -827,7 +743,6 @@ exports.updatePromoCode = async (req, res) => {
       });
     }
 
-    // Validate target user IDs for user-specific promo codes
     if (updateData.promoType === 'USER_SPECIFIC' && (!updateData.targetUserIds || !Array.isArray(updateData.targetUserIds) || updateData.targetUserIds.length === 0)) {
       return res.status(400).json({
         error: "Target user IDs required",
@@ -835,7 +750,6 @@ exports.updatePromoCode = async (req, res) => {
       });
     }
 
-    // Validate discount value if being updated
     if (updateData.discountvalue) {
       if (updateData.discounttype === "percentage" && (parseFloat(updateData.discountvalue) <= 0 || parseFloat(updateData.discountvalue) > 100)) {
         return res.status(400).json({
@@ -852,12 +766,10 @@ exports.updatePromoCode = async (req, res) => {
       }
     }
 
-    // Update welcome code flag if promo type is being changed
     if (updateData.promoType) {
       updateData.isWelcomeCode = updateData.promoType === 'WELCOME';
     }
-    
-    // Update promo code
+
     const { data, error } = await supabase
       .from("PromoCode")
       .update({
@@ -879,25 +791,20 @@ exports.updatePromoCode = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("updatePromoCode error:", err.message);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
-/**
- * Delete promo code
- * DELETE /api/promocode/admin/:id
- */
+
 exports.deletePromoCode = async (req, res) => {
   try {
     const { id } = req.params;
-    const { force } = req.query; // Add force parameter
+    const { force } = req.query;
 
     if (!id) {
       return res.status(400).json({ error: "Promo code ID is required" });
     }
 
-    // Check if promo code exists
     const { data: existingCode, error: checkError } = await supabase
       .from("PromoCode")
       .select("*")
@@ -911,7 +818,6 @@ exports.deletePromoCode = async (req, res) => {
       });
     }
 
-    // Check if promo code has been used
     const { data: usageData, error: usageError } = await supabase
       .from("PromoCodeUsage")
       .select("id")
@@ -925,25 +831,18 @@ exports.deletePromoCode = async (req, res) => {
       });
     }
 
-    // Note: For soft delete, we don't prevent deletion based on usage
-    // since we're not actually removing the data from the database
-    // The usage data is preserved for historical purposes
-
-    // Soft delete promo code (set deletedAt timestamp)
     const { error } = await supabase
       .from("PromoCode")
       .update({
         deletedAt: new Date().toISOString(),
-        isactive: false // Also deactivate it
+        isactive: false
       })
       .eq("id", id);
 
     if (error) {
-      console.error("Promo code soft deletion error:", error);
       return res.status(400).json({ error: error.message });
     }
 
-    // Prepare response message
     let message = "Promo code deleted successfully";
     if (usageData && usageData.length > 0) {
       message = `Promo code deleted successfully. This promo code had ${usageData.length} usage record(s) which are preserved for historical data.`;
@@ -966,10 +865,7 @@ exports.deletePromoCode = async (req, res) => {
   }
 };
 
-/**
- * Force delete promo code (bypasses usage check)
- * DELETE /api/promocode/admin/:id/force
- */
+
 exports.forceDeletePromoCode = async (req, res) => {
   try {
     const { id } = req.params;
@@ -978,7 +874,6 @@ exports.forceDeletePromoCode = async (req, res) => {
       return res.status(400).json({ error: "Promo code ID is required" });
     }
 
-    // Check if promo code exists
     const { data: existingCode, error: checkError } = await supabase
       .from("PromoCode")
       .select("*")
@@ -992,28 +887,24 @@ exports.forceDeletePromoCode = async (req, res) => {
       });
     }
 
-    // Get usage count for warning
     const { data: usageData, error: usageError } = await supabase
       .from("PromoCodeUsage")
       .select("id")
       .eq("promocodeid", id);
 
     if (usageError) {
-      console.error("Usage check error:", usageError);
       return res.status(500).json({
         error: "Failed to check promo code usage",
         message: "Please try again"
       });
     }
 
-    // Force delete promo code
     const { error } = await supabase
       .from("PromoCode")
       .delete()
       .eq("id", id);
 
     if (error) {
-      console.error("Promo code force deletion error:", error);
       return res.status(400).json({ error: error.message });
     }
 
@@ -1025,15 +916,11 @@ exports.forceDeletePromoCode = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("forceDeletePromoCode error:", err.message);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
-/**
- * Restore soft-deleted promo code
- * PUT /api/promocode/admin/:id/restore
- */
+
 exports.restorePromoCode = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1042,12 +929,11 @@ exports.restorePromoCode = async (req, res) => {
       return res.status(400).json({ error: "Promo code ID is required" });
     }
 
-    // Check if promo code exists and is soft-deleted
     const { data: existingCode, error: checkError } = await supabase
       .from("PromoCode")
       .select("*")
       .eq("id", id)
-      .not("deletedAt", "is", null) // Only soft-deleted codes
+      .not("deletedAt", "is", null)
       .single();
 
     if (checkError || !existingCode) {
@@ -1057,17 +943,15 @@ exports.restorePromoCode = async (req, res) => {
       });
     }
 
-    // Restore promo code (remove deletedAt timestamp)
     const { error } = await supabase
       .from("PromoCode")
       .update({
         deletedAt: null,
-        isactive: true // Also reactivate it
+        isactive: true
       })
       .eq("id", id);
 
     if (error) {
-      console.error("Promo code restoration error:", error);
       return res.status(400).json({ error: error.message });
     }
 
@@ -1081,27 +965,21 @@ exports.restorePromoCode = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("restorePromoCode error:", err.message);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
-/**
- * Get all promo codes (admin)
- * GET /api/promocode/admin/all
- */
+
 exports.getAllPromoCodes = async (req, res) => {
   try {
     const { page = 1, limit = 20, search, status, promoType, targetGroup } = req.query;
     const offset = (page - 1) * limit;
 
-    // Build query with filters
     let query = supabase
       .from("PromoCode")
       .select("*", { count: "exact" })
-      .is("deletedAt", null); // Exclude soft-deleted promo codes
+      .is("deletedAt", null);
 
-    // Apply filters
     if (search) {
       query = query.or(`code.ilike.%${search}%,name.ilike.%${search}%,description.ilike.%${search}%`);
     }
@@ -1120,29 +998,26 @@ exports.getAllPromoCodes = async (req, res) => {
       query = query.eq("targetGroup", targetGroup.toUpperCase());
     }
 
-    // Apply pagination and ordering
     query = query.range(offset, offset + limit - 1).order("priority", { ascending: false }).order("code", { ascending: true });
-    
+
     const { data: promoCodes, error, count } = await query;
 
     if (error) {
-      console.error("Promo codes fetch error:", error);
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: "Failed to fetch promo codes",
         details: error.message
       });
     }
 
-    // Calculate usage statistics and time-based status for each promo code
     const promoCodesWithStats = promoCodes.map(promo => {
       const now = new Date();
       const activeFrom = promo.activefrom ? new Date(promo.activefrom) : null;
       const activeTo = promo.activeto ? new Date(promo.activeto) : null;
-      
+
       let timeStatus = 'active';
       let isExpired = false;
       let isNotYetActive = false;
-      
+
       if (activeFrom && now < activeFrom) {
         timeStatus = 'not_yet_active';
         isNotYetActive = true;
@@ -1156,15 +1031,14 @@ exports.getAllPromoCodes = async (req, res) => {
       } else if (!activeFrom && !activeTo) {
         timeStatus = 'always_active';
       }
-      
-      // Calculate remaining time
+
       let remainingTime = null;
       if (activeTo && now < activeTo) {
         const remainingMs = activeTo.getTime() - now.getTime();
         const remainingDays = Math.ceil(remainingMs / (1000 * 60 * 60 * 24));
         remainingTime = `${remainingDays} day${remainingDays !== 1 ? 's' : ''}`;
       }
-      
+
       return {
         ...promo,
         usageCount: promo.currentusage || 0,
@@ -1195,17 +1069,14 @@ exports.getAllPromoCodes = async (req, res) => {
 
   } catch (err) {
     console.error("getAllPromoCodes error:", err.message);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Internal Server Error",
       message: err.message
     });
   }
 };
 
-/**
- * Get specific promo code details (admin)
- * GET /api/promocode/admin/:id
- */
+
 exports.getPromoCodeById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1214,7 +1085,6 @@ exports.getPromoCodeById = async (req, res) => {
       return res.status(400).json({ error: "Promo code ID is required" });
     }
 
-    // Get promo code with usage details
     const { data: promoCode, error } = await supabase
       .from("PromoCode")
       .select(`
@@ -1246,17 +1116,16 @@ exports.getPromoCodeById = async (req, res) => {
       });
     }
 
-    // Calculate statistics and time-based status
     const usageCount = promoCode.PromoCodeUsage?.length || 0;
     const now = new Date();
     const activeFrom = promoCode.activefrom ? new Date(promoCode.activefrom) : null;
     const activeTo = promoCode.activeto ? new Date(promoCode.activeto) : null;
-    
+
     let timeStatus = 'active';
     let isExpired = false;
     let isNotYetActive = false;
     let isActive = promoCode.isactive;
-    
+
     if (activeFrom && now < activeFrom) {
       timeStatus = 'not_yet_active';
       isNotYetActive = true;
@@ -1275,15 +1144,14 @@ exports.getPromoCodeById = async (req, res) => {
       timeStatus = 'always_active';
       isActive = promoCode.isactive;
     }
-    
-    // Calculate remaining time
+
     let remainingTime = null;
     if (activeTo && now < activeTo) {
       const remainingMs = activeTo.getTime() - now.getTime();
       const remainingDays = Math.ceil(remainingMs / (1000 * 60 * 60 * 24));
       remainingTime = `${remainingDays} day${remainingDays !== 1 ? 's' : ''}`;
     }
-    
+
     const promoCodeWithStats = {
       ...promoCode,
       usageCount,
@@ -1304,15 +1172,9 @@ exports.getPromoCodeById = async (req, res) => {
   }
 };
 
-// ==================== BOOKING INTEGRATION ====================
 
-/**
- * Apply promo code to booking and record usage
- * This function should be called from booking controller
- */
 exports.applyPromoCodeToBooking = async (promoCodeId, userId, bookingId, bookingAmount) => {
   try {
-    // Get promo code details
     const { data: promoData, error: promoError } = await supabase
       .from("PromoCode")
       .select("*")
@@ -1323,10 +1185,7 @@ exports.applyPromoCodeToBooking = async (promoCodeId, userId, bookingId, booking
       throw new Error("Promo code not found");
     }
 
-    // Calculate discount
     const calculation = calculateDiscount(promoData, bookingAmount);
-
-    // Record usage
     const usageRecorded = await recordPromoCodeUsage(
       promoCodeId,
       userId,
@@ -1340,7 +1199,6 @@ exports.applyPromoCodeToBooking = async (promoCodeId, userId, bookingId, booking
       throw new Error("Failed to record promo code usage");
     }
 
-    // Update usage count
     const usageUpdated = await updatePromoCodeUsage(promoCodeId);
     if (!usageUpdated) {
       throw new Error("Failed to update promo code usage count");
@@ -1361,7 +1219,6 @@ exports.applyPromoCodeToBooking = async (promoCodeId, userId, bookingId, booking
   }
 };
 
-// Export helper functions for use in other controllers
 exports.helperFunctions = {
   checkPromoCodeEligibility,
   checkMinimumHoursRequirement,

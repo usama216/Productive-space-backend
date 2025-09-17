@@ -10,7 +10,6 @@ const hitpayClient = axios.create({
   }
 });
 
-// 🎯 Create payment for package purchase
 exports.createPackagePayment = async (req, res) => {
   try {
     const {
@@ -23,7 +22,6 @@ exports.createPackagePayment = async (req, res) => {
       paymentMethod = "card"
     } = req.body;
 
-    // Validate required fields
     if (!userPackageId || !orderId || !amount || !customerInfo || !redirectUrl || !webhookUrl) {
       return res.status(400).json({
         error: "Missing required fields",
@@ -31,7 +29,6 @@ exports.createPackagePayment = async (req, res) => {
       });
     }
 
-    // Prepare HitPay payload (EXACTLY like booking payment)
     const payload = {
       amount: parseFloat(amount),
       currency: "SGD",
@@ -40,7 +37,7 @@ exports.createPackagePayment = async (req, res) => {
       purpose: `Package Purchase - Order: ${orderId}`,
       reference_number: orderId,
       redirect_url: redirectUrl,
-      webhook: "https://productive-space-backend.vercel.app/api/payment/webhook", // Use same webhook as bookings
+      webhook: "https://productive-space-backend.vercel.app/api/payment/webhook",
       payment_methods: [paymentMethod],
       phone: customerInfo.phone || "",
       send_email: false,
@@ -48,17 +45,14 @@ exports.createPackagePayment = async (req, res) => {
       allow_repeated_payments: false
     };
 
-    // Remove undefined values (EXACTLY like booking payment)
     Object.keys(payload).forEach(key => {
       if (payload[key] === undefined || payload[key] === "") {
         delete payload[key];
       }
     });
 
-    // Create payment request with HitPay (EXACTLY like booking payment)
     const response = await hitpayClient.post("/v1/payment-requests", payload);
     
-    // Update package purchase with payment info (simplified)
     const { error: updateError } = await supabase
       .from("PackagePurchase")
       .update({
@@ -71,11 +65,8 @@ exports.createPackagePayment = async (req, res) => {
 
     if (updateError) {
       console.error("Package purchase update error:", updateError);
-      // Don't fail the payment creation, just log the error
-      console.log("Payment created but failed to update package purchase status");
     }
 
-    // Return HitPay response (EXACTLY like booking payment)
     res.json({
       success: true,
       ...response.data,
@@ -85,7 +76,6 @@ exports.createPackagePayment = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Package payment creation error:", error.response?.data || error.message);
     res.status(500).json({ 
       error: "Payment creation failed",
       message: error.response?.data?.message || error.message,
@@ -94,12 +84,11 @@ exports.createPackagePayment = async (req, res) => {
   }
 };
 
-// 🎯 Handle package payment webhook
+
 exports.handlePackageWebhook = async (req, res) => {
   try {
     const event = req.body;
     
-    // Fetch payment details from HitPay
     let paymentDetails = null;
     try {
       const response = await hitpayClient.get(`/v1/payment-requests/${event.payment_request_id}`);
@@ -108,7 +97,6 @@ exports.handlePackageWebhook = async (req, res) => {
       console.error("Failed to fetch payment details:", apiError.response?.data || apiError.message);
     }
 
-    // Find the package purchase by order ID
     const { data: packagePurchase, error: findError } = await supabase
       .from("PackagePurchase")
       .select(`
@@ -125,23 +113,18 @@ exports.handlePackageWebhook = async (req, res) => {
       .single();
 
     if (findError || !packagePurchase) {
-      console.error("Package purchase not found for order:", event.reference_number);
       return res.status(404).send("Package purchase not found");
     }
 
-    // Update payment status based on webhook event
     if (event.status === 'completed') {
-      // Calculate if this was a card payment (check if amount includes 5% fee)
       const originalAmount = parseFloat(packagePurchase.totalAmount);
       const paidAmount = parseFloat(event.amount);
       const isCardPayment = paidAmount > originalAmount && Math.abs(paidAmount - (originalAmount * 1.05)) < 0.01;
       
-      // Calculate activatedAt and expiresAt
       const activatedAt = new Date().toISOString();
       const validityDays = packagePurchase.Package.validityDays || 30;
       const expiresAt = new Date(Date.now() + (validityDays * 24 * 60 * 60 * 1000)).toISOString();
 
-      // Update package purchase to completed
       const { error: updateError } = await supabase
         .from("PackagePurchase")
         .update({
@@ -154,17 +137,14 @@ exports.handlePackageWebhook = async (req, res) => {
         .eq("id", packagePurchase.id);
 
       if (updateError) {
-        console.error("Package purchase update error:", updateError);
         return res.status(500).send("Failed to update package purchase");
       }
 
-      // Create UserPass records based on package contents
       await createUserPasses(packagePurchase);
 
       console.log("Package purchase completed successfully:", packagePurchase.id);
       
     } else if (event.status === 'failed' || event.status === 'cancelled') {
-      // Update package purchase to failed
       const { error: updateError } = await supabase
         .from("PackagePurchase")
         .update({
@@ -187,12 +167,9 @@ exports.handlePackageWebhook = async (req, res) => {
   }
 };
 
-// 🎯 Helper function to create UserPass records
 async function createUserPasses(packagePurchase) {
   try {
-    console.log("createUserPasses called with packagePurchase:", JSON.stringify(packagePurchase, null, 2));
-    
-    // Validate required data
+   
     if (!packagePurchase || !packagePurchase.Package) {
       throw new Error("Package data is missing or incomplete");
     }
@@ -203,55 +180,48 @@ async function createUserPasses(packagePurchase) {
     
     const userPasses = [];
 
-    // Create count-based passes using the new schema
     const passCount = packagePurchase.Package.passCount || 0;
     console.log("Pass count from package:", passCount);
     
     if (passCount > 0) {
-      // Validate package type
       const packageType = packagePurchase.Package.packageType;
       if (!packageType || !['HALF_DAY', 'FULL_DAY', 'SEMESTER_BUNDLE'].includes(packageType)) {
         throw new Error(`Invalid package type: ${packageType}`);
       }
       
-      // Validate validity days
+    
       const validityDays = packagePurchase.Package.validityDays || 30;
       console.log("Package type:", packageType, "Validity days:", validityDays);
       
-      // Create a single UserPass record with count-based system
+     
       userPasses.push({
         id: uuidv4(),
         packagepurchaseid: packagePurchase.id,
         userId: packagePurchase.userId,
-        passtype: packageType, // HALF_DAY, FULL_DAY, or SEMESTER_BUNDLE
-        totalCount: passCount, // Total number of passes
-        remainingCount: passCount, // Remaining passes
+        passtype: packageType,
+        totalCount: passCount, 
+        remainingCount: passCount,
         status: "ACTIVE",
         usedat: null,
         bookingid: null,
         locationid: null,
         starttime: null,
         endtime: null,
-        expiresAt: new Date(Date.now() + (validityDays * 24 * 60 * 60 * 1000)).toISOString(), // When this pass expires
+        expiresAt: new Date(Date.now() + (validityDays * 24 * 60 * 60 * 1000)).toISOString(),
         createdat: new Date().toISOString(),
         updatedat: new Date().toISOString()
       });
     }
 
-    // Semester bundle already handled above with count-based system
 
-
-    // Insert all user passes
     if (userPasses.length > 0) {
-      console.log("Attempting to insert user passes:", JSON.stringify(userPasses, null, 2));
       
       const { error: insertError } = await supabase
         .from("UserPass")
         .insert(userPasses);
 
       if (insertError) {
-        console.error("Error creating user passes:", insertError);
-        console.error("Insert data was:", JSON.stringify(userPasses, null, 2));
+       
         throw insertError;
       }
 
@@ -266,7 +236,6 @@ async function createUserPasses(packagePurchase) {
   }
 }
 
-// 🎯 Get payment status for a package purchase
 exports.getPackagePaymentStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -306,7 +275,6 @@ exports.getPackagePaymentStatus = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Get payment status error:", err.message);
     res.status(500).json({
       error: "Server error",
       message: "Failed to get payment status"
@@ -314,12 +282,9 @@ exports.getPackagePaymentStatus = async (req, res) => {
   }
 };
 
-// 🎯 Confirm package payment (for frontend redirect)
 exports.confirmPackagePayment = async (req, res) => {
   try {
     const { userPackageId, orderId, hitpayReference } = req.body;
-
-    console.log("Confirm package payment request:", { userPackageId, orderId, hitpayReference });
 
     if (!userPackageId || !orderId) {
       return res.status(400).json({
@@ -328,7 +293,6 @@ exports.confirmPackagePayment = async (req, res) => {
       });
     }
 
-    // Get package purchase details (try by ID first, then by order ID)
     let { data: packagePurchase, error: findError } = await supabase
       .from("PackagePurchase")
       .select(`
@@ -352,7 +316,6 @@ exports.confirmPackagePayment = async (req, res) => {
       .eq("id", userPackageId)
       .single();
 
-    // If not found by ID, try by order ID
     if (findError || !packagePurchase) {
       const { data: packagePurchaseByOrder, error: findErrorByOrder } = await supabase
         .from("PackagePurchase")
@@ -382,23 +345,13 @@ exports.confirmPackagePayment = async (req, res) => {
     }
 
     if (findError || !packagePurchase) {
-      console.log("Package purchase not found. Error:", findError);
-      console.log("Searched for userPackageId:", userPackageId, "orderId:", orderId);
+   
       return res.status(404).json({
         error: "Package purchase not found",
         message: "The specified package purchase does not exist"
       });
     }
 
-    console.log("Found package purchase:", {
-      id: packagePurchase.id,
-      orderId: packagePurchase.orderId,
-      totalAmount: packagePurchase.totalAmount,
-      paymentMethod: packagePurchase.paymentMethod,
-      paymentStatus: packagePurchase.paymentStatus
-    });
-
-    // Check if payment is already completed
     if (packagePurchase.paymentStatus === "COMPLETED") {
       return res.json({
         success: true,
@@ -412,7 +365,7 @@ exports.confirmPackagePayment = async (req, res) => {
           packageType: packagePurchase.Package.packageType,
           targetRole: packagePurchase.Package.targetRole,
           totalAmount: parseFloat(packagePurchase.totalAmount),
-          paymentMethod: packagePurchase.paymentMethod, // Add payment method
+          paymentMethod: packagePurchase.paymentMethod,
           activatedAt: packagePurchase.activatedAt || new Date().toISOString(),
           expiresAt: packagePurchase.expiresAt || new Date(Date.now() + (packagePurchase.Package.validityDays * 24 * 60 * 60 * 1000)).toISOString(),
           userInfo: {
@@ -426,12 +379,11 @@ exports.confirmPackagePayment = async (req, res) => {
       });
     }
 
-    // Calculate activatedAt and expiresAt
+ 
     const activatedAt = new Date().toISOString();
     const validityDays = packagePurchase.Package.validityDays || 30;
     const expiresAt = new Date(Date.now() + (validityDays * 24 * 60 * 60 * 1000)).toISOString();
 
-    // Update payment status to completed with activation dates
     const { error: updateError } = await supabase
       .from("PackagePurchase")
       .update({
@@ -443,39 +395,26 @@ exports.confirmPackagePayment = async (req, res) => {
       .eq("id", userPackageId);
 
     if (updateError) {
-      console.error("Package purchase update error:", updateError);
       return res.status(500).json({
         error: "Database error",
         message: "Failed to update package purchase"
       });
     }
 
-    // Create UserPass records based on package contents
     try {
-      console.log("Creating UserPass records for package purchase:", packagePurchase.id);
       await createUserPasses(packagePurchase);
-      console.log("UserPass records created successfully");
     } catch (createPassesError) {
       console.error("Error creating user passes on first attempt:", createPassesError);
       
-      // Retry once after a short delay (race condition handling)
       try {
-        console.log("Retrying user passes creation after 1 second delay...");
         await new Promise(resolve => setTimeout(resolve, 1000));
         await createUserPasses(packagePurchase);
         console.log("User passes created successfully on retry");
       } catch (retryError) {
         console.error("Error creating user passes on retry:", retryError);
-        // Don't fail the entire payment confirmation if user passes creation fails
-        // The payment is still valid, just log the error
+      
       }
     }
-
-    console.log('Package purchase data for response:', {
-      id: packagePurchase.id,
-      totalAmount: packagePurchase.totalAmount,
-      paymentMethod: packagePurchase.paymentMethod
-    });
 
     const responseData = {
       userPackageId: packagePurchase.id,
@@ -486,7 +425,7 @@ exports.confirmPackagePayment = async (req, res) => {
       packageType: packagePurchase.Package.packageType,
       targetRole: packagePurchase.Package.targetRole,
       totalAmount: parseFloat(packagePurchase.totalAmount),
-      paymentMethod: packagePurchase.paymentMethod, // Add payment method
+      paymentMethod: packagePurchase.paymentMethod,
       activatedAt: activatedAt,
       expiresAt: expiresAt,
       userInfo: {
@@ -498,11 +437,7 @@ exports.confirmPackagePayment = async (req, res) => {
       validityDays: packagePurchase.Package.validityDays
     };
 
-    console.log('Response data being sent:', {
-      paymentMethod: responseData.paymentMethod,
-      totalAmount: responseData.totalAmount
-    });
-
+  
     res.json({
       success: true,
       message: "Package payment confirmed successfully",
@@ -510,7 +445,6 @@ exports.confirmPackagePayment = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Confirm package payment error:", err.message);
     res.status(500).json({
       error: "Server error",
       message: "Failed to confirm package payment"
@@ -518,7 +452,6 @@ exports.confirmPackagePayment = async (req, res) => {
   }
 };
 
-// 🎯 Manual payment completion (for fixing webhook issues)
 exports.manualCompletePayment = async (req, res) => {
   try {
     const { userPackageId, hitpayReference } = req.body;
@@ -530,7 +463,6 @@ exports.manualCompletePayment = async (req, res) => {
       });
     }
 
-    // Get package purchase details
     const { data: packagePurchase, error: findError } = await supabase
       .from("PackagePurchase")
       .select(`
@@ -554,7 +486,6 @@ exports.manualCompletePayment = async (req, res) => {
       });
     }
 
-    // Update payment status to completed
     const { error: updateError } = await supabase
       .from("PackagePurchase")
       .update({
@@ -564,14 +495,12 @@ exports.manualCompletePayment = async (req, res) => {
       .eq("id", userPackageId);
 
     if (updateError) {
-      console.error("Package purchase update error:", updateError);
       return res.status(500).json({
         error: "Database error",
         message: "Failed to update package purchase"
       });
     }
 
-    // Create UserPass records based on package contents
     await createUserPasses(packagePurchase);
 
     res.json({
@@ -588,7 +517,6 @@ exports.manualCompletePayment = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Manual complete payment error:", err.message);
     res.status(500).json({
       error: "Server error",
       message: "Failed to complete payment manually"

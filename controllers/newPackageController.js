@@ -2,14 +2,10 @@ const { v4: uuidv4 } = require("uuid");
 const supabase = require("../config/database");
 const { getUserPackageUsage } = require("../utils/packageUsageHelper");
 
-// ==================== CLIENT APIs ====================
-
-// 🎯 Get packages by role (MEMBER, TUTOR, STUDENT)
 exports.getPackagesByRole = async (req, res) => {
   try {
     const { role } = req.params;
-    
-    // Validate role
+
     if (!['MEMBER', 'TUTOR', 'STUDENT'].includes(role.toUpperCase())) {
       return res.status(400).json({
         error: "Invalid role",
@@ -33,7 +29,6 @@ exports.getPackagesByRole = async (req, res) => {
       });
     }
 
-    // Format packages for frontend
     const formattedPackages = packages.map(pkg => ({
       id: pkg.id,
       name: pkg.name,
@@ -56,7 +51,6 @@ exports.getPackagesByRole = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("getPackagesByRole error:", err.message);
     res.status(500).json({
       error: "Server error",
       message: "Failed to fetch packages"
@@ -64,7 +58,6 @@ exports.getPackagesByRole = async (req, res) => {
   }
 };
 
-// 🎯 Get specific package by ID
 exports.getPackageById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -83,7 +76,6 @@ exports.getPackageById = async (req, res) => {
       });
     }
 
-    // Format package for frontend
     const formattedPackage = {
       id: package.id,
       name: package.name,
@@ -104,7 +96,6 @@ exports.getPackageById = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("getPackageById error:", err.message);
     res.status(500).json({
       error: "Server error",
       message: "Failed to fetch package"
@@ -112,7 +103,6 @@ exports.getPackageById = async (req, res) => {
   }
 };
 
-// 🎯 Purchase package (create purchase record)
 exports.purchasePackage = async (req, res) => {
   try {
     const {
@@ -120,11 +110,10 @@ exports.purchasePackage = async (req, res) => {
       packageId,
       quantity = 1,
       customerInfo,
-      totalAmount, // Optional: if provided, use this instead of calculating
-      paymentMethod // Optional: payment method used
+      totalAmount,
+      paymentMethod
     } = req.body;
 
-    // Validate required fields
     if (!userId || !packageId || !customerInfo) {
       return res.status(400).json({
         error: "Missing required fields",
@@ -132,7 +121,6 @@ exports.purchasePackage = async (req, res) => {
       });
     }
 
-    // Check if package exists and is active
     const { data: package, error: packageError } = await supabase
       .from("Package")
       .select("*")
@@ -147,13 +135,12 @@ exports.purchasePackage = async (req, res) => {
       });
     }
 
-    // Check if user exists
     const { data: user, error: userError } = await supabase
       .from("User")
       .select("id, email, firstName, lastName, memberType")
       .eq("id", userId)
       .single();
-      
+
     if (userError || !user) {
       return res.status(404).json({
         error: "User not found",
@@ -161,26 +148,13 @@ exports.purchasePackage = async (req, res) => {
       });
     }
 
-    // Calculate total amount
     const baseAmount = parseFloat(package.price) * quantity;
     const outletFee = parseFloat(package.outletFee) * quantity;
     const calculatedTotalAmount = baseAmount + outletFee;
-    
-    // Use provided totalAmount if available (includes card fees), otherwise use calculated amount
-    const finalTotalAmount = totalAmount ? parseFloat(totalAmount) : calculatedTotalAmount;
-    
-    console.log('Package purchase amount calculation:', {
-      baseAmount,
-      outletFee,
-      calculatedTotalAmount,
-      providedTotalAmount: totalAmount,
-      finalTotalAmount
-    });
 
-    // Generate order ID
+    const finalTotalAmount = totalAmount ? parseFloat(totalAmount) : calculatedTotalAmount;
     const orderId = `PKG_${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
-    // Create package purchase record
     const { data: packagePurchase, error: purchaseError } = await supabase
       .from("PackagePurchase")
       .insert([{
@@ -190,7 +164,7 @@ exports.purchasePackage = async (req, res) => {
         quantity: quantity,
         totalAmount: finalTotalAmount,
         paymentStatus: "PENDING",
-        paymentMethod: paymentMethod, // Store payment method
+        paymentMethod: paymentMethod,
         customerInfo: customerInfo,
         orderId: orderId,
         createdAt: new Date().toISOString(),
@@ -200,7 +174,6 @@ exports.purchasePackage = async (req, res) => {
       .single();
 
     if (purchaseError) {
-      console.error("Error creating package purchase:", purchaseError);
       return res.status(500).json({
         error: "Database error",
         message: "Failed to create package purchase record"
@@ -223,7 +196,6 @@ exports.purchasePackage = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("purchasePackage error:", err.message);
     res.status(500).json({
       error: "Server error",
       message: "Failed to process package purchase"
@@ -231,7 +203,6 @@ exports.purchasePackage = async (req, res) => {
   }
 };
 
-// 🎯 Get user's package purchases
 exports.getUserPackages = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -243,7 +214,6 @@ exports.getUserPackages = async (req, res) => {
       });
     }
 
-    // Get user's package purchases with package details
     const { data: purchases, error } = await supabase
       .from("PackagePurchase")
       .select(`
@@ -263,14 +233,12 @@ exports.getUserPackages = async (req, res) => {
       .order("createdAt", { ascending: false });
 
     if (error) {
-      console.error("Error fetching user packages:", error);
       return res.status(500).json({
         error: "Database error",
         message: "Failed to fetch user packages"
       });
     }
 
-    // Get pass counts for each purchase
     const purchasesWithPasses = await Promise.all(
       purchases.map(async (purchase) => {
         const { data: passes, error: passesError } = await supabase
@@ -283,35 +251,26 @@ exports.getUserPackages = async (req, res) => {
           return purchase;
         }
 
-        console.log(`Found ${passes.length} passes for purchase ${purchase.id}:`, passes);
-
-        // Count-based system: use totalCount and remainingCount
         const totalPasses = passes.reduce((sum, pass) => sum + (pass.totalCount || 0), 0);
         const activePasses = passes.filter(p => p.status === "ACTIVE").reduce((sum, pass) => sum + (pass.remainingCount || 0), 0);
         const usedPasses = passes.reduce((sum, pass) => sum + ((pass.totalCount || 0) - (pass.remainingCount || 0)), 0);
         const expiredPasses = passes.filter(p => p.status === "EXPIRED").reduce((sum, pass) => sum + (pass.totalCount || 0), 0);
 
-        console.log(`Purchase ${purchase.id} - Total: ${totalPasses}, Active: ${activePasses}, Used: ${usedPasses}, Expired: ${expiredPasses}`);
 
-        // If no UserPass records found, use package passCount as fallback
         const finalTotalPasses = totalPasses > 0 ? totalPasses : (purchase.Package.passCount || 0);
         const finalActivePasses = activePasses > 0 ? activePasses : (purchase.Package.passCount || 0);
         const finalUsedPasses = usedPasses;
         const finalExpiredPasses = expiredPasses;
 
-        console.log(`Purchase ${purchase.id} - Final Total: ${finalTotalPasses}, Final Active: ${finalActivePasses}, Used: ${finalUsedPasses}, Expired: ${finalExpiredPasses}`);
 
-        // Calculate activatedAt and expiresAt for completed packages
         let activatedAt = purchase.activatedAt;
         let expiresAt = purchase.expiresAt;
-        
+
         if (purchase.paymentStatus === 'COMPLETED' && !activatedAt) {
-          // If package is completed but no activatedAt, set it to createdAt
           activatedAt = purchase.createdAt;
         }
-        
+
         if (purchase.paymentStatus === 'COMPLETED' && !expiresAt) {
-          // If package is completed but no expiresAt, calculate it
           const validityDays = purchase.Package.validityDays || 30;
           const activatedDate = activatedAt ? new Date(activatedAt) : new Date(purchase.createdAt);
           expiresAt = new Date(activatedDate.getTime() + (validityDays * 24 * 60 * 60 * 1000)).toISOString();
@@ -350,7 +309,6 @@ exports.getUserPackages = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("getUserPackages error:", err.message);
     res.status(500).json({
       error: "Server error",
       message: "Failed to fetch user packages"
@@ -358,24 +316,19 @@ exports.getUserPackages = async (req, res) => {
   }
 };
 
-// ==================== ADMIN APIs ====================
 
-// 🎯 Get all packages (admin)
 exports.getAllPackages = async (req, res) => {
   try {
     const { page = 1, limit = 10, role, packageType, isActive } = req.query;
 
-    // Build query
     let query = supabase
       .from("Package")
       .select("*", { count: 'exact' });
 
-    // Apply filters
     if (role) query = query.eq("targetRole", role.toUpperCase());
     if (packageType) query = query.eq("packageType", packageType.toUpperCase());
     if (isActive !== undefined) query = query.eq("isActive", isActive === 'true');
 
-    // Apply pagination
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
     const offset = (pageNum - 1) * limitNum;
@@ -387,14 +340,12 @@ exports.getAllPackages = async (req, res) => {
     const { data: packages, error, count } = await query;
 
     if (error) {
-      console.error("Error fetching all packages:", error);
       return res.status(500).json({
         error: "Database error",
         message: "Failed to fetch packages"
       });
     }
 
-    // Format packages
     const formattedPackages = packages.map(pkg => ({
       id: pkg.id,
       name: pkg.name,
@@ -412,7 +363,6 @@ exports.getAllPackages = async (req, res) => {
       updatedAt: pkg.updatedAt
     }));
 
-    // Calculate pagination info
     const totalPages = Math.ceil(count / limitNum);
     const hasNextPage = pageNum < totalPages;
     const hasPrevPage = pageNum > 1;
@@ -435,7 +385,6 @@ exports.getAllPackages = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("getAllPackages error:", err.message);
     res.status(500).json({
       error: "Server error",
       message: "Failed to fetch packages"
@@ -443,7 +392,6 @@ exports.getAllPackages = async (req, res) => {
   }
 };
 
-// 🎯 Create new package (admin)
 exports.createPackage = async (req, res) => {
   try {
     const {
@@ -458,7 +406,6 @@ exports.createPackage = async (req, res) => {
       validityDays = 30
     } = req.body;
 
-    // Validate required fields
     if (!name || !packageType || !targetRole || !price) {
       return res.status(400).json({
         error: "Missing required fields",
@@ -466,7 +413,6 @@ exports.createPackage = async (req, res) => {
       });
     }
 
-    // Validate enum values
     if (!['HALF_DAY', 'FULL_DAY', 'SEMESTER_BUNDLE'].includes(packageType)) {
       return res.status(400).json({
         error: "Invalid packageType",
@@ -481,7 +427,6 @@ exports.createPackage = async (req, res) => {
       });
     }
 
-    // Prepare package data
     const packageData = {
       id: uuidv4(),
       name: name,
@@ -499,9 +444,6 @@ exports.createPackage = async (req, res) => {
     };
 
 
-    console.log("Creating package with data:", packageData);
-
-    // Create package with correct field names
     const { data: newPackage, error } = await supabase
       .from("Package")
       .insert([packageData])
@@ -509,7 +451,6 @@ exports.createPackage = async (req, res) => {
       .single();
 
     if (error) {
-      console.error("Error creating package:", error);
       return res.status(500).json({
         error: "Database error",
         message: "Failed to create package",
@@ -537,7 +478,6 @@ exports.createPackage = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("createPackage error:", err.message);
     res.status(500).json({
       error: "Server error",
       message: "Failed to create package"
@@ -545,7 +485,6 @@ exports.createPackage = async (req, res) => {
   }
 };
 
-// 🎯 Update package (admin)
 exports.updatePackage = async (req, res) => {
   try {
     const { id } = req.params;
@@ -562,7 +501,6 @@ exports.updatePackage = async (req, res) => {
       isActive
     } = req.body;
 
-    // Validate required fields if provided
     if (packageType && !['HALF_DAY', 'FULL_DAY', 'SEMESTER_BUNDLE'].includes(packageType)) {
       return res.status(400).json({
         error: "Invalid packageType",
@@ -570,7 +508,6 @@ exports.updatePackage = async (req, res) => {
       });
     }
 
-    // Validate passCount if provided
     if (packageContents && packageContents.passCount) {
       if (packageContents.passCount <= 0) {
         return res.status(400).json({
@@ -587,7 +524,6 @@ exports.updatePackage = async (req, res) => {
       });
     }
 
-    // Map frontend field names to database field names
     const updateData = {
       name: name,
       description: description,
@@ -602,17 +538,13 @@ exports.updatePackage = async (req, res) => {
       updatedAt: new Date().toISOString()
     };
 
-    // Remove undefined values
     Object.keys(updateData).forEach(key => {
       if (updateData[key] === undefined) {
         delete updateData[key];
       }
     });
 
-    console.log("Updating package with data:", updateData);
-    console.log("Package ID:", id);
 
-    // Update package
     const { data: updatedPackage, error } = await supabase
       .from("Package")
       .update(updateData)
@@ -621,7 +553,6 @@ exports.updatePackage = async (req, res) => {
       .single();
 
     if (error) {
-      console.error("Error updating package:", error);
       return res.status(500).json({
         error: "Database error",
         message: "Failed to update package",
@@ -656,7 +587,6 @@ exports.updatePackage = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("updatePackage error:", err.message);
     res.status(500).json({
       error: "Server error",
       message: "Failed to update package"
@@ -664,12 +594,10 @@ exports.updatePackage = async (req, res) => {
   }
 };
 
-// 🎯 Delete package (admin)
 exports.deletePackage = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Check if package has any purchases
     const { data: purchases, error: checkError } = await supabase
       .from("PackagePurchase")
       .select("id")
@@ -677,7 +605,6 @@ exports.deletePackage = async (req, res) => {
       .limit(1);
 
     if (checkError) {
-      console.error("Error checking package purchases:", checkError);
       return res.status(500).json({
         error: "Database error",
         message: "Failed to check package usage"
@@ -691,14 +618,13 @@ exports.deletePackage = async (req, res) => {
       });
     }
 
-    // Delete package
+
     const { error } = await supabase
       .from("Package")
       .delete()
       .eq("id", id);
 
     if (error) {
-      console.error("Error deleting package:", error);
       return res.status(500).json({
         error: "Database error",
         message: "Failed to delete package"
@@ -711,7 +637,6 @@ exports.deletePackage = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("deletePackage error:", err.message);
     res.status(500).json({
       error: "Server error",
       message: "Failed to delete package"
@@ -719,12 +644,10 @@ exports.deletePackage = async (req, res) => {
   }
 };
 
-// 🎯 Get all package purchases (admin)
 exports.getAllPackagePurchases = async (req, res) => {
   try {
     const { page = 1, limit = 10, userId, packageId, paymentStatus, role } = req.query;
 
-    // Build query
     let query = supabase
       .from("PackagePurchase")
       .select(`
@@ -744,13 +667,11 @@ exports.getAllPackagePurchases = async (req, res) => {
         )
       `, { count: 'exact' });
 
-    // Apply filters
     if (userId) query = query.eq("userId", userId);
     if (packageId) query = query.eq("packageId", packageId);
     if (paymentStatus) query = query.eq("paymentStatus", paymentStatus.toUpperCase());
     if (role) query = query.eq("Package.targetRole", role.toUpperCase());
 
-    // Apply pagination
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
     const offset = (pageNum - 1) * limitNum;
@@ -769,7 +690,6 @@ exports.getAllPackagePurchases = async (req, res) => {
       });
     }
 
-    // Format purchases
     const formattedPurchases = purchases.map(purchase => ({
       id: purchase.id,
       orderId: purchase.orderId,
@@ -793,7 +713,6 @@ exports.getAllPackagePurchases = async (req, res) => {
       createdAt: purchase.createdAt
     }));
 
-    // Calculate pagination info
     const totalPages = Math.ceil(count / limitNum);
     const hasNextPage = pageNum < totalPages;
     const hasPrevPage = pageNum > 1;
@@ -816,7 +735,6 @@ exports.getAllPackagePurchases = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("getAllPackagePurchases error:", err.message);
     res.status(500).json({
       error: "Server error",
       message: "Failed to fetch package purchases"
@@ -824,7 +742,6 @@ exports.getAllPackagePurchases = async (req, res) => {
   }
 };
 
-// 🎯 Get user's package usage summary
 exports.getUserPackageUsage = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -851,7 +768,6 @@ exports.getUserPackageUsage = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("getUserPackageUsage error:", err.message);
     res.status(500).json({
       error: "Server error",
       message: "Failed to fetch package usage"

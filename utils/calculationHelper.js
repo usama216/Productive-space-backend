@@ -1,12 +1,8 @@
 /**
- * Shared calculation utilities to ensure consistency between website, PDF, and email
- */
-
-/**
- * Calculate card processing fee and amounts correctly
- * @param {number} totalAmount - The total amount paid by customer
- * @param {string} paymentMethod - The payment method used
- * @returns {object} - Calculation results
+ * Calculate card processing fee and amounts
+ * @param {number} totalAmount 
+ * @param {string} paymentMethod
+ * @returns {object}
  */
 function calculatePaymentAmounts(totalAmount, paymentMethod) {
   const isCardPayment = paymentMethod && (
@@ -17,21 +13,17 @@ function calculatePaymentAmounts(totalAmount, paymentMethod) {
   let subtotal, cardFee, finalTotal;
   
   if (isCardPayment) {
-    // For card payments, calculate subtotal first, then add 5% fee
-    // Formula: totalAmount = subtotal + (subtotal * 0.05)
-    // Therefore: subtotal = totalAmount / 1.05
     subtotal = totalAmount / 1.05;
     cardFee = subtotal * 0.05;
     finalTotal = subtotal + cardFee;
   } else {
-    // For non-card payments, no fee
     subtotal = totalAmount;
     cardFee = 0;
     finalTotal = totalAmount;
   }
   
   return {
-    subtotal: Math.round(subtotal * 100) / 100, // Round to 2 decimal places
+    subtotal: Math.round(subtotal * 100) / 100,
     cardFee: Math.round(cardFee * 100) / 100,
     finalTotal: Math.round(finalTotal * 100) / 100,
     isCardPayment: isCardPayment
@@ -39,10 +31,9 @@ function calculatePaymentAmounts(totalAmount, paymentMethod) {
 }
 
 /**
- * Calculate discount amounts for promo codes
- * @param {number} originalAmount - Original amount before discount
- * @param {object} promoCode - Promo code object
- * @returns {object} - Discount calculation results
+ * @param {number} originalAmount 
+ * @param {object} promoCode 
+ * @returns {object} 
  */
 function calculateDiscount(originalAmount, promoCode) {
   if (!promoCode) {
@@ -74,9 +65,8 @@ function calculateDiscount(originalAmount, promoCode) {
 }
 
 /**
- * Get payment method display name
- * @param {string} paymentMethod - Technical payment method name
- * @returns {string} - User-friendly payment method name
+ * @param {string} paymentMethod 
+ * @returns {string} 
  */
 function getPaymentMethodDisplayName(paymentMethod) {
   if (!paymentMethod) return 'Unknown';
@@ -93,9 +83,8 @@ function getPaymentMethodDisplayName(paymentMethod) {
 }
 
 /**
- * Calculate all payment details for display
- * @param {object} bookingData - Booking data object
- * @returns {object} - Complete payment calculation results
+ * @param {object} bookingData 
+ * @returns {object} 
  */
 function calculatePaymentDetails(bookingData) {
   const totalAmount = parseFloat(bookingData.totalAmount || 0);
@@ -103,15 +92,13 @@ function calculatePaymentDetails(bookingData) {
   const discountAmount = parseFloat(bookingData.discountAmount || 0);
   const paymentMethod = bookingData.paymentMethod || bookingData.paymentDetails?.paymentMethod;
   
-  // Calculate discount if applicable
   const discount = discountAmount > 0 ? {
     originalAmount: originalAmount,
     discountAmount: discountAmount,
     finalAmount: originalAmount - discountAmount
   } : null;
   
-  // For card payments with discounts, we need to calculate differently
-  // The totalAmount already includes the card fee, so we need to work backwards
+
   const isCardPayment = paymentMethod && (
     paymentMethod.toLowerCase().includes('card') || 
     paymentMethod.toLowerCase().includes('credit')
@@ -120,14 +107,10 @@ function calculatePaymentDetails(bookingData) {
   let subtotal, cardFee, finalTotal;
   
   if (isCardPayment) {
-    // For card payments, calculate subtotal first, then add 5% fee
-    // Formula: totalAmount = subtotal + (subtotal * 0.05)
-    // Therefore: subtotal = totalAmount / 1.05
     subtotal = totalAmount / 1.05;
     cardFee = subtotal * 0.05;
     finalTotal = subtotal + cardFee;
   } else {
-    // For non-card payments, no fee
     subtotal = totalAmount;
     cardFee = 0;
     finalTotal = totalAmount;

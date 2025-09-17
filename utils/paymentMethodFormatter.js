@@ -1,8 +1,3 @@
-/**
- * Utility function to convert technical payment method names to user-friendly names
- * @param {string} paymentMethod - The technical payment method name from the database
- * @returns {string} - User-friendly payment method name
- */
 const formatPaymentMethod = (paymentMethod) => {
     if (!paymentMethod) return 'Unknown';
     
@@ -25,11 +20,9 @@ const formatPaymentMethod = (paymentMethod) => {
         case 'online_payment':
             return 'Online Payment';
         default:
-            // If it's already user-friendly, return as is
             if (paymentMethod.includes('Pay Now') || paymentMethod.includes('Credit Card')) {
                 return paymentMethod;
             }
-            // Capitalize first letter of each word for unknown methods
             return paymentMethod.split('_').map(word => 
                 word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
             ).join(' ');

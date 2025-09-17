@@ -1,4 +1,3 @@
-// Count-Based Package Controller
 const { createClient } = require('@supabase/supabase-js');
 const { v4: uuidv4 } = require('uuid');
 
@@ -7,35 +6,23 @@ const supabase = createClient(
   process.env.SUPABASE_KEY
 );
 
-/**
- * 🎯 Validate pass usage for count-based system
- * @param {string} userId - User ID
- * @param {string} passType - Type of pass (DAY_PASS, HALF_DAY_PASS)
- * @param {string} startTime - Booking start time
- * @param {string} endTime - Booking end time
- * @param {number} pax - Number of people
- * @returns {Object} - Validation result
- */
 exports.validatePassUsage = async (userId, passType, startTime, endTime, pax) => {
   try {
-    console.log(`🔍 Validating pass usage for user ${userId}, type: ${passType}, time: ${startTime} to ${endTime}, pax: ${pax}`);
-
-    // Parse times
+    
     const start = new Date(startTime);
     const end = new Date(endTime);
     const startHour = start.getHours();
     const endHour = end.getHours();
 
-    // Define pass restrictions
     const passRestrictions = {
       'DAY_PASS': {
-        allowedHours: { start: 8, end: 18 }, // 8am-6pm
-        duration: 8, // 8 hours
+        allowedHours: { start: 8, end: 18 },
+        duration: 8,
         name: 'Day Pass'
       },
       'HALF_DAY_PASS': {
-        allowedHours: { start: 8, end: 18 }, // 8am-6pm
-        duration: 4, // 4 hours
+        allowedHours: { start: 8, end: 18 }, 
+        duration: 4, 
         name: 'Half Day Pass'
       }
     };
@@ -49,7 +36,6 @@ exports.validatePassUsage = async (userId, passType, startTime, endTime, pax) =>
       };
     }
 
-    // Check time restrictions
     if (startHour < restriction.allowedHours.start || endHour > restriction.allowedHours.end) {
       return {
         success: false,
@@ -59,7 +45,6 @@ exports.validatePassUsage = async (userId, passType, startTime, endTime, pax) =>
       };
     }
 
-    // Get user's available passes
     const { data: userPasses, error: passesError } = await supabase
       .from('UserPass')
       .select(`
@@ -78,10 +63,9 @@ exports.validatePassUsage = async (userId, passType, startTime, endTime, pax) =>
       .gt('remainingQuantity', 0)
       .gte('activeFrom', new Date().toISOString())
       .lte('activeTo', new Date().toISOString())
-      .order('createdAt', { ascending: true }); // Use oldest first
+      .order('createdAt', { ascending: true }); 
 
     if (passesError) {
-      console.error('Error fetching user passes:', passesError);
       return {
         success: false,
         error: 'Database error',
@@ -98,7 +82,6 @@ exports.validatePassUsage = async (userId, passType, startTime, endTime, pax) =>
       };
     }
 
-    // Find the first available pass
     const availablePass = userPasses[0];
     const remainingQuantity = availablePass.remainingQuantity || 0;
 
@@ -111,22 +94,18 @@ exports.validatePassUsage = async (userId, passType, startTime, endTime, pax) =>
       };
     }
 
-    // Calculate booking duration
-    const bookingDuration = (end - start) / (1000 * 60 * 60); // hours
+    const bookingDuration = (end - start) / (1000 * 60 * 60);
 
-    // Calculate charges
-    const originalCharge = bookingDuration * pax * 15; // $15 per hour per person
+    const originalCharge = bookingDuration * pax * 15;
     let passDiscount = 0;
     let remainingCharge = originalCharge;
     let passUsed = false;
 
     if (bookingDuration <= restriction.duration) {
-      // Full pass coverage - no additional charge
       passDiscount = originalCharge;
       remainingCharge = 0;
       passUsed = true;
     } else {
-      // Partial pass coverage - charge for excess hours
       const excessHours = bookingDuration - restriction.duration;
       const excessCharge = excessHours * pax * 15;
       passDiscount = restriction.duration * pax * 15;
@@ -146,12 +125,11 @@ exports.validatePassUsage = async (userId, passType, startTime, endTime, pax) =>
       bookingDuration: bookingDuration,
       passDuration: restriction.duration,
       excessHours: Math.max(0, bookingDuration - restriction.duration),
-      remainingQuantity: remainingQuantity - 1, // After using this pass
+      remainingQuantity: remainingQuantity - 1,
       allowedHours: restriction.allowedHours
     };
 
   } catch (error) {
-    console.error('Error in validatePassUsage:', error);
     return {
       success: false,
       error: 'Internal error',
@@ -160,22 +138,10 @@ exports.validatePassUsage = async (userId, passType, startTime, endTime, pax) =>
   }
 };
 
-/**
- * 🎯 Apply pass to booking
- * @param {string} userId - User ID
- * @param {string} passId - Pass ID to use
- * @param {string} bookingId - Booking ID
- * @param {string} location - Booking location
- * @param {string} startTime - Booking start time
- * @param {string} endTime - Booking end time
- * @param {number} pax - Number of people
- * @returns {Object} - Result of pass application
- */
+
 exports.applyPassToBooking = async (userId, passId, bookingId, location, startTime, endTime, pax) => {
   try {
-    console.log(`🎯 Applying pass ${passId} to booking ${bookingId}`);
-
-    // Get pass details
+   
     const { data: pass, error: passError } = await supabase
       .from('UserPass')
       .select('*')
@@ -200,7 +166,6 @@ exports.applyPassToBooking = async (userId, passId, bookingId, location, startTi
       };
     }
 
-    // Update pass - decrement remaining quantity
     const { error: updateError } = await supabase
       .from('UserPass')
       .update({
@@ -210,7 +175,6 @@ exports.applyPassToBooking = async (userId, passId, bookingId, location, startTi
       .eq('id', passId);
 
     if (updateError) {
-      console.error('Error updating pass:', updateError);
       return {
         success: false,
         error: 'Database error',
@@ -218,20 +182,18 @@ exports.applyPassToBooking = async (userId, passId, bookingId, location, startTi
       };
     }
 
-    // Create booking pass use record
     const { error: useError } = await supabase
       .from('BookingPassUse')
       .insert([{
         id: uuidv4(),
         bookingId: bookingId,
         userPassId: passId,
-        minutesApplied: 0, // Not used in count-based system
+        minutesApplied: 0,
         usedAt: new Date().toISOString()
       }]);
 
     if (useError) {
-      console.error('Error creating booking pass use:', useError);
-      // Rollback pass update
+    
       await supabase
         .from('UserPass')
         .update({
@@ -246,9 +208,6 @@ exports.applyPassToBooking = async (userId, passId, bookingId, location, startTi
         message: 'Failed to record pass usage'
       };
     }
-
-    console.log(`✅ Pass ${passId} successfully applied to booking ${bookingId}`);
-    console.log(`   Remaining quantity: ${pass.remainingQuantity - 1}`);
 
     return {
       success: true,
@@ -267,15 +226,10 @@ exports.applyPassToBooking = async (userId, passId, bookingId, location, startTi
   }
 };
 
-/**
- * 🎯 Get user's pass balance
- * @param {string} userId - User ID
- * @returns {Object} - User's pass balances
- */
+
 exports.getUserPassBalance = async (userId) => {
   try {
-    console.log(`📊 Getting pass balance for user ${userId}`);
-
+ 
     const { data: userPasses, error } = await supabase
       .from('UserPass')
       .select(`
@@ -296,7 +250,6 @@ exports.getUserPassBalance = async (userId) => {
       .order('createdAt', { ascending: true });
 
     if (error) {
-      console.error('Error fetching user passes:', error);
       return {
         success: false,
         error: 'Database error',
@@ -304,7 +257,6 @@ exports.getUserPassBalance = async (userId) => {
       };
     }
 
-    // Group passes by type
     const passBalances = {};
     
     userPasses.forEach(pass => {
@@ -339,7 +291,6 @@ exports.getUserPassBalance = async (userId) => {
     };
 
   } catch (error) {
-    console.error('Error in getUserPassBalance:', error);
     return {
       success: false,
       error: 'Internal error',
@@ -348,19 +299,13 @@ exports.getUserPassBalance = async (userId) => {
   }
 };
 
-/**
- * 🎯 Create count-based user passes
- * @param {Object} packagePurchase - Package purchase data
- * @returns {Array} - Created user passes
- */
+
 exports.createCountBasedUserPasses = async (packagePurchase) => {
   try {
-    console.log(`🎯 Creating count-based user passes for package ${packagePurchase.id}`);
 
     const packageContents = packagePurchase.Package.packagecontents;
     const userPasses = [];
 
-    // Create day passes
     if (packageContents.dayPasses && packageContents.dayPasses > 0) {
       userPasses.push({
         id: uuidv4(),
@@ -378,7 +323,6 @@ exports.createCountBasedUserPasses = async (packagePurchase) => {
       });
     }
 
-    // Create half-day passes
     if (packageContents.halfDayPasses && packageContents.halfDayPasses > 0) {
       userPasses.push({
         id: uuidv4(),
@@ -396,7 +340,6 @@ exports.createCountBasedUserPasses = async (packagePurchase) => {
       });
     }
 
-    // Insert all user passes
     if (userPasses.length > 0) {
       const { data: createdPasses, error: insertError } = await supabase
         .from('UserPass')
@@ -404,18 +347,15 @@ exports.createCountBasedUserPasses = async (packagePurchase) => {
         .select();
 
       if (insertError) {
-        console.error('Error creating user passes:', insertError);
         throw new Error('Failed to create user passes');
       }
 
-      console.log(`✅ Created ${createdPasses.length} count-based user passes`);
       return createdPasses;
     }
 
     return [];
 
   } catch (error) {
-    console.error('Error in createCountBasedUserPasses:', error);
     throw error;
   }
 };

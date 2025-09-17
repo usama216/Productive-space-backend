@@ -1,11 +1,8 @@
 const { v4: uuidv4 } = require("uuid");
 const supabase = require("../config/database");
 
-// 🎯 Get all packages for admin
 exports.getPackages = async (req, res) => {
   try {
-    console.log('📦 Fetching all packages for admin...');
-
     const { data: packages, error } = await supabase
       .from("Package")
       .select("*")
@@ -26,7 +23,6 @@ exports.getPackages = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("getPackages error:", err.message);
     res.status(500).json({
       success: false,
       error: "Server error",
@@ -35,7 +31,6 @@ exports.getPackages = async (req, res) => {
   }
 };
 
-// 🎯 Get package by ID for admin
 exports.getPackageById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -47,8 +42,6 @@ exports.getPackageById = async (req, res) => {
       });
     }
 
-    console.log(`📦 Fetching package ${id} for admin...`);
-
     const { data: package, error } = await supabase
       .from("Package")
       .select("*")
@@ -56,7 +49,6 @@ exports.getPackageById = async (req, res) => {
       .single();
 
     if (error) {
-      console.error("Error fetching package:", error);
       return res.status(500).json({
         success: false,
         error: "Database error",
@@ -77,7 +69,6 @@ exports.getPackageById = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("getPackageById error:", err.message);
     res.status(500).json({
       success: false,
       error: "Server error",
@@ -86,7 +77,6 @@ exports.getPackageById = async (req, res) => {
   }
 };
 
-// 🎯 Create new package
 exports.createPackage = async (req, res) => {
   try {
     const {
@@ -102,7 +92,6 @@ exports.createPackage = async (req, res) => {
       isActive
     } = req.body;
 
-    // Validation
     if (!name || !packageType || !targetRole || !price || !passCount) {
       return res.status(400).json({
         success: false,
@@ -110,8 +99,6 @@ exports.createPackage = async (req, res) => {
         message: "Name, packageType, targetRole, price, and passCount are required"
       });
     }
-
-    console.log('📦 Creating new package:', { name, packageType, targetRole });
 
     const packageData = {
       id: uuidv4(),
@@ -134,7 +121,6 @@ exports.createPackage = async (req, res) => {
       .single();
 
     if (error) {
-      console.error("Error creating package:", error);
       return res.status(500).json({
         success: false,
         error: "Database error",
@@ -149,7 +135,6 @@ exports.createPackage = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("createPackage error:", err.message);
     res.status(500).json({
       success: false,
       error: "Server error",
@@ -158,7 +143,6 @@ exports.createPackage = async (req, res) => {
   }
 };
 
-// 🎯 Update package
 exports.updatePackage = async (req, res) => {
   try {
     const { id } = req.params;
@@ -182,7 +166,6 @@ exports.updatePackage = async (req, res) => {
       });
     }
 
-    // Validation
     if (!name || !packageType || !targetRole || !price || !passCount) {
       return res.status(400).json({
         success: false,
@@ -190,8 +173,6 @@ exports.updatePackage = async (req, res) => {
         message: "Name, packageType, targetRole, price, and passCount are required"
       });
     }
-
-    console.log(`📦 Updating package ${id}...`);
 
     const updateData = {
       name,
@@ -215,7 +196,6 @@ exports.updatePackage = async (req, res) => {
       .single();
 
     if (error) {
-      console.error("Error updating package:", error);
       return res.status(500).json({
         success: false,
         error: "Database error",
@@ -246,7 +226,6 @@ exports.updatePackage = async (req, res) => {
   }
 };
 
-// 🎯 Delete package
 exports.deletePackage = async (req, res) => {
   try {
     const { id } = req.params;
@@ -260,7 +239,6 @@ exports.deletePackage = async (req, res) => {
 
     console.log(`📦 Deleting package ${id}...`);
 
-    // First check if package exists
     const { data: existingPackage, error: fetchError } = await supabase
       .from("Package")
       .select("id")
@@ -274,7 +252,6 @@ exports.deletePackage = async (req, res) => {
       });
     }
 
-    // Check if package has any purchases
     const { data: purchases, error: purchaseError } = await supabase
       .from("PackagePurchase")
       .select("id")
@@ -282,7 +259,6 @@ exports.deletePackage = async (req, res) => {
       .limit(1);
 
     if (purchaseError) {
-      console.error("Error checking package purchases:", purchaseError);
       return res.status(500).json({
         success: false,
         error: "Database error",
@@ -298,7 +274,6 @@ exports.deletePackage = async (req, res) => {
       });
     }
 
-    // Delete the package
     const { error: deleteError } = await supabase
       .from("Package")
       .delete()
@@ -328,7 +303,6 @@ exports.deletePackage = async (req, res) => {
   }
 };
 
-// 🎯 Toggle package active status
 exports.togglePackageStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -341,8 +315,6 @@ exports.togglePackageStatus = async (req, res) => {
       });
     }
 
-    console.log(`📦 Toggling package ${id} status to ${isActive}...`);
-
     const { data: updatedPackage, error } = await supabase
       .from("Package")
       .update({ 
@@ -354,7 +326,6 @@ exports.togglePackageStatus = async (req, res) => {
       .single();
 
     if (error) {
-      console.error("Error toggling package status:", error);
       return res.status(500).json({
         success: false,
         error: "Database error",
@@ -376,7 +347,6 @@ exports.togglePackageStatus = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("togglePackageStatus error:", err.message);
     res.status(500).json({
       success: false,
       error: "Server error",
@@ -385,12 +355,8 @@ exports.togglePackageStatus = async (req, res) => {
   }
 };
 
-// 🎯 Get package statistics
 exports.getPackageStats = async (req, res) => {
   try {
-    console.log('📊 Fetching package statistics...');
-
-    // Get total packages count
     const { count: totalPackages, error: totalError } = await supabase
       .from("Package")
       .select("*", { count: "exact", head: true });
@@ -404,7 +370,6 @@ exports.getPackageStats = async (req, res) => {
       });
     }
 
-    // Get active packages count
     const { count: activePackages, error: activeError } = await supabase
       .from("Package")
       .select("*", { count: "exact", head: true })
@@ -419,7 +384,6 @@ exports.getPackageStats = async (req, res) => {
       });
     }
 
-    // Get packages by type
     const { data: packagesByType, error: typeError } = await supabase
       .from("Package")
       .select("packageType, isActive")
@@ -434,14 +398,12 @@ exports.getPackageStats = async (req, res) => {
       });
     }
 
-    // Get total purchases count
     const { count: totalPurchases, error: purchasesError } = await supabase
       .from("PackagePurchase")
       .select("*", { count: "exact", head: true })
       .eq("paymentStatus", "COMPLETED");
 
     if (purchasesError) {
-      console.error("Error fetching total purchases:", purchasesError);
       return res.status(500).json({
         success: false,
         error: "Database error",
@@ -449,7 +411,6 @@ exports.getPackageStats = async (req, res) => {
       });
     }
 
-    // Calculate type distribution
     const typeDistribution = packagesByType.reduce((acc, pkg) => {
       acc[pkg.packageType] = (acc[pkg.packageType] || 0) + 1;
       return acc;
@@ -467,7 +428,6 @@ exports.getPackageStats = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("getPackageStats error:", err.message);
     res.status(500).json({
       success: false,
       error: "Server error",

@@ -5,7 +5,6 @@ const cors = require("cors");
 const multer = require("multer");
 const { createClient } = require("@supabase/supabase-js");
 
-// Import scheduled cleanup
 const { cleanupUnpaidBookings } = require('./scheduledCleanup');
 
 const app = express();
@@ -13,10 +12,9 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }))
 
-// Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, 'uploads/') // Make sure this directory exists
+    cb(null, 'uploads/') 
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
@@ -27,10 +25,9 @@ const storage = multer.diskStorage({
 const upload = multer({ 
   storage: storage,
   limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
+    fileSize: 5 * 1024 * 1024
   },
   fileFilter: function (req, file, cb) {
-    // Allow only image files for student verification
     if (file.mimetype.startsWith('image/')) {
       cb(null, true)
     } else {
@@ -52,12 +49,10 @@ const adminPackageRoutes = require("./routes/adminPackages");
 const adminPackageUsageRoutes = require("./routes/adminPackageUsage");
 const simpleTestRoutes = require("./routes/simpleTest");
 
-// Swagger documentation setup
 const { swaggerUi, specs } = require('./swagger');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-// Welcome route - test API endpoint
 app.get("/", (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -102,7 +97,6 @@ app.get("/", (req, res) => {
             <div class="container">
                 <h1>Welcome to the Productive Space Backend!</h1>
                 <div class="status">Status: Running Successfully</div>
-                <div class="timestamp">Server Time: ${new Date().toLocaleString()}</div>
             </div>
         </body>
         </html>
@@ -121,34 +115,25 @@ app.use("/api/admin/packages", adminPackageUsageRoutes);
 app.use("/api/admin/packages", adminPackageRoutes);
 app.use("/api/test", simpleTestRoutes);
 app.use("/api/booking", require('./routes/packageApplication'));
-
-// Test endpoint for package usage
 app.post('/api/test-package-usage', async (req, res) => {
   try {
     const { handlePackageUsage } = require('./utils/packageUsageHelper');
     const { createClient } = require('@supabase/supabase-js');
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
-    
-    // First check if UserPass records exist
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);    
     const { data: userPasses, error: checkError } = await supabase
       .from('UserPass')
       .select('*')
       .eq('packagepurchaseid', req.body.packageId);
     
-    console.log('UserPass records for package:', userPasses);
-    console.log('Check error:', checkError);
-    
-    // Try a simple update test
+   
     if (userPasses && userPasses.length > 0) {
       const testPass = userPasses[0];
-      console.log('Testing simple update on pass:', testPass.id);
       
       const { error: testError } = await supabase
         .from('UserPass')
         .update({ remainingCount: testPass.remainingCount - 1 })
         .eq('id', testPass.id);
       
-      console.log('Test update error:', testError);
     }
     
     const result = await handlePackageUsage(
@@ -167,7 +152,6 @@ app.post('/api/test-package-usage', async (req, res) => {
   }
 });
 
-// Manual cleanup endpoint for testing
 app.post('/api/cleanup-unpaid-bookings', async (req, res) => {
   try {
     await cleanupUnpaidBookings();
@@ -178,89 +162,20 @@ app.post('/api/cleanup-unpaid-bookings', async (req, res) => {
   }
 });
 
-// Swagger API Documentation
+// Swagger Documentation
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(specs, {
   explorer: true,
   customCss: '.swagger-ui .topbar { display: none }',
   customSiteTitle: "Productive Space API Documentation"
 }));
 
-/**
- * @swagger
- * /users:
- *   get:
- *     summary: Get all users (Admin only)
- *     tags: [Admin]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: List of all users
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/User'
- *       500:
- *         description: Server error
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- */
-// Get all users (admin only)
+
 app.get("/users", async (req, res) => {
     const { data, error } = await supabase.from("User").select("*");
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
 });
 
-/**
- * @swagger
- * /api/user/{userId}:
- *   get:
- *     summary: Get user profile by ID
- *     tags: [Authentication]
- *     parameters:
- *       - in: path
- *         name: userId
- *         required: true
- *         schema:
- *           type: string
- *         description: User ID
- *     responses:
- *       200:
- *         description: User profile retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 user:
- *                   $ref: '#/components/schemas/User'
- *       400:
- *         description: Bad request - User ID required
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- *       404:
- *         description: User not found
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- *       500:
- *         description: Server error
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- */
-// Get single user profile by ID (for profile settings)
 app.get("/api/user/:userId", async (req, res) => {
     try {
         const { userId } = req.params;
@@ -320,77 +235,7 @@ app.get("/api/user/:userId", async (req, res) => {
     }
 });
 
-/**
- * @swagger
- * /api/user/{userId}:
- *   put:
- *     summary: Update user profile by ID
- *     tags: [Authentication]
- *     parameters:
- *       - in: path
- *         name: userId
- *         required: true
- *         schema:
- *           type: string
- *         description: User ID
- *     requestBody:
- *       required: false
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             properties:
- *               firstName:
- *                 type: string
- *                 description: User first name
- *               lastName:
- *                 type: string
- *                 description: User last name
- *               contactNumber:
- *                 type: string
- *                 description: User contact number
- *               memberType:
- *                 type: string
- *                 enum: [STUDENT, REGULAR]
- *                 description: Type of membership
- *               studentVerificationFile:
- *                 type: string
- *                 format: binary
- *                 description: Student verification image file
- *     responses:
- *       200:
- *         description: User profile updated successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 message:
- *                   type: string
- *                 user:
- *                   $ref: '#/components/schemas/User'
- *       400:
- *         description: Bad request
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- *       404:
- *         description: User not found
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- *       500:
- *         description: Server error
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- */
-// Update user profile by ID (for profile settings)
+
 app.put("/api/user/:userId", upload.single('studentVerificationFile'), async (req, res) => {
     try {
         const { userId } = req.params;
@@ -409,7 +254,6 @@ app.put("/api/user/:userId", upload.single('studentVerificationFile'), async (re
             });
         }
 
-        // Check if user exists
         const { data: existingUser, error: userError } = await supabase
             .from("User")
             .select("id")
@@ -423,26 +267,21 @@ app.put("/api/user/:userId", upload.single('studentVerificationFile'), async (re
             });
         }
 
-        // Prepare update data
         const updateData = {
             updatedAt: updatedAt || new Date().toISOString()
         };
 
-        // Add fields only if they are provided
         if (firstName !== undefined) updateData.firstName = firstName;
         if (lastName !== undefined) updateData.lastName = lastName;
         if (contactNumber !== undefined) updateData.contactNumber = contactNumber;
         if (memberType !== undefined) updateData.memberType = memberType;
 
-        // Handle student verification file upload
         if (req.file) {
-            // Store the file path in the database
             updateData.studentVerificationImageUrl = `/uploads/${req.file.filename}`;
             updateData.studentVerificationDate = new Date().toISOString();
-            updateData.studentVerificationStatus = 'PENDING'; // Set to pending for admin review
+            updateData.studentVerificationStatus = 'PENDING'; 
         }
 
-        // Update user in database
         const { data: updatedUser, error: updateError } = await supabase
             .from("User")
             .update(updateData)
@@ -464,7 +303,6 @@ app.put("/api/user/:userId", upload.single('studentVerificationFile'), async (re
             .single();
 
         if (updateError) {
-            console.error('Update user profile error:', updateError);
             return res.status(500).json({ 
                 error: "Failed to update user profile", 
                 details: updateError.message 
@@ -478,7 +316,6 @@ app.put("/api/user/:userId", upload.single('studentVerificationFile'), async (re
         });
 
     } catch (err) {
-        console.error('Update user profile error:', err);
         res.status(500).json({ 
             error: "Internal server error", 
             details: err.message 

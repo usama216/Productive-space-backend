@@ -2,7 +2,6 @@ const { v4: uuidv4 } = require("uuid");
 const supabase = require("../config/database");
 const axios = require("axios");
 
-// HitPay client configuration
 const hitpayClient = axios.create({
   baseURL: process.env.HITPAY_API_URL,
   headers: {
@@ -11,7 +10,6 @@ const hitpayClient = axios.create({
   }
 });
 
-// 🎯 Complete Package Purchase Flow - Following Booking System Pattern
 exports.initiatePackagePurchase = async (req, res) => {
   try {
     const {
@@ -22,7 +20,6 @@ exports.initiatePackagePurchase = async (req, res) => {
       paymentMethod = "paynow_online"
     } = req.body;
 
-    // Validate required fields
     if (!userId || !packageId || !customerInfo) {
       return res.status(400).json({
         error: "Missing required fields",
@@ -30,7 +27,6 @@ exports.initiatePackagePurchase = async (req, res) => {
       });
     }
 
-    // Check if package exists and is active
     const { data: package, error: packageError } = await supabase
       .from("packages")
       .select("*")
@@ -45,7 +41,6 @@ exports.initiatePackagePurchase = async (req, res) => {
       });
     }
 
-    // Check if user exists in User table
     const { data: user, error: userError } = await supabase
       .from("User")
       .select("id, email, firstName, lastName")
@@ -59,16 +54,14 @@ exports.initiatePackagePurchase = async (req, res) => {
       });
     }
 
-    // Calculate total amount
+  
     const baseAmount = parseFloat(package.price) * quantity;
     const outletFee = parseFloat(package.outlet_fee) * quantity;
     const totalAmount = baseAmount + outletFee;
 
-    // Generate order ID and reference number
     const orderId = `PKG_${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
     const referenceNumber = `PKG_${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
-    // Create user package record
     const { data: userPackage, error: userPackageError } = await supabase
       .from("user_packages")
       .insert([{
@@ -93,7 +86,6 @@ exports.initiatePackagePurchase = async (req, res) => {
       });
     }
 
-    // Create purchase history record
     const { error: historyError } = await supabase
       .from("purchase_history")
       .insert([{
@@ -116,10 +108,8 @@ exports.initiatePackagePurchase = async (req, res) => {
       });
     }
 
-    // Use your existing working payment system (same as booking)
-    // For HitPay, we need to use proper domain URLs, not localhost
-    const frontendUrl = process.env.FRONTEND_URL || 'https://yourdomain.com';
-    const backendUrl = process.env.BACKEND_URL || 'https://yourdomain.com';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://testmps.com';
+    const backendUrl = process.env.BACKEND_URL || 'https://testmps.com';
     
     const paymentRequest = {
       amount: totalAmount.toFixed(2),
@@ -140,17 +130,14 @@ exports.initiatePackagePurchase = async (req, res) => {
     };
 
     try {
-      // Use your existing working payment system - call createPackagePayment directly
       const { createPackagePayment } = require('./payment');
       
-      // Create the payment using your existing function
       const paymentResult = await createPackagePayment({
         body: paymentRequest
       }, {
         status: (code) => ({
           json: (data) => {
             if (code === 200) {
-              // Payment created successfully - update purchase history
               supabase
                 .from("purchase_history")
                 .update({
@@ -159,7 +146,6 @@ exports.initiatePackagePurchase = async (req, res) => {
                 })
                 .eq("order_id", orderId);
 
-              // Return success response
               res.status(201).json({
                 success: true,
                 message: "Package purchase initiated successfully",
@@ -176,7 +162,6 @@ exports.initiatePackagePurchase = async (req, res) => {
                 }
               });
             } else {
-              // Payment failed
               res.status(500).json({
                 error: "Payment gateway error",
                 message: "Failed to create payment request",
@@ -188,9 +173,7 @@ exports.initiatePackagePurchase = async (req, res) => {
       });
 
     } catch (paymentError) {
-      console.error("Payment creation error:", paymentError);
       
-      // Update status to failed
       await supabase
         .from("purchase_history")
         .update({
@@ -207,7 +190,6 @@ exports.initiatePackagePurchase = async (req, res) => {
     }
 
   } catch (err) {
-    console.error("initiatePackagePurchase error:", err.message);
     res.status(500).json({
       error: "Server error",
       message: "Failed to initiate package purchase"
@@ -215,13 +197,9 @@ exports.initiatePackagePurchase = async (req, res) => {
   }
 };
 
-// 🎯 Handle package payment webhook
 exports.handlePackageWebhook = async (req, res) => {
   try {
     const event = req.body;
-    console.log("Package payment webhook received:", event);
-    
-    // Get payment details from HitPay
     let paymentDetails = null;
     try {
       const response = await hitpayClient.get(`/v1/payment-requests/${event.payment_request_id}`);
@@ -230,7 +208,6 @@ exports.handlePackageWebhook = async (req, res) => {
       console.error("Failed to fetch payment details:", apiError.response?.data || apiError.message);
     }
 
-    // Find the purchase record
     const { data: purchase, error: purchaseError } = await supabase
       .from("purchase_history")
       .select(`
@@ -258,7 +235,6 @@ exports.handlePackageWebhook = async (req, res) => {
       return res.status(404).json({ error: "Purchase record not found" });
     }
 
-    // Update payment status
     const { error: updateError } = await supabase
       .from("purchase_history")
       .update({
@@ -271,18 +247,15 @@ exports.handlePackageWebhook = async (req, res) => {
       console.error("Error updating purchase history:", updateError);
     }
 
-    // If payment is completed, activate the package
     if (event.status === "completed") {
       const userPackage = purchase.user_packages;
       
-      // Update user package status
       const updateData = {
         payment_status: "completed",
         activated_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
 
-      // Calculate expiration date
       if (userPackage.packages.validity_days) {
         const activatedAt = new Date();
         const expiresAt = new Date(activatedAt.getTime() + (userPackage.packages.validity_days * 24 * 60 * 60 * 1000));
@@ -297,7 +270,6 @@ exports.handlePackageWebhook = async (req, res) => {
       if (userPackageError) {
         console.error("Error updating user package:", userPackageError);
       } else {
-        // Create individual passes
         const passesToCreate = [];
         
         userPackage.packages.package_passes.forEach(passConfig => {
@@ -335,7 +307,6 @@ exports.handlePackageWebhook = async (req, res) => {
   }
 };
 
-// 🎯 Get package purchase status
 exports.getPurchaseStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -347,7 +318,6 @@ exports.getPurchaseStatus = async (req, res) => {
       });
     }
 
-    // Get purchase details
     const { data: purchase, error } = await supabase
       .from("purchase_history")
       .select(`
@@ -373,7 +343,6 @@ exports.getPurchaseStatus = async (req, res) => {
       });
     }
 
-    // Get pass count if package is activated
     let passCount = 0;
     if (purchase.user_packages && purchase.user_packages.payment_status === "completed") {
       const { data: passes, error: passesError } = await supabase
@@ -404,7 +373,6 @@ exports.getPurchaseStatus = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("getPurchaseStatus error:", err.message);
     res.status(500).json({
       error: "Server error",
       message: "Failed to fetch purchase status"

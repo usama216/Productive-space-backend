@@ -1,10 +1,9 @@
 const nodemailer = require("nodemailer");
 const fs = require('fs');
-const path = require('path'); // ADD THIS IMPORT
+const path = require('path');
 const { paymentConfirmationTemplate, bookingConfirmationTemplate } = require("../templates/bookingConfirmation");
-const { generateInvoicePDF } = require("./invoice"); // ADD THIS IMPORT
+const { generateInvoicePDF } = require("./invoice"); 
 
-// Configure transporter
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -13,7 +12,6 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-// Generic send function (KEEP AS IS)
 const sendEmail = async (to, templateFn, userData, bookingData) => {
   try {
     const emailContent = templateFn(userData, bookingData);
@@ -26,26 +24,20 @@ const sendEmail = async (to, templateFn, userData, bookingData) => {
     };
 
     const info = await transporter.sendMail(mailOptions);
-    console.log("✅ Email sent:", info.messageId);
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error("❌ Email error:", error.message);
     return { success: false, error: error.message };
   }
 };
 
-// Payment confirmation (KEEP AS IS)
 const sendPaymentConfirmation = (userData, bookingData) => {
   return sendEmail(userData.email, paymentConfirmationTemplate, userData, bookingData);
 };
 
-// REPLACE YOUR EXISTING sendBookingConfirmation WITH THIS:
 const sendBookingConfirmation = async (userData, bookingData) => {
   try {
-    // Generate PDF invoice
     const { filePath, fileName } = await generateInvoicePDF(userData, bookingData);
     
-    // Get your existing email template
     const emailContent = bookingConfirmationTemplate(userData, bookingData);
 
     const mailOptions = {
@@ -63,26 +55,22 @@ const sendBookingConfirmation = async (userData, bookingData) => {
           {
           filename: 'logo.png',
           path: path.join(process.cwd(), 'public', 'logo.png'),
-          cid: 'logo' // This makes it an embedded image
+          cid: 'logo'
         }
       ]
     };
 
     const info = await transporter.sendMail(mailOptions);
     
-    // Clean up temporary file
-    fs.unlinkSync(filePath);
-    
-    console.log("✅ Booking confirmation email with invoice sent:", info.messageId);
+    fs.unlinkSync(filePath);    
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error("❌ Booking confirmation email error:", error.message);
     return { success: false, error: error.message };
   }
 };
 
 module.exports = { 
   sendEmail, 
-  sendBookingConfirmation, // This now includes PDF attachment
+  sendBookingConfirmation,
   sendPaymentConfirmation 
 };

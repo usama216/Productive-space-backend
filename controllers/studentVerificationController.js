@@ -1,16 +1,9 @@
 const supabase = require('../config/database');
 
-/**
- * Check if an email is associated with a verified student account
- * @route POST /api/student/check-verification
- * @body { email: string }
- * @returns { isStudent: boolean, verificationStatus: string, userData?: object }
- */
 const checkStudentVerification = async (req, res) => {
   try {
     const { email } = req.body;
 
-    // Validate input
     if (!email) {
       return res.status(400).json({
         error: 'Email is required',
@@ -18,7 +11,6 @@ const checkStudentVerification = async (req, res) => {
       });
     }
 
-    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({
@@ -27,8 +19,6 @@ const checkStudentVerification = async (req, res) => {
       });
     }
 
-    // Check if user exists and get student verification status
-    // Select essential columns including name fields
     const { data: user, error } = await supabase
       .from('User')
       .select('id, email, studentVerificationStatus, firstName, lastName')
@@ -37,7 +27,6 @@ const checkStudentVerification = async (req, res) => {
 
     if (error) {
       if (error.code === 'PGRST116') {
-        // No user found with this email
         return res.status(200).json({
           isStudent: false,
           verificationStatus: 'NOT_FOUND',
@@ -46,18 +35,15 @@ const checkStudentVerification = async (req, res) => {
         });
       }
       
-      console.error('Database error:', error);
       return res.status(500).json({
         error: 'Database error',
         message: 'Failed to check student verification status'
       });
     }
 
-    // User found - check student verification status
     const isStudent = user.studentVerificationStatus === 'VERIFIED';
     const verificationStatus = user.studentVerificationStatus || 'PENDING';
 
-    // Prepare response data with clearer messages
     let message = '';
     if (isStudent) {
       message = 'This email is associated with a verified student account';
@@ -69,7 +55,6 @@ const checkStudentVerification = async (req, res) => {
       message = 'This email is available in our records but not registered as a student account';
     }
 
-    // Create concatenated name field
     let fullName = '';
     if (user.firstName && user.lastName) {
       fullName = `${user.firstName} ${user.lastName}`.trim();
@@ -89,13 +74,11 @@ const checkStudentVerification = async (req, res) => {
       name: fullName || null
     };
 
-    // Include additional user data if needed (optional)
     if (req.query.includeUserData === 'true') {
       responseData.userData = {
         id: user.id
       };
       
-      // Only include fields if they exist (for backward compatibility)
       if (user.memberType !== undefined) {
         responseData.userData.memberType = user.memberType;
       }
@@ -110,7 +93,6 @@ const checkStudentVerification = async (req, res) => {
     return res.status(200).json(responseData);
 
   } catch (error) {
-    console.error('Student verification check error:', error);
     return res.status(500).json({
       error: 'Internal server error',
       message: 'Failed to check student verification status'
@@ -118,17 +100,10 @@ const checkStudentVerification = async (req, res) => {
   }
 };
 
-/**
- * Get student verification status for multiple emails
- * @route POST /api/student/check-multiple
- * @body { emails: string[] }
- * @returns { results: Array<{email: string, isStudent: boolean, verificationStatus: string}> }
- */
 const checkMultipleStudentVerifications = async (req, res) => {
   try {
     const { emails } = req.body;
 
-    // Validate input
     if (!emails || !Array.isArray(emails) || emails.length === 0) {
       return res.status(400).json({
         error: 'Emails array is required',
@@ -143,7 +118,6 @@ const checkMultipleStudentVerifications = async (req, res) => {
       });
     }
 
-    // Validate email formats and remove duplicates
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const invalidEmails = emails.filter(email => !emailRegex.test(email));
     
@@ -155,7 +129,6 @@ const checkMultipleStudentVerifications = async (req, res) => {
       });
     }
 
-    // Remove duplicates and filter out empty emails
     const uniqueEmails = [...new Set(emails.filter(email => email && email.trim()))];
     
     if (uniqueEmails.length === 0) {
@@ -165,19 +138,14 @@ const checkMultipleStudentVerifications = async (req, res) => {
       });
     }
 
-    // Normalize emails for query
     const normalizedEmails = uniqueEmails.map(email => email.toLowerCase().trim());
     
-    // Check verification status for all emails
-    // Try with all columns first, then fallback to basic columns if needed
     let { data: users, error } = await supabase
       .from('User')
       .select('email, studentVerificationStatus, firstName, lastName, name')
       .in('email', normalizedEmails);
 
-    // If the query fails, try with just basic columns
     if (error) {
-      console.log('⚠️  Full query failed, trying with basic columns...');
       const fallbackQuery = await supabase
         .from('User')
         .select('email, studentVerificationStatus')
@@ -186,20 +154,10 @@ const checkMultipleStudentVerifications = async (req, res) => {
       if (!fallbackQuery.error) {
         users = fallbackQuery.data;
         error = null;
-        console.log('✅ Fallback query successful');
       }
     }
 
     if (error) {
-      console.error('Database error in checkMultipleStudentVerifications:', error);
-      console.error('Query details:', {
-        table: 'User',
-        columns: ['email', 'studentVerificationStatus', 'firstName', 'lastName', 'name'],
-        emails: normalizedEmails,
-        errorCode: error.code,
-        errorMessage: error.message,
-        errorDetails: error.details
-      });
       
       return res.status(500).json({
         error: 'Database error',
@@ -208,20 +166,17 @@ const checkMultipleStudentVerifications = async (req, res) => {
       });
     }
 
-    // Create a map of found users
     const userMap = new Map();
     users.forEach(user => {
       userMap.set(user.email, user.studentVerificationStatus);
     });
 
-    // Build results array with clear messages
     const results = uniqueEmails.map(email => {
       const normalizedEmail = email.toLowerCase().trim();
       const user = users.find(u => u.email === normalizedEmail);
       const verificationStatus = user ? user.studentVerificationStatus : null;
       const isStudent = verificationStatus === 'VERIFIED';
       
-      // Create clear message for each email
       let message = '';
       if (isStudent) {
         message = 'This email is associated with a verified student account';
@@ -233,7 +188,6 @@ const checkMultipleStudentVerifications = async (req, res) => {
         message = 'No account found with this email address';
       }
 
-      // Create concatenated name field
       let fullName = '';
       if (user) {
         if (user.firstName && user.lastName) {
@@ -264,7 +218,6 @@ const checkMultipleStudentVerifications = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Multiple student verification check error:', error);
     return res.status(500).json({
       error: 'Internal server error',
       message: 'Failed to check student verification statuses'
@@ -272,14 +225,9 @@ const checkMultipleStudentVerifications = async (req, res) => {
   }
 };
 
-/**
- * Get student verification statistics
- * @route GET /api/student/stats
- * @returns { totalUsers: number, verifiedStudents: number, pendingStudents: number, rejectedStudents: number }
- */
+
 const getStudentVerificationStats = async (req, res) => {
   try {
-    // Get total user count
     const { count: totalUsers, error: totalError } = await supabase
       .from('User')
       .select('*', { count: 'exact', head: true });
@@ -292,20 +240,17 @@ const getStudentVerificationStats = async (req, res) => {
       });
     }
 
-    // Get verification status counts
     const { data: verificationStats, error: statsError } = await supabase
       .from('User')
-      .select('id'); // Just get IDs to count total users
+      .select('id'); 
 
     if (statsError) {
-      console.error('Verification stats error:', statsError);
       return res.status(500).json({
         error: 'Database error',
         message: 'Failed to get verification statistics'
       });
     }
 
-    // Calculate counts
     const stats = {
       totalUsers: totalUsers || 0,
       verifiedStudents: 0,
@@ -313,12 +258,11 @@ const getStudentVerificationStats = async (req, res) => {
       rejectedStudents: 0
     };
 
-    // Try to get verification status if the column exists
     try {
       const { data: statusData, error: statusError } = await supabase
         .from('User')
         .select('studentVerificationStatus')
-        .limit(1000); // Limit to avoid memory issues
+        .limit(1000);
 
       if (!statusError && statusData) {
         statusData.forEach(user => {
@@ -337,14 +281,12 @@ const getStudentVerificationStats = async (req, res) => {
         });
       }
     } catch (err) {
-      console.log('⚠️  Could not get verification status counts:', err.message);
-      // Continue with default values
+      console.log('Could not get verification status counts:', err.message);
     }
 
     return res.status(200).json(stats);
 
   } catch (error) {
-    console.error('Student verification stats error:', error);
     return res.status(500).json({
       error: 'Internal server error',
       message: 'Failed to get student verification statistics'

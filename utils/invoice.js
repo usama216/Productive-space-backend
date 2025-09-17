@@ -1,12 +1,6 @@
 const PDFDocument = require('pdfkit');
 const fs = require("fs");
-const path = require("path");   // put it here, at the top
-
-// IMPORTANT: Logo positioning has been fixed to prevent overlap with company information
-// Logo: 60x60 pixels at position (60, 60)
-// Company info: starts at y=130 to provide proper spacing below logo (70 pixels gap)
-// Right side elements: positioned to avoid overlap with left side content
-
+const path = require("path");
 
 const generateInvoicePDF = (userData, bookingData) => {
     return new Promise((resolve, reject) => {
@@ -14,9 +8,7 @@ const generateInvoicePDF = (userData, bookingData) => {
             const doc = new PDFDocument({ margin: 50, size: 'A4' });
 
             const fileName = `Invoice_${bookingData.bookingRef || bookingData.id || Date.now()}.pdf`;
-            // const filePath = path.join(__dirname, '../temp', fileName);
             const filePath = path.join('/tmp', fileName);
-
 
             const tempDir = path.dirname(filePath);
             if (!fs.existsSync(tempDir)) {
@@ -38,31 +30,26 @@ try {
     const logoPath = path.join(process.cwd(), "public", "logo.png");
 
     if (fs.existsSync(logoPath)) {
-        // Logo positioned at top left with proper spacing - 60x60 pixels to prevent overlap
         doc.image(logoPath, 60, 60, { width: 150, height: 60 });
-        console.log("Logo added to PDF successfully");
     } else {
         doc.font(headerFont).fontSize(titleFontSize).text("MY PRODUCTIVE SPACE", 60, 60);
-        console.log('Logo not added')
     }
 } catch (logoError) {
     doc.font(headerFont).fontSize(titleFontSize).text("MY PRODUCTIVE SPACE", 60, 60);
-    console.log("Logo error, using text fallback:", logoError.message);
 }
 
 
 
 
-            // Company information positioned below logo with proper spacing to prevent overlap
             doc.fillColor('#000000')
                 .font(bodyFont).fontSize(smallFontSize)
-                .text('My Productive Space', 60, 130)  // Moved from 95 to 130
-                .text('Company ID: 53502976D', 60, 140)  // Moved from 105 to 140
-                .text('Blk 208 Hougang st 21 #01-201', 60, 150)  // Moved from 115 to 150
-                .text('Hougang 530208', 60, 160)  // Moved from 125 to 160
-                .text('Singapore', 60, 170)  // Moved from 135 to 170
-                .text('89202462', 60, 180)  // Moved from 145 to 180
-                .text('myproductivespacecontact@gmail.com', 60, 190);  // Moved from 155 to 190
+                .text('My Productive Space', 60, 130)  
+                .text('Company ID: 53502976D', 60, 140)  
+                .text('Blk 208 Hougang st 21 #01-201', 60, 150)  
+                .text('Hougang 530208', 60, 160)  
+                .text('Singapore', 60, 170)  
+                .text('89202462', 60, 180)  
+                .text('myproductivespacecontact@gmail.com', 60, 190); 
 
            const invoiceNumber = `INV-${String(bookingData.id || '000001').slice(-6).padStart(6, '0')}`;
             doc.font(headerFont).fontSize(titleFontSize)
@@ -100,11 +87,9 @@ try {
             let currentY = tableTop + 30;
             doc.rect(50, currentY, 500, 30).fill('#F8F9FA').stroke();
 
-            // Convert to Singapore timezone (SGT)
             const startDate = bookingData.startAt ? new Date(bookingData.startAt) : new Date();
             const endDate = bookingData.endAt ? new Date(bookingData.endAt) : new Date();
             
-            // Format dates in Singapore timezone
             const startDateSGT = startDate.toLocaleDateString('en-SG', { 
                 timeZone: 'Asia/Singapore',
                 year: 'numeric',
@@ -125,7 +110,6 @@ try {
             const hours = bookingData.endAt ?
                 Math.ceil((endDate - startDate) / (1000 * 60 * 60)) : 1;
 
-            // Generate description with role and seat information
             let description = bookingData.location ?
                 `${bookingData.location} - ${startDateSGT} (${startTimeSGT} - ${endTimeSGT})` :
                 `Workspace Booking - ${startDateSGT} (${startTimeSGT} - ${endTimeSGT})`;
@@ -140,10 +124,8 @@ try {
                 .text(`$${rate.toFixed(2)}`, 420, currentY + 10)
                 .text(`$${amount.toFixed(2)}`, 480, currentY + 10);
 
-            // Add role and seat information below the main table
             currentY += 40;
             
-            // Check if we have role information
             const hasRoleInfo = (bookingData.students > 0 || bookingData.members > 0 || bookingData.tutors > 0) || 
                                (bookingData.seatNumbers && bookingData.seatNumbers.length > 0);
             
@@ -153,7 +135,6 @@ try {
                 
                 currentY += 20;
                 
-                // Show role breakdown
                 let roleSummary = [];
                 if (bookingData.students > 0) roleSummary.push(`${bookingData.students} Student(s)`);
                 if (bookingData.members > 0) roleSummary.push(`${bookingData.members} Member(s)`);
@@ -165,7 +146,6 @@ try {
                     currentY += 15;
                 }
                 
-                // Show seat numbers if available
                 if (bookingData.seatNumbers && bookingData.seatNumbers.length > 0) {
                     doc.font(bodyFont).fontSize(bodyFontSize)
                         .text(`Assigned Seats: ${bookingData.seatNumbers.join(', ')}`, 50, currentY);
@@ -174,7 +154,6 @@ try {
                 
             }
 
-            // Add promo code information if applied
             if (bookingData.promoCodeId && bookingData.discountAmount && bookingData.discountAmount > 0) {
                 currentY += 20;
                 doc.font(headerFont).fontSize(sectionHeaderFontSize)
@@ -182,12 +161,10 @@ try {
                 
                 currentY += 20;
                 
-                // Show promo code details
                 doc.font(bodyFont).fontSize(bodyFontSize)
                     .text(`Code: ${bookingData.promoCode || bookingData.promoCodeId}`, 50, currentY);
                 currentY += 15;
                 
-                // Show promo code name if available
                 if (bookingData.promoCodeName) {
                     doc.font(bodyFont).fontSize(bodyFontSize)
                         .text(`Name: ${bookingData.promoCodeName}`, 50, currentY);
@@ -202,7 +179,6 @@ try {
                     .text(`Discount Amount: SGD ${(parseFloat(bookingData.discountAmount) || 0).toFixed(2)}`, 50, currentY);
                 currentY += 15;
                 
-                // Calculate and show discount percentage
                 const originalAmount = parseFloat(bookingData.totalCost) || 0;
                 const discountAmount = parseFloat(bookingData.discountAmount) || 0;
                 if (originalAmount > 0 && discountAmount > 0) {
@@ -215,32 +191,27 @@ try {
                 doc.font(bodyFont).fontSize(bodyFontSize)
                     .text(`Final Amount: SGD ${(parseFloat(bookingData.totalAmount) || 0).toFixed(2)}`, 50, currentY);
                 
-                currentY += 20; // Add spacing before financial summary
+                currentY += 20;
             }
 
-            // Use shared calculation utility for consistency
             const { calculatePaymentDetails } = require('./calculationHelper');
             const paymentDetails = calculatePaymentDetails(bookingData);
 
-            // Calculate 40% width for financial summary section
-            const pageWidth = 595; // A4 width in points
-            const summaryWidth = pageWidth * 0.4; // 40% of page width
-            const summaryStartX = pageWidth - summaryWidth - 50; // 50 is margin, start from right side
+            const pageWidth = 595;
+            const summaryWidth = pageWidth * 0.4; 
+            const summaryStartX = pageWidth - summaryWidth - 50; 
             
-            // Adjust spacing based on whether role information and promo code were added
             const hasPromoCode = bookingData.promoCodeId && bookingData.discountAmount && bookingData.discountAmount > 0;
             if (hasRoleInfo || hasPromoCode) {
-                currentY += 20; // Less spacing since additional sections were already added
+                currentY += 20; 
             } else {
-                currentY += 50; // Original spacing
+                currentY += 50; 
             } 
-            // Show original subtotal (before discount)
             doc.font(bodyFont).fontSize(bodyFontSize)
                 .text('Sub Total', summaryStartX, currentY)
                 .font(bodyFont).fontSize(bodyFontSize)
                 .text(`SGD ${paymentDetails.originalAmount.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
 
-            // Show promo code discount if applied
             if (paymentDetails.discount && paymentDetails.discount.discountAmount > 0) {
                 currentY += 20;
                 doc.font(bodyFont).fontSize(bodyFontSize)
@@ -249,7 +220,6 @@ try {
                     .text(`-SGD ${paymentDetails.discount.discountAmount.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
             }
 
-            // Show card processing fee if applicable
             if (paymentDetails.isCardPayment) {
                 currentY += 20;
                 doc.font(bodyFont).fontSize(bodyFontSize)
@@ -258,40 +228,23 @@ try {
                     .text(`SGD ${paymentDetails.cardFee.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
             }
 
-            // Show payment method
             currentY += 20;
             doc.font(bodyFont).fontSize(bodyFontSize)
                 .text('Payment Method', summaryStartX, currentY)
                 .font(bodyFont).fontSize(bodyFontSize)
                 .text(paymentDetails.paymentMethod, summaryStartX + summaryWidth - 80, currentY);
 
-            // Show total
             currentY += 20;
             doc.font(headerFont).fontSize(sectionHeaderFontSize)
                 .text('Total', summaryStartX, currentY)
                 .font(bodyFont).fontSize(bodyFontSize)
                 .text(`SGD ${paymentDetails.finalTotal.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
 
-            // Show paid amount
             currentY += 20;
             doc.fillColor('#000000').font(headerFont).fontSize(sectionHeaderFontSize)
                 .text('Paid', summaryStartX, currentY)
                 .font(bodyFont).fontSize(bodyFontSize)
                 .text(`SGD ${paymentDetails.finalTotal.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
-
-       
-            // const footerY = 650;
-            // doc.font(headerFont).fontSize(sectionHeaderFontSize)
-            //     .text('Notes', 50, footerY)
-            //     .font(bodyFont).fontSize(smallFontSize)
-            //     .text('Thanks for your business. Please refer to attached excel sheet for more details', 50, footerY + 15, { width: 300 });
-
-            // doc.font(headerFont).fontSize(sectionHeaderFontSize)
-            //     .text('Terms & Conditions', 50, footerY + 50)
-            //     .font(bodyFont).fontSize(smallFontSize)
-            //     .text('1. Please be informed that full payment is required upon confirmation.', 50, footerY + 65, { width: 300 })
-            //     .text('2. Once confirmed, we do not offer refunds.', 50, footerY + 80, { width: 300 })
-            //     .text('3. Please note that seat changes are subject to seats availability.', 50, footerY + 95, { width: 300 });
 
             doc.end();
 

@@ -1,28 +1,23 @@
 const supabase = require('../config/database');
 const { v4: uuidv4 } = require('uuid');
 
-// Package hour limits per day
 const PACKAGE_HOUR_LIMITS = {
   'HALF_DAY': 4,
   'FULL_DAY': 8,
   'SEMESTER_BUNDLE': 4
 };
 
-// Hourly rates by role
 const HOURLY_RATES = {
   'STUDENT': 5.00,
   'MEMBER': 6.00,
   'TUTOR': 4.00
 };
 
-/**
- * Apply package to booking
- */
+
 exports.applyPackageToBooking = async (req, res) => {
   try {
     const { bookingId, packageId, appliedHours } = req.body;
 
-    // Validate required fields
     if (!bookingId || !packageId || !appliedHours) {
       return res.status(400).json({
         success: false,
@@ -31,7 +26,6 @@ exports.applyPackageToBooking = async (req, res) => {
       });
     }
 
-    // Get booking details
     const { data: booking, error: bookingError } = await supabase
       .from('Booking')
       .select('*')
@@ -46,7 +40,6 @@ exports.applyPackageToBooking = async (req, res) => {
       });
     }
 
-    // Get user package details
     const { data: userPackage, error: packageError } = await supabase
       .from('UserPass')
       .select(`
@@ -69,7 +62,6 @@ exports.applyPackageToBooking = async (req, res) => {
       });
     }
 
-    // Validate package is active and has remaining count
     if (userPackage.remainingCount <= 0) {
       return res.status(400).json({
         success: false,
@@ -78,7 +70,6 @@ exports.applyPackageToBooking = async (req, res) => {
       });
     }
 
-    // Validate package is not expired
     if (new Date(userPackage.expiresAt) < new Date()) {
       return res.status(400).json({
         success: false,
@@ -87,11 +78,9 @@ exports.applyPackageToBooking = async (req, res) => {
       });
     }
 
-    // Calculate discount amount
     const hourlyRate = HOURLY_RATES[userPackage.Package.targetRole] || 6.00;
     const discountAmount = appliedHours * hourlyRate;
 
-    // Update booking with package discount
     const { error: updateError } = await supabase
       .from('Booking')
       .update({
@@ -103,7 +92,6 @@ exports.applyPackageToBooking = async (req, res) => {
       .eq('id', bookingId);
 
     if (updateError) {
-      console.error('Error updating booking with package discount:', updateError);
       return res.status(500).json({
         success: false,
         error: 'Database error',
@@ -111,7 +99,6 @@ exports.applyPackageToBooking = async (req, res) => {
       });
     }
 
-    // Decrease package remaining count
     const { error: packageUpdateError } = await supabase
       .from('UserPass')
       .update({
@@ -122,7 +109,6 @@ exports.applyPackageToBooking = async (req, res) => {
 
     if (packageUpdateError) {
       console.error('Error updating package count:', packageUpdateError);
-      // Rollback booking update
       await supabase
         .from('Booking')
         .update({
@@ -140,20 +126,18 @@ exports.applyPackageToBooking = async (req, res) => {
       });
     }
 
-    // Create package usage record
     const { error: usageError } = await supabase
       .from('BookingPassUse')
       .insert([{
         id: uuidv4(),
         bookingId: bookingId,
         userPassId: packageId,
-        minutesApplied: appliedHours * 60, // Convert hours to minutes
+        minutesApplied: appliedHours * 60,
         usedAt: new Date().toISOString()
       }]);
 
     if (usageError) {
       console.error('Error creating package usage record:', usageError);
-      // Don't fail the entire operation for this
     }
 
     res.json({
@@ -170,7 +154,6 @@ exports.applyPackageToBooking = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Apply package to booking error:', err.message);
     res.status(500).json({
       success: false,
       error: 'Server error',
@@ -179,9 +162,7 @@ exports.applyPackageToBooking = async (req, res) => {
   }
 };
 
-/**
- * Get user's available packages for booking
- */
+
 exports.getUserPackagesForBooking = async (req, res) => {
   try {
     const { userId, userRole } = req.params;
@@ -194,7 +175,6 @@ exports.getUserPackagesForBooking = async (req, res) => {
       });
     }
 
-    // Get user's active packages
     const { data: userPackages, error } = await supabase
       .from('UserPass')
       .select(`
@@ -219,7 +199,6 @@ exports.getUserPackagesForBooking = async (req, res) => {
       .gte('expiresAt', new Date().toISOString());
 
     if (error) {
-      console.error('Error fetching user packages:', error);
       return res.status(500).json({
         success: false,
         error: 'Database error',
@@ -227,7 +206,6 @@ exports.getUserPackagesForBooking = async (req, res) => {
       });
     }
 
-    // Filter packages for user role
     const applicablePackages = userPackages.filter(pkg => 
       pkg.Package.targetRole === userRole
     );
@@ -247,7 +225,6 @@ exports.getUserPackagesForBooking = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Get user packages error:', err.message);
     res.status(500).json({
       success: false,
       error: 'Server error',
@@ -256,9 +233,7 @@ exports.getUserPackagesForBooking = async (req, res) => {
   }
 };
 
-/**
- * Calculate package discount for booking
- */
+
 exports.calculatePackageDiscount = async (req, res) => {
   try {
     const { totalHours, userRole, packageId } = req.body;
@@ -286,7 +261,6 @@ exports.calculatePackageDiscount = async (req, res) => {
       });
     }
 
-    // Get package details
     const { data: userPackage, error } = await supabase
       .from('UserPass')
       .select(`
@@ -309,7 +283,6 @@ exports.calculatePackageDiscount = async (req, res) => {
       });
     }
 
-    // Calculate discount
     const packageType = userPackage.Package.packageType;
     const discountHours = PACKAGE_HOUR_LIMITS[packageType] || 0;
     const appliedHours = Math.min(totalHours, discountHours);
@@ -339,7 +312,6 @@ exports.calculatePackageDiscount = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Calculate package discount error:', err.message);
     res.status(500).json({
       success: false,
       error: 'Server error',
