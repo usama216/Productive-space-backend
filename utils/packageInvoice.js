@@ -12,15 +12,12 @@ const generatePackageInvoicePDF = (userData, packageData) => {
             const doc = new PDFDocument({ margin: 50, size: 'A4' });
 
             const fileName = `PackageInvoice_${packageData.orderId || packageData.id || Date.now()}.pdf`;
-            const filePath = path.join(process.cwd(), 'temp', fileName);
+            const filePath = path.join('/tmp', fileName);
 
             console.log("📄 PDF file path:", filePath);
 
-            const tempDir = path.dirname(filePath);
-            if (!fs.existsSync(tempDir)) {
-                console.log("📁 Creating temp directory:", tempDir);
-                fs.mkdirSync(tempDir, { recursive: true });
-            }
+            // On Vercel, /tmp directory should already exist
+            // No need to create it as it's provided by the serverless environment
 
             console.log("📄 Creating PDF document...");
             doc.pipe(fs.createWriteStream(filePath));
