@@ -79,18 +79,18 @@ exports.getPackageById = async (req, res) => {
 
 exports.createPackage = async (req, res) => {
   try {
-    const {
-      name,
-      description,
-      packageType,
-      targetRole,
-      price,
-      originalPrice,
-      outletFee,
-      passCount,
-      validityDays,
-      isActive
-    } = req.body;
+        const {
+          name,
+          description,
+          packageType,
+          targetRole,
+          price,
+          originalPrice,
+          passCount,
+          validityDays,
+          isActive,
+          hoursAllowed
+        } = req.body;
 
     if (!name || !packageType || !targetRole || !price || !passCount) {
       return res.status(400).json({
@@ -100,19 +100,20 @@ exports.createPackage = async (req, res) => {
       });
     }
 
-    const packageData = {
-      id: uuidv4(),
-      name,
-      description: description || null,
-      packageType,
-      targetRole,
-      price: parseFloat(price),
-      originalPrice: originalPrice ? parseFloat(originalPrice) : null,
-      outletFee: parseFloat(outletFee) || 5.00,
-      passCount: parseInt(passCount),
-      validityDays: parseInt(validityDays) || 30,
-      isActive: isActive !== undefined ? isActive : true
-    };
+            const packageData = {
+              id: uuidv4(),
+              name,
+              description: description || null,
+              packageType,
+              targetRole,
+              price: parseFloat(price),
+              originalPrice: originalPrice ? parseFloat(originalPrice) : null,
+              outletFee: 0.00,
+              passCount: parseInt(passCount),
+              validityDays: parseInt(validityDays) || 30,
+              isActive: isActive !== undefined ? isActive : true,
+              hoursAllowed: parseInt(hoursAllowed) || 4
+            };
 
     const { data: newPackage, error } = await supabase
       .from("Package")
@@ -146,18 +147,18 @@ exports.createPackage = async (req, res) => {
 exports.updatePackage = async (req, res) => {
   try {
     const { id } = req.params;
-    const {
-      name,
-      description,
-      packageType,
-      targetRole,
-      price,
-      originalPrice,
-      outletFee,
-      passCount,
-      validityDays,
-      isActive
-    } = req.body;
+        const {
+          name,
+          description,
+          packageType,
+          targetRole,
+          price,
+          originalPrice,
+          passCount,
+          validityDays,
+          isActive,
+          hoursAllowed
+        } = req.body;
 
     if (!id) {
       return res.status(400).json({
@@ -174,19 +175,20 @@ exports.updatePackage = async (req, res) => {
       });
     }
 
-    const updateData = {
-      name,
-      description: description || null,
-      packageType,
-      targetRole,
-      price: parseFloat(price),
-      originalPrice: originalPrice ? parseFloat(originalPrice) : null,
-      outletFee: parseFloat(outletFee) || 5.00,
-      passCount: parseInt(passCount),
-      validityDays: parseInt(validityDays) || 30,
-      isActive: isActive !== undefined ? isActive : true,
-      updatedAt: new Date().toISOString()
-    };
+            const updateData = {
+              name,
+              description: description || null,
+              packageType,
+              targetRole,
+              price: parseFloat(price),
+              originalPrice: originalPrice ? parseFloat(originalPrice) : null,
+              outletFee: 0.00,
+              passCount: parseInt(passCount),
+              validityDays: parseInt(validityDays) || 30,
+              isActive: isActive !== undefined ? isActive : true,
+              hoursAllowed: parseInt(hoursAllowed) || 4,
+              updatedAt: new Date().toISOString()
+            };
 
     const { data: updatedPackage, error } = await supabase
       .from("Package")

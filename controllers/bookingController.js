@@ -448,48 +448,9 @@ exports.confirmBookingPayment = async (req, res) => {
 
  
     if (data.packageId && data.packageUsed) {
-      try {
-   
-        const startTime = new Date(data.startAt);
-        const endTime = new Date(data.endAt);
-        const hoursUsed = (endTime - startTime) / (1000 * 60 * 60);
-        const { handlePackageUsage } = require('../utils/packageUsageHelper');
-        
-        const packageUsageResult = await handlePackageUsage(
-          data.userId,
-          data.packageId,
-          hoursUsed,
-          data.id,
-          data.location,
-          data.startAt,
-          data.endAt
-        );
-
-        if (packageUsageResult.success) {
-          
-          const { error: updateError } = await supabase
-            .from("Booking")
-            .update({
-              packagePassUsed: packageUsageResult.passUsed,
-              passType: packageUsageResult.passType,
-              remainingCount: packageUsageResult.remainingCount,
-              isPassFullyUsed: packageUsageResult.isPassFullyUsed,
-              updatedAt: new Date().toISOString()
-            })
-            .eq("id", data.id);
-          
-          if (updateError) {
-            console.error(`Error updating booking:`, updateError);
-          } else {
-            console.log(`Booking updated successfully with package usage details`);
-          }
-        } else {
-          console.error(`Error: ${packageUsageResult.error}`);
-        }
-      } catch (packageError) {
- 
-        console.error(`Stack:`, packageError);
-      }
+      // Package usage will be handled in confirmBookingPayment function
+      // to avoid double counting when payment is confirmed
+      console.log(`📦 Package usage will be handled during payment confirmation`);
     } else {
       console.log(`\n ==== PACKAGE USAGE SKIPPED =====`);
     }
@@ -505,6 +466,82 @@ exports.confirmBookingPayment = async (req, res) => {
       data.paymentDetails = paymentData;
     }
 
+    // Handle package usage if package was used
+    let packageUsageResult = null;
+    if (data.packageId && data.packageUsed) {
+      try {
+        console.log(`\n🎯 ===== PACKAGE USAGE ON PAYMENT CONFIRMATION =====`);
+        console.log(`📋 Booking ID: ${data.id}`);
+        console.log(`📋 User ID: ${data.userId}`);
+        console.log(`📋 Package ID: ${data.packageId}`);
+        console.log(`📋 Package Used: ${data.packageUsed}`);
+
+        // Calculate hours used from booking duration
+        const startTime = new Date(data.startAt);
+        const endTime = new Date(data.endAt);
+        const hoursUsed = (endTime - startTime) / (1000 * 60 * 60); // Convert to hours
+        console.log(`📦 Hours Used: ${hoursUsed}`);
+        console.log(`📦 Location: ${data.location}`);
+        console.log(`📦 Start Time: ${data.startAt}`);
+        console.log(`📦 End Time: ${data.endAt}`);
+
+        // Import the package usage helper
+        const { handlePackageUsage } = require('../utils/packageUsageHelper');
+
+        console.log(`📦 Calling handlePackageUsage...`);
+        packageUsageResult = await handlePackageUsage(
+          data.userId,
+          data.packageId,
+          hoursUsed,
+          data.id,
+          data.location,
+          data.startAt,
+          data.endAt
+        );
+
+        console.log(`📦 Package usage result:`, JSON.stringify(packageUsageResult, null, 2));
+
+        if (packageUsageResult.success) {
+          console.log(`\n✅ ===== PACKAGE USAGE SUCCESS =====`);
+          console.log(`✅ Pass Used: ${packageUsageResult.passUsed}`);
+          console.log(`✅ Remaining Count: ${packageUsageResult.remainingCount}`);
+          console.log(`✅ Pass Type: ${packageUsageResult.passType}`);
+          console.log(`✅ Is Pass Fully Used: ${packageUsageResult.isPassFullyUsed}`);
+
+          // Update booking with package usage details
+          console.log(`📦 Updating booking with package usage details...`);
+          const { error: updateError } = await supabase
+            .from("Booking")
+            .update({
+              packagePassUsed: packageUsageResult.passUsed,
+              passType: packageUsageResult.passType,
+              remainingCount: packageUsageResult.remainingCount,
+              isPassFullyUsed: packageUsageResult.isPassFullyUsed,
+              updatedAt: new Date().toISOString()
+            })
+            .eq("id", data.id);
+
+          if (updateError) {
+            console.error(`❌ Error updating booking:`, updateError);
+          } else {
+            console.log(`✅ Booking updated successfully with package usage details`);
+          }
+        } else {
+          console.error(`\n❌ ===== PACKAGE USAGE FAILED =====`);
+          console.error(`❌ Error: ${packageUsageResult.error}`);
+          console.error(`❌ Full result:`, JSON.stringify(packageUsageResult, null, 2));
+        }
+      } catch (packageError) {
+        console.error(`\n❌ ===== PACKAGE USAGE EXCEPTION =====`);
+        console.error(`❌ Exception:`, packageError);
+        console.error(`❌ Stack:`, packageError.stack);
+      }
+    } else {
+      console.log(`\n⚠️ ===== PACKAGE USAGE SKIPPED =====`);
+      console.log(`⚠️ Reason: packageId=${data.packageId}, packageUsed=${data.packageUsed}`);
+    }
+    console.log(`🎯 ===== END PACKAGE USAGE CHECK =====\n`);
+
     await sendBookingConfirmation(userData, data);
 
     res.status(200).json({
@@ -513,7 +550,8 @@ exports.confirmBookingPayment = async (req, res) => {
       payment: paymentData,
       promoCode: promoCodeData,
       totalAmount: data.totalAmount,
-      confirmedPayment: data.confirmedPayment
+      confirmedPayment: data.confirmedPayment,
+      packageUsage: packageUsageResult
     });
   } catch (err) {
     console.error("confirmBookingPayment error:", err.message);
@@ -1831,6 +1869,30 @@ exports.verifyStudentAccount = async (req, res) => {
       updateData.studentVerificationStatus = 'REJECTED';
     } else {
       updateData.studentRejectionReason = null;
+    }
+
+    // Record verification history before updating
+    const historyData = {
+      userId: userId,
+      previousStatus: existingUser.studentVerificationStatus || 'PENDING',
+      newStatus: studentVerificationStatus,
+      reason: studentVerificationStatus === 'REJECTED' 
+        ? (rejectionReason || 'Admin rejection - no reason provided')
+        : (studentVerificationStatus === 'VERIFIED' ? 'Student verification approved' : 'Status changed'),
+      changedBy: 'admin', // You can get this from req.user if you have admin auth
+      changedAt: new Date().toISOString()
+    };
+
+    // Insert into verification history
+    const { error: historyError } = await supabase
+      .from('VerificationHistory')
+      .insert([historyData]);
+
+    if (historyError) {
+      console.error('Error recording verification history:', historyError);
+      // Don't fail the main operation if history recording fails
+    } else {
+      console.log('✅ Verification history recorded successfully');
     }
 
     const { data: updatedUser, error: updateError } = await supabase

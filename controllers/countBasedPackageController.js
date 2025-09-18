@@ -14,15 +14,49 @@ exports.validatePassUsage = async (userId, passType, startTime, endTime, pax) =>
     const startHour = start.getHours();
     const endHour = end.getHours();
 
+    // Get dynamic hours from package configuration
+    const { data: userPass, error: passError } = await supabase
+      .from('UserPass')
+      .select(`
+        *,
+        PackagePurchase (
+          Package (
+            hoursAllowed
+          )
+        )
+      `)
+      .eq('userId', userId)
+      .eq('passtype', passType)
+      .eq('status', 'ACTIVE')
+      .gt('remainingQuantity', 0)
+      .single();
+
+    if (passError || !userPass) {
+      return {
+        success: false,
+        error: 'No active pass found',
+        message: 'No active pass available for this user'
+      };
+    }
+
+    const hoursAllowed = userPass.PackagePurchase?.Package?.hoursAllowed;
+    if (!hoursAllowed) {
+      return {
+        success: false,
+        error: 'Package configuration not found',
+        message: 'Package hours configuration is missing'
+      };
+    }
+
     const passRestrictions = {
       'DAY_PASS': {
         allowedHours: { start: 8, end: 18 },
-        duration: 8,
+        duration: hoursAllowed,
         name: 'Day Pass'
       },
       'HALF_DAY_PASS': {
         allowedHours: { start: 8, end: 18 }, 
-        duration: 4, 
+        duration: hoursAllowed, 
         name: 'Half Day Pass'
       }
     };
@@ -45,44 +79,9 @@ exports.validatePassUsage = async (userId, passType, startTime, endTime, pax) =>
       };
     }
 
-    const { data: userPasses, error: passesError } = await supabase
-      .from('UserPass')
-      .select(`
-        *,
-        Package (
-          id,
-          name,
-          packagetype,
-          targetrole,
-          packagecontents
-        )
-      `)
-      .eq('userId', userId)
-      .eq('passtype', passType)
-      .eq('status', 'ACTIVE')
-      .gt('remainingQuantity', 0)
-      .gte('activeFrom', new Date().toISOString())
-      .lte('activeTo', new Date().toISOString())
-      .order('createdAt', { ascending: true }); 
-
-    if (passesError) {
-      return {
-        success: false,
-        error: 'Database error',
-        message: 'Failed to fetch user passes'
-      };
-    }
-
-    if (!userPasses || userPasses.length === 0) {
-      return {
-        success: false,
-        error: 'No available passes',
-        message: `No active ${restriction.name} passes available`,
-        availablePasses: 0
-      };
-    }
-
-    const availablePass = userPasses[0];
+    // Use the userPass data we already fetched
+    const userPasses = [userPass];
+    const availablePass = userPass;
     const remainingQuantity = availablePass.remainingQuantity || 0;
 
     if (remainingQuantity <= 0) {

@@ -5,6 +5,7 @@ const cors = require("cors");
 const multer = require("multer");
 const { createClient } = require("@supabase/supabase-js");
 
+// Import scheduled cleanup (this will start the cron job)
 const { cleanupUnpaidBookings } = require('./scheduledCleanup');
 
 const app = express();
@@ -149,6 +150,81 @@ app.post('/api/test-package-usage', async (req, res) => {
     res.json({ success: true, result, userPasses });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Test verification tracking endpoint
+app.get('/api/test-verification-tracking/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    console.log('🧪 Test verification tracking for user:', userId);
+    
+    const { data: user, error } = await supabase
+      .from('User')
+      .select('*')
+      .eq('id', userId)
+      .single();
+    
+    if (error || !user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        studentVerificationStatus: user.studentVerificationStatus,
+        studentVerificationDate: user.studentVerificationDate,
+        studentRejectionReason: user.studentRejectionReason,
+        updatedAt: user.updatedAt,
+        createdAt: user.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('Test verification tracking error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get verification history for a user
+app.get('/api/verification-history/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    console.log('📋 Getting verification history for user:', userId);
+    
+    const { data: history, error } = await supabase
+      .from('VerificationHistory')
+      .select('*')
+      .eq('userId', userId)
+      .order('changedAt', { ascending: false }); // Most recent first
+    
+    if (error) {
+      console.error('Error fetching verification history:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch verification history'
+      });
+    }
+    
+    res.json({
+      success: true,
+      history: history || []
+    });
+  } catch (error) {
+    console.error('Verification history error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 

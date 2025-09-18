@@ -1,4 +1,4 @@
-// Cleanup job to remove unpaid bookings after 10 minutes
+// Cleanup job to remove unpaid bookings after 5 minutes
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 
@@ -11,15 +11,15 @@ async function cleanupUnpaidBookings() {
   try {
     console.log('Starting cleanup of unpaid bookings...');
     
-    // Calculate cutoff time (10 minutes ago)
-    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    // Calculate cutoff time (5 minutes ago)
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     
-    // Find unpaid bookings older than 10 minutes
+    // Find unpaid bookings older than 5 minutes
     const { data: unpaidBookings, error: fetchError } = await supabase
       .from('Booking')
       .select('id, bookingRef, createdAt, confirmedPayment')
       .eq('confirmedPayment', false)
-      .lt('createdAt', tenMinutesAgo);
+      .lt('createdAt', fiveMinutesAgo);
     
     if (fetchError) {
       console.error('Error fetching unpaid bookings:', fetchError);
@@ -38,7 +38,7 @@ async function cleanupUnpaidBookings() {
       .from('Booking')
       .delete()
       .eq('confirmedPayment', false)
-      .lt('createdAt', tenMinutesAgo);
+      .lt('createdAt', fiveMinutesAgo);
     
     if (deleteError) {
       console.error('❌ Error deleting unpaid bookings:', deleteError);

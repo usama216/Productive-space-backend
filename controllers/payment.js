@@ -175,16 +175,54 @@ async function handleBookingPaymentCompletion(event, paymentDetails) {
       console.error("Payment update error:", paymentUpdateError);
     }
 
-    const { error: bookingUpdateError } = await supabase
+    const { data: bookingData, error: bookingUpdateError } = await supabase
       .from('Booking')
       .update({
         confirmedPayment: true,
         updatedAt: new Date()
       })
-      .eq('bookingRef', event.reference_number);
+      .eq('bookingRef', event.reference_number)
+      .select()
+      .single();
 
     if (bookingUpdateError) {
       console.error("Booking update error:", bookingUpdateError);
+    }
+
+    // Handle package usage if package was used
+    if (bookingData && bookingData.packageId && bookingData.packageUsed) {
+      try {
+        console.log(`\n🎯 ===== PACKAGE USAGE ON WEBHOOK PAYMENT =====`);
+        console.log(`📋 Booking ID: ${bookingData.id}`);
+        console.log(`📋 User ID: ${bookingData.userId}`);
+        console.log(`📋 Package ID: ${bookingData.packageId}`);
+
+        // Calculate hours used from booking duration
+        const startTime = new Date(bookingData.startAt);
+        const endTime = new Date(bookingData.endAt);
+        const hoursUsed = (endTime - startTime) / (1000 * 60 * 60);
+
+        // Import the package usage helper
+        const { handlePackageUsage } = require('../utils/packageUsageHelper');
+
+        const packageUsageResult = await handlePackageUsage(
+          bookingData.userId,
+          bookingData.packageId,
+          hoursUsed,
+          bookingData.id,
+          bookingData.location,
+          bookingData.startAt,
+          bookingData.endAt
+        );
+
+        if (packageUsageResult.success) {
+          console.log(`✅ Package usage successful: ${packageUsageResult.passUsed}`);
+        } else {
+          console.error(`❌ Package usage failed: ${packageUsageResult.error}`);
+        }
+      } catch (packageError) {
+        console.error(`❌ Package usage exception:`, packageError);
+      }
     }
 
     console.log("Booking payment completed successfully");

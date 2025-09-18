@@ -225,7 +225,8 @@ exports.getUserPackages = async (req, res) => {
           packageType,
           targetRole,
           passCount,
-          validityDays
+          validityDays,
+          hoursAllowed
         )
       `)
       .eq("userId", userId)
@@ -286,6 +287,7 @@ exports.getUserPackages = async (req, res) => {
           description: purchase.Package.description,
           passCount: purchase.Package.passCount,
           validityDays: purchase.Package.validityDays,
+          hoursAllowed: purchase.Package.hoursAllowed || 4, // Default to 4 hours if not set
           quantity: purchase.quantity,
           totalAmount: parseFloat(purchase.totalAmount),
           paymentStatus: purchase.paymentStatus,
