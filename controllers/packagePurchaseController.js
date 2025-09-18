@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require("uuid");
 const supabase = require("../config/database");
 const axios = require("axios");
+const { sendPackageConfirmation } = require("../utils/email");
 
 const hitpayClient = axios.create({
   baseURL: process.env.HITPAY_API_URL,
@@ -295,6 +296,47 @@ exports.handlePackageWebhook = async (req, res) => {
             console.error("Error creating passes:", passesError);
           } else {
             console.log(`Created ${passesToCreate.length} passes for package ${userPackage.id}`);
+            
+            // Send package confirmation email with PDF
+            try {
+              // Get user data for email
+              const { data: userData, error: userError } = await supabase
+                .from("User")
+                .select("id, email, firstName, lastName, name")
+                .eq("id", userPackage.user_id)
+                .single();
+
+              if (userError || !userData) {
+                console.error("Error fetching user data for package email:", userError);
+              } else {
+                // Prepare package data for email
+                const packageEmailData = {
+                  id: userPackage.id,
+                  orderId: purchase.order_id,
+                  packageName: userPackage.packages.name,
+                  packageType: "Count-based", // Default for old system
+                  targetRole: "Student", // Default for old system
+                  passCount: passesToCreate.length,
+                  hoursAllowed: passesToCreate[0]?.hours || 4,
+                  validityDays: userPackage.packages.validity_days || 30,
+                  totalAmount: purchase.total_amount,
+                  paymentMethod: "Online Payment",
+                  activatedAt: updateData.activated_at,
+                  expiresAt: updateData.expires_at,
+                  purchasedAt: purchase.created_at
+                };
+
+                const emailResult = await sendPackageConfirmation(userData, packageEmailData);
+                
+                if (emailResult.success) {
+                  console.log("Package confirmation email sent successfully:", emailResult.messageId);
+                } else {
+                  console.error("Error sending package confirmation email:", emailResult.error);
+                }
+              }
+            } catch (emailError) {
+              console.error("Error sending package confirmation email:", emailError);
+            }
           }
         }
       }

@@ -1,6 +1,7 @@
 const axios = require("axios");
 const { v4: uuidv4 } = require("uuid");
 const supabase = require("../config/database");
+const { sendPackageConfirmation } = require("../utils/email");
 
 const hitpayClient = axios.create({
   baseURL: process.env.HITPAY_API_URL,
@@ -202,6 +203,7 @@ async function createUserPasses(packagePurchase) {
         totalCount: passCount, 
         remainingCount: passCount,
         status: "ACTIVE",
+        hours: packagePurchase.Package.hoursAllowed || 4, // Add hours field
         usedat: null,
         bookingid: null,
         locationid: null,
@@ -226,6 +228,83 @@ async function createUserPasses(packagePurchase) {
       }
 
       console.log(`Created ${userPasses.length} user passes for package purchase:`, packagePurchase.id);
+      
+      // Send package confirmation email with PDF
+      console.log("📧 Starting package confirmation email process...");
+      try {
+        // Get user data for email
+        console.log("👤 Fetching user data for user ID:", packagePurchase.userId);
+        const { data: userData, error: userError } = await supabase
+          .from("User")
+          .select("id, email, firstName, lastName")
+          .eq("id", packagePurchase.userId)
+          .single();
+
+        if (userError || !userData) {
+          console.error("❌ Error fetching user data for package email:", userError);
+        } else {
+          console.log("✅ User data fetched:", {
+            id: userData.id,
+            email: userData.email,
+            name: userData.firstName || userData.lastName || "N/A"
+          });
+
+          // Calculate amounts with card fee
+          const baseAmount = parseFloat(packagePurchase.totalAmount) || 0;
+          const paymentMethod = packagePurchase.paymentMethod || "Online Payment";
+          const isCardPayment = paymentMethod.toLowerCase().includes('card');
+          const cardFee = isCardPayment ? baseAmount * 0.05 : 0; // 5% card fee
+          const finalAmount = baseAmount + cardFee;
+
+          console.log("💰 Payment calculation:", {
+            baseAmount: baseAmount,
+            paymentMethod: paymentMethod,
+            isCardPayment: isCardPayment,
+            cardFee: cardFee,
+            finalAmount: finalAmount
+          });
+
+          // Prepare package data for email
+          const packageEmailData = {
+            id: packagePurchase.id || "N/A",
+            orderId: packagePurchase.orderId || "N/A",
+            packageName: packagePurchase.Package?.name || "N/A",
+            packageType: packagePurchase.Package?.packageType || "N/A",
+            targetRole: packagePurchase.Package?.targetRole || "Student",
+            passCount: packagePurchase.Package?.passCount || 1,
+            hoursAllowed: packagePurchase.Package?.hoursAllowed || 4,
+            validityDays: packagePurchase.Package?.validityDays || 30,
+            baseAmount: baseAmount,
+            cardFee: cardFee,
+            totalAmount: finalAmount,
+            paymentMethod: paymentMethod,
+            activatedAt: packagePurchase.activatedAt || new Date().toISOString(),
+            expiresAt: packagePurchase.expiresAt || new Date().toISOString(),
+            purchasedAt: packagePurchase.createdAt || new Date().toISOString()
+          };
+
+          console.log("📦 Package email data prepared:", {
+            packageName: packageEmailData.packageName,
+            passCount: packageEmailData.passCount,
+            totalAmount: packageEmailData.totalAmount,
+            orderId: packageEmailData.orderId
+          });
+
+          console.log("📤 Sending package confirmation email...");
+          const emailResult = await sendPackageConfirmation(userData, packageEmailData);
+          
+          if (emailResult.success) {
+            console.log("✅ Package confirmation email sent successfully!");
+            console.log("📧 Email Message ID:", emailResult.messageId);
+            console.log("📧 Email sent to:", userData.email);
+          } else {
+            console.error("❌ Error sending package confirmation email:", emailResult.error);
+          }
+        }
+      } catch (emailError) {
+        console.error("❌ Error in package confirmation email process:", emailError);
+        console.error("❌ Error stack:", emailError.stack);
+      }
     } else {
       console.log("No user passes to create for package purchase:", packagePurchase.id);
     }

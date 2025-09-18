@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require("uuid");
 const supabase = require("../config/database");
+const { sendPackageConfirmation } = require("../utils/email");
 
 exports.getPackages = async (req, res) => {
   try {
@@ -407,6 +408,102 @@ exports.confirmPackagePurchase = async (req, res) => {
 
         if (passesError) {
           console.error("Error creating passes:", passesError);
+        } else {
+          console.log(`Created ${passesToCreate.length} passes for package ${userPackageId}`);
+          
+          // Send package confirmation email with PDF
+          console.log("📧 Starting package confirmation email process...");
+          try {
+            // Get user data for email
+            console.log("👤 Fetching user data for user ID:", userPackage.user_id);
+            const { data: userData, error: userError } = await supabase
+              .from("User")
+              .select("id, email, firstName, lastName")
+              .eq("id", userPackage.user_id)
+              .single();
+
+            if (userError || !userData) {
+              console.error("❌ Error fetching user data for package email:", userError);
+            } else {
+              console.log("✅ User data fetched:", {
+                id: userData.id,
+                email: userData.email,
+                name: userData.firstName || userData.lastName || "N/A"
+              });
+
+              // Get purchase history for order details
+              console.log("📋 Fetching purchase history for order:", hitpayReference);
+              const { data: purchaseHistory, error: historyError } = await supabase
+                .from("purchase_history")
+                .select("*")
+                .eq("order_id", hitpayReference)
+                .single();
+
+              if (historyError) {
+                console.log("⚠️ Purchase history not found, using defaults:", historyError.message);
+              } else {
+                console.log("✅ Purchase history fetched:", {
+                  orderId: purchaseHistory.order_id,
+                  totalAmount: purchaseHistory.total_amount
+                });
+              }
+
+              // Calculate amounts with card fee
+              const baseAmount = parseFloat(purchaseHistory?.total_amount) || 0;
+              const paymentMethod = "Online Payment"; // Default for old system
+              const isCardPayment = paymentMethod.toLowerCase().includes('card');
+              const cardFee = isCardPayment ? baseAmount * 0.05 : 0; // 5% card fee
+              const finalAmount = baseAmount + cardFee;
+
+              console.log("💰 Payment calculation (old system):", {
+                baseAmount: baseAmount,
+                paymentMethod: paymentMethod,
+                isCardPayment: isCardPayment,
+                cardFee: cardFee,
+                finalAmount: finalAmount
+              });
+
+              // Prepare package data for email
+              const packageEmailData = {
+                id: userPackageId,
+                orderId: hitpayReference,
+                packageName: userPackage.packages.name,
+                packageType: "Count-based", // Default for old system
+                targetRole: "Student", // Default for old system
+                passCount: passesToCreate.length,
+                hoursAllowed: passesToCreate[0]?.hours || 4,
+                validityDays: userPackage.packages.validity_days || 30,
+                baseAmount: baseAmount,
+                cardFee: cardFee,
+                totalAmount: finalAmount,
+                paymentMethod: paymentMethod,
+                activatedAt: updateData.activated_at,
+                expiresAt: updateData.expires_at,
+                purchasedAt: purchaseHistory?.created_at || new Date().toISOString()
+              };
+
+              console.log("📦 Package email data prepared:", {
+                packageName: packageEmailData.packageName,
+                passCount: packageEmailData.passCount,
+                totalAmount: packageEmailData.totalAmount,
+                orderId: packageEmailData.orderId
+              });
+
+              console.log("📤 Sending package confirmation email...");
+              const emailResult = await sendPackageConfirmation(userData, packageEmailData);
+              
+              if (emailResult.success) {
+                console.log("✅ Package confirmation email sent successfully!");
+                console.log("📧 Email Message ID:", emailResult.messageId);
+                console.log("📧 Email sent to:", userData.email);
+              } else {
+                console.error("❌ Error sending package confirmation email:", emailResult.error);
+              }
+            }
+          } catch (emailError) {
+            console.error("❌ Error in package confirmation email process:", emailError);
+            console.error("❌ Error stack:", emailError.stack);
+          }
         }
       }
     }
