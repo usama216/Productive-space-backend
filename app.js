@@ -7,6 +7,10 @@ const { createClient } = require("@supabase/supabase-js");
 
 // Import scheduled cleanup (this will start the cron job)
 const { cleanupUnpaidBookings } = require('./scheduledCleanup');
+const { startCreditCleanup } = require('./scheduledCreditCleanup');
+
+// Start cleanup schedulers
+startCreditCleanup();
 
 const app = express();
 app.use(cors());
@@ -49,6 +53,9 @@ const packageUsageRoutes = require("./routes/packageUsage");
 const adminPackageRoutes = require("./routes/adminPackages");
 const adminPackageUsageRoutes = require("./routes/adminPackageUsage");
 const simpleTestRoutes = require("./routes/simpleTest");
+const refundRoutes = require("./routes/refund");
+const adminRefundRoutes = require("./routes/adminRefund");
+const creditRoutes = require("./routes/credit");
 
 const { swaggerUi, specs } = require('./swagger');
 
@@ -115,6 +122,9 @@ app.use("/api/packages", packageUsageRoutes);
 app.use("/api/admin/packages", adminPackageUsageRoutes);
 app.use("/api/admin/packages", adminPackageRoutes);
 app.use("/api/test", simpleTestRoutes);
+app.use("/api/refund", refundRoutes);
+app.use("/api/admin/refund", adminRefundRoutes);
+app.use("/api/credit", creditRoutes);
 app.use("/api/booking", require('./routes/packageApplication'));
 app.post('/api/test-package-usage', async (req, res) => {
   try {

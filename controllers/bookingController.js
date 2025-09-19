@@ -8,6 +8,10 @@ const {
   applyPassToBooking, 
   getUserPassBalance 
 } = require("./countBasedPackageController");
+const { 
+  calculatePaymentAfterCredits, 
+  useCreditsForBooking 
+} = require("../utils/creditHelper");
 
 const supabase = require("../config/database");
 
@@ -101,9 +105,10 @@ exports.createBooking = async (req, res) => {
       
       const { data: conflictingBookings, error: seatConflictError } = await supabase
         .from("Booking")
-        .select("seatNumbers, startAt, endAt, bookingRef, userId, confirmedPayment, createdAt")
+        .select("seatNumbers, startAt, endAt, bookingRef, userId, confirmedPayment, createdAt, refundstatus")
         .eq("location", location)
         .in("confirmedPayment", [true, false])
+        .neq("refundstatus", "APPROVED") // Exclude refunded bookings from seat availability
         .lt("startAt", endAt)  
         .gt("endAt", startAt); 
 
@@ -742,7 +747,8 @@ exports.getUserBookings = async (req, res) => {
       .from('Booking')
       .select('*', { count: 'exact' })
       .eq('userId', userId)
-      .eq('confirmedPayment', true); 
+      .or('confirmedPayment.eq.true,refundstatus.eq.APPROVED') // Include confirmed payments AND refunded bookings
+      .is('deletedAt', null); // Exclude deleted bookings 
 
     if (status) {
       const now = new Date().toISOString();
@@ -762,9 +768,9 @@ exports.getUserBookings = async (req, res) => {
 
     if (paymentStatus) {
       if (paymentStatus === 'paid') {
-        query = query.eq('confirmedPayment', true);
+        query = query.or('confirmedPayment.eq.true,refundstatus.eq.APPROVED'); // Include confirmed payments AND refunded bookings
       } else if (paymentStatus === 'unpaid') {
-        query = query.eq('confirmedPayment', false);
+        query = query.eq('confirmedPayment', false).neq('refundstatus', 'APPROVED'); // Exclude refunded bookings from unpaid
       }
     }
 
@@ -802,10 +808,12 @@ exports.getUserBookings = async (req, res) => {
       const startAt = new Date(booking.startAt);
       const endAt = new Date(booking.endAt);
       
-      const isUpcoming = startAt > now;
-      const isOngoing = startAt <= now && endAt > now;
-      const isCompleted = endAt <= now;
-      const isToday = startAt.toDateString() === now.toDateString();
+      const isRefunded = booking.refundstatus === 'APPROVED';
+      const isCancelled = booking.deletedAt !== null;
+      const isUpcoming = !isCancelled && !isRefunded && startAt > now;
+      const isOngoing = !isCancelled && !isRefunded && startAt <= now && endAt > now;
+      const isCompleted = !isCancelled && !isRefunded && endAt <= now;
+      const isToday = !isCancelled && !isRefunded && startAt.toDateString() === now.toDateString();
       
       const durationMs = endAt.getTime() - startAt.getTime();
       const durationHours = Math.round(durationMs / (1000 * 60 * 60) * 100) / 100;
@@ -828,7 +836,7 @@ exports.getUserBookings = async (req, res) => {
         isToday,
         durationHours,
         timeUntilBooking,
-        status: isUpcoming ? 'upcoming' : isOngoing ? 'ongoing' : 'completed',
+        status: isRefunded ? 'refunded' : isCancelled ? 'cancelled' : isUpcoming ? 'upcoming' : isOngoing ? 'ongoing' : 'completed',
         PromoCode: promoCode
       };
     });
@@ -1053,7 +1061,7 @@ exports.getUserBookingStats = async (req, res) => {
       .from("Booking")
       .select("*", { count: "exact", head: true })
       .eq("userId", userId)
-      .eq("confirmedPayment", true) 
+      .or('confirmedPayment.eq.true,refundstatus.eq.APPROVED') // Include confirmed payments AND refunded bookings
       .gte("startAt", now);
 
     if (upcomingError) {
@@ -1065,7 +1073,7 @@ exports.getUserBookingStats = async (req, res) => {
       .from("Booking")
       .select("*", { count: "exact", head: true })
       .eq("userId", userId)
-      .eq("confirmedPayment", true) 
+      .or('confirmedPayment.eq.true,refundstatus.eq.APPROVED') // Include confirmed payments AND refunded bookings
       .lt("endAt", now);
 
     if (pastError) {
@@ -1141,9 +1149,9 @@ exports.getAllBookings = async (req, res) => {
 
     if (paymentStatus) {
       if (paymentStatus === 'paid') {
-        query = query.eq('confirmedPayment', true);
+        query = query.or('confirmedPayment.eq.true,refundstatus.eq.APPROVED'); // Include confirmed payments AND refunded bookings
       } else if (paymentStatus === 'unpaid') {
-        query = query.eq('confirmedPayment', false);
+        query = query.eq('confirmedPayment', false).neq('refundstatus', 'APPROVED'); // Exclude refunded bookings from unpaid
       }
     }
 

@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { paymentConfirmationTemplate, bookingConfirmationTemplate } = require("../templates/bookingConfirmation");
 const { packageConfirmationTemplate } = require("../templates/packageConfirmation");
+const { refundConfirmationTemplate } = require("../templates/refundConfirmation");
 const { generateInvoicePDF } = require("./invoice");
 const { generatePackageInvoicePDF } = require("./packageInvoice"); 
 
@@ -128,9 +129,39 @@ const sendPackageConfirmation = async (userData, packageData) => {
   }
 };
 
+const sendRefundConfirmation = async (data) => {
+  try {
+    const { user, booking, creditAmount, expiresAt } = data;
+    
+    console.log("📧 Sending refund confirmation email to:", user.email);
+    
+    const emailContent = refundConfirmationTemplate({
+      user,
+      booking,
+      creditAmount,
+      expiresAt
+    });
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: user.email,
+      subject: `Refund Confirmed - ${booking.bookingRef} | StudySpace`,
+      html: emailContent
+    };
+
+    const result = await transporter.sendMail(mailOptions);
+    console.log("✅ Refund confirmation email sent successfully:", result.messageId);
+    return result;
+  } catch (error) {
+    console.error("❌ Error sending refund confirmation email:", error);
+    throw error;
+  }
+};
+
 module.exports = { 
   sendEmail, 
   sendBookingConfirmation,
   sendPaymentConfirmation,
-  sendPackageConfirmation
+  sendPackageConfirmation,
+  sendRefundConfirmation
 };
