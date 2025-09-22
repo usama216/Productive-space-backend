@@ -8,16 +8,26 @@ const requestRefund = async (req, res) => {
 
     console.log('🔄 Refund request:', { bookingid, userid, reason });
 
-    // For now, create a mock booking to test the refund system
-    const booking = {
-      id: bookingid,
-      userId: userid,
-      totalAmount: 63,
-      confirmedPayment: true,
-      refundstatus: 'NONE'
-    };
+    // Fetch the actual booking data from database
+    console.log('🔍 Fetching booking data from database...');
+    const { data: booking, error: bookingError } = await supabase
+      .from('Booking')
+      .select('id, userId, totalAmount, confirmedPayment, refundstatus')
+      .eq('id', bookingid)
+      .single();
 
-    console.log('📊 Using booking data:', booking);
+    if (bookingError || !booking) {
+      console.error('❌ Error fetching booking:', bookingError);
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+
+    console.log('📊 Retrieved booking data:', booking);
+
+    // Verify the booking belongs to the requesting user
+    if (booking.userId !== userid) {
+      console.error('❌ Booking does not belong to user:', { bookingUserId: booking.userId, requestingUserId: userid });
+      return res.status(403).json({ error: 'You can only request refunds for your own bookings' });
+    }
 
     // Check if booking is already refunded or refund requested
     if (booking.refundstatus !== 'NONE') {
@@ -59,8 +69,8 @@ const requestRefund = async (req, res) => {
       .insert({
         userid: userid,
         bookingid: bookingid,
-        refundamount: booking.totalAmount,
-        creditamount: booking.totalAmount,
+        refundamount: parseFloat(booking.totalAmount),
+        creditamount: parseFloat(booking.totalAmount),
         refundreason: reason,
         refundstatus: 'REQUESTED'
       });

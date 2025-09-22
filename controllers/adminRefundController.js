@@ -141,15 +141,18 @@ const getAllRefundRequests = async (req, res) => {
     }
     console.log('✅ Booking refund status updated to APPROVED');
 
-    // Mark booking as refunded (purely a record, no functional value)
-    console.log('🔄 Marking booking as refunded (record only)...');
+    // Mark booking as refunded and release seats for others
+    console.log('🔄 Marking booking as refunded and releasing seats...');
     const { error: refundBookingError } = await supabase
       .from('Booking')
       .update({
-        confirmedPayment: false,
-        paymentId: null,
+        seatNumbers: [], // Clear seat numbers to release seats for other users
+        // Keep payment information for audit trail:
+        // - confirmedPayment: true (maintains payment record)
+        // - paymentId: unchanged (maintains payment reference)
+        // - refundstatus: 'APPROVED' (already updated above)
         // This booking is now just a record - seats are released for others
-        // No functional value, just for user reference
+        // Payment information is preserved for audit purposes
       })
       .eq('id', refund.bookingid);
 
@@ -158,7 +161,7 @@ const getAllRefundRequests = async (req, res) => {
       // Don't return error here as refund is already processed
       console.log('⚠️ Warning: Refund processed but booking update failed');
     } else {
-      console.log('✅ Booking marked as refunded and seats released');
+      console.log('✅ Booking marked as refunded, seats released for other users, payment records preserved');
     }
 
     // Send refund confirmation email
