@@ -249,11 +249,31 @@ exports.createBooking = async (req, res) => {
       return res.status(400).json({ error: error.message });
     }
 
+    // Handle credit usage if credits were used
+    let creditUsageResult = null;
+    if (req.body.creditAmount && req.body.creditAmount > 0) {
+      try {
+        console.log('💳 Processing credit usage for booking:', {
+          bookingId: data.id,
+          userId: userId,
+          creditAmount: req.body.creditAmount
+        });
+        
+        creditUsageResult = await useCreditsForBooking(userId, data.id, req.body.creditAmount);
+        console.log('✅ Credit usage processed:', creditUsageResult);
+      } catch (creditError) {
+        console.error('❌ Error processing credit usage:', creditError);
+        // Don't fail the booking creation if credit usage fails
+        // Just log the error and continue
+      }
+    }
+
    
     res.status(201).json({ 
       message: "Booking created successfully", 
       booking: data,
-      promoCodeApplied: !!promoCodeId
+      promoCodeApplied: !!promoCodeId,
+      creditUsage: creditUsageResult
     });
   } catch (err) {
     res.status(500).json({ error: "Internal Server Error" });
