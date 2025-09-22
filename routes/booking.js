@@ -29,6 +29,7 @@ const router = express.Router();
 router.post("/create", createBooking);
 router.get("/all", getAllBookings);
 router.get("/getById/:id", getBookingById);
+router.get("/:id", getBookingById);
 router.post("/confirmBooking", confirmBookingPayment);
 router.post("/confirmWithPackage", confirmBookingWithPackage);
 router.post("/getBookedSeats", getBookedSeats);

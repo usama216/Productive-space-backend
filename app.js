@@ -57,6 +57,7 @@ const refundRoutes = require("./routes/refund");
 const adminRefundRoutes = require("./routes/adminRefund");
 const creditRoutes = require("./routes/credit");
 const pricingRoutes = require("./routes/pricing");
+const rescheduleRoutes = require("./routes/reschedule");
 
 const { swaggerUi, specs } = require('./swagger');
 
@@ -127,6 +128,7 @@ app.use("/api/refund", refundRoutes);
 app.use("/api/admin/refund", adminRefundRoutes);
 app.use("/api/credit", creditRoutes);
 app.use("/api", pricingRoutes);
+app.use("/api/reschedule", rescheduleRoutes);
 app.use("/api/booking", require('./routes/packageApplication'));
 app.post('/api/test-package-usage', async (req, res) => {
   try {

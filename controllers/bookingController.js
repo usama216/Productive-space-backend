@@ -308,12 +308,21 @@ exports.getBookingById = async (req, res) => {
       .single();
 
     if (error) {
-      return res.status(404).json({ error: "Booking not found" });
+      return res.status(404).json({ 
+        success: false,
+        error: "Booking not found" 
+      });
     }
 
-    res.status(200).json({ booking: data });
+    res.status(200).json({ 
+      success: true,
+      booking: data 
+    });
   } catch (err) {
-    res.status(500).json({ error: "Internal Server Error" });
+    res.status(500).json({ 
+      success: false,
+      error: "Internal Server Error" 
+    });
   }
 };
 
