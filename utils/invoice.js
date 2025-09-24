@@ -80,7 +80,7 @@ try {
             doc.fillColor('#FFFFFF').font(headerFont).fontSize(bodyFontSize)
                 .text('#', 60, tableTop + 8)
                 .text('Location & Date/Time', 90, tableTop + 8)
-                .text('Qty', 380, tableTop + 8)
+                .text('Hours', 380, tableTop + 8)
                 .text('Rate', 420, tableTop + 8)
                 .text('Amount', 480, tableTop + 8);
 
@@ -109,6 +109,13 @@ try {
             
             const hours = bookingData.endAt ?
                 Math.ceil((endDate - startDate) / (1000 * 60 * 60)) : 1;
+            
+            // Format hours with decimal places for more accurate display
+            const hoursDecimal = bookingData.endAt ?
+                ((endDate - startDate) / (1000 * 60 * 60)) : 1;
+            const formattedHours = hoursDecimal % 1 === 0 ? 
+                `${hoursDecimal} Hours` : 
+                `${hoursDecimal.toFixed(1)} Hours`;
 
             let description = bookingData.location ?
                 `${bookingData.location} - ${startDateSGT} (${startTimeSGT} - ${endTimeSGT})` :
@@ -120,7 +127,7 @@ try {
             doc.fillColor('#000000').font(bodyFont).fontSize(bodyFontSize)
                 .text('1', 60, currentY + 10)
                 .text(description, 90, currentY + 10, { width: 280 })
-                .text((bookingData.pax || 1).toString(), 385, currentY + 10)
+                .text(formattedHours, 385, currentY + 10)
                 .text(`$${rate.toFixed(2)}`, 420, currentY + 10)
                 .text(`$${amount.toFixed(2)}`, 480, currentY + 10);
 
