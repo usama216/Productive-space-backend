@@ -118,19 +118,6 @@ const generatePackageInvoicePDF = (userData, packageData) => {
                 .text(`$${unitPrice.toFixed(2)}`, 420, currentY + 10)
                 .text(`$${baseAmount.toFixed(2)}`, 480, currentY + 10);
 
-            // Add card fee row if applicable
-            if (cardFee > 0) {
-                currentY += 30;
-                doc.rect(50, currentY, 500, 30).fill('#F8F9FA').stroke();
-                
-                doc.fillColor('#000000').font(bodyFont).fontSize(bodyFontSize)
-                    .text('2', 60, currentY + 10)
-                    .text('Card Processing Fee (5%)', 90, currentY + 10, { width: 280 })
-                    .text('1', 385, currentY + 10)
-                    .text(`$${cardFee.toFixed(2)}`, 420, currentY + 10)
-                    .text(`$${cardFee.toFixed(2)}`, 480, currentY + 10);
-            }
-
             currentY += 40;
 
         
