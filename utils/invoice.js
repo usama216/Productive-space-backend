@@ -2,6 +2,11 @@ const PDFDocument = require('pdfkit');
 const fs = require("fs");
 const path = require("path");
 
+// Function to round hours to the nearest 0.5
+const roundHoursToNearestHalf = (hours) => {
+    return Math.ceil(hours * 2) / 2;
+};
+
 const generateInvoicePDF = (userData, bookingData) => {
     return new Promise((resolve, reject) => {
         try {
@@ -107,15 +112,20 @@ try {
                 minute: '2-digit'
             });
             
-            const hours = bookingData.endAt ?
-                Math.ceil((endDate - startDate) / (1000 * 60 * 60)) : 1;
-            
-            // Format hours with decimal places for more accurate display
-            const hoursDecimal = bookingData.endAt ?
+            // Calculate actual hours
+            const actualHours = bookingData.endAt ?
                 ((endDate - startDate) / (1000 * 60 * 60)) : 1;
-            const formattedHours = hoursDecimal % 1 === 0 ? 
-                `${hoursDecimal} Hours` : 
-                `${hoursDecimal.toFixed(1)} Hours`;
+            
+            // Round hours to nearest 0.5
+            const roundedHours = roundHoursToNearestHalf(actualHours);
+            
+            // Format hours without "Hours" text (since column header already shows "Hours")
+            const formattedHours = roundedHours % 1 === 0 ? 
+                `${roundedHours}` : 
+                `${roundedHours.toFixed(1)}`;
+            
+            // Use rounded hours for rate calculation
+            const hours = roundedHours;
 
             let description = bookingData.location ?
                 `${bookingData.location} - ${startDateSGT} (${startTimeSGT} - ${endTimeSGT})` :
