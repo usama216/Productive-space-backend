@@ -64,7 +64,7 @@ const requestRefund = async (req, res) => {
 
     // Create refund transaction record
     console.log('🔄 Creating refund transaction...');
-    const { error: transactionError } = await supabase
+    const { data: refundTransaction, error: transactionError } = await supabase
       .from('refundtransactions')
       .insert({
         userid: userid,
@@ -73,7 +73,9 @@ const requestRefund = async (req, res) => {
         creditamount: parseFloat(booking.totalAmount),
         refundreason: reason,
         refundstatus: 'REQUESTED'
-      });
+      })
+      .select()
+      .single();
 
     if (transactionError) {
       console.error('❌ Error creating refund transaction:', transactionError);
@@ -82,8 +84,93 @@ const requestRefund = async (req, res) => {
 
     console.log('✅ Refund transaction created successfully');
 
-    console.log('✅ Refund requested successfully');
-    res.json({ message: 'Refund requested successfully', bookingid });
+    // Auto-approve the refund immediately
+    console.log('🔄 Auto-approving refund...');
+    
+    // Calculate expiry date (30 days from now)
+    const expiresat = new Date();
+    expiresat.setDate(expiresat.getDate() + 30);
+
+    // Create user credit
+    console.log('🔄 Creating user credit:', {
+      userid: userid,
+      amount: parseFloat(booking.totalAmount),
+      refundedfrombookingid: bookingid,
+      expiresat: expiresat.toISOString()
+    });
+    
+    const { data: credit, error: creditError } = await supabase
+      .from('usercredits')
+      .insert({
+        userid: userid,
+        amount: parseFloat(booking.totalAmount),
+        refundedfrombookingid: bookingid,
+        expiresat: expiresat.toISOString()
+      })
+      .select()
+      .single();
+
+    if (creditError) {
+      console.error('❌ Error creating user credit:', creditError);
+      return res.status(500).json({ error: 'Failed to create user credit' });
+    }
+
+    // Update refund transaction status to APPROVED
+    console.log('🔄 Updating refund transaction status to APPROVED...');
+    const { error: updateRefundError } = await supabase
+      .from('refundtransactions')
+      .update({
+        refundstatus: 'APPROVED'
+      })
+      .eq('id', refundTransaction.id);
+
+    if (updateRefundError) {
+      console.error('❌ Error updating refund transaction:', updateRefundError);
+      return res.status(500).json({ error: 'Failed to update refund transaction' });
+    }
+
+    // Update booking status to APPROVED
+    console.log('🔄 Updating booking refund status to APPROVED...');
+    const { error: updateBookingApprovalError } = await supabase
+      .from('Booking')
+      .update({
+        refundstatus: 'APPROVED',
+        refundapprovedat: new Date().toISOString(),
+        refundapprovedby: null // Auto-approved
+      })
+      .eq('id', bookingid);
+
+    if (updateBookingApprovalError) {
+      console.error('❌ Error updating booking status:', updateBookingApprovalError);
+      return res.status(500).json({ error: 'Failed to update booking status' });
+    }
+
+    // Mark booking as refunded and release seats for others
+    console.log('🔄 Marking booking as refunded and releasing seats...');
+    const { error: refundBookingError } = await supabase
+      .from('Booking')
+      .update({
+        seatNumbers: [], // Clear seat numbers to release seats for other users
+        // Keep payment information for audit trail
+      })
+      .eq('id', bookingid);
+
+    if (refundBookingError) {
+      console.error('❌ Error marking booking as refunded:', refundBookingError);
+      // Don't return error here as refund is already processed
+      console.log('⚠️ Warning: Refund processed but booking update failed');
+    } else {
+      console.log('✅ Booking marked as refunded, seats released for other users');
+    }
+
+    console.log('✅ Refund auto-approved successfully');
+    res.json({ 
+      message: 'Refund approved successfully', 
+      bookingid,
+      creditid: credit.id,
+      creditamount: parseFloat(booking.totalAmount),
+      expiresat: expiresat.toISOString()
+    });
   } catch (error) {
     console.error('❌ Error in requestRefund:', error);
     res.status(500).json({ error: 'Internal server error' });
