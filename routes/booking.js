@@ -17,6 +17,8 @@ const {
   updateBooking,
   cancelBooking,
   getDashboardSummary,
+  extendBooking,
+  confirmExtensionPayment,
 
   getAllUsers,
   getUserAnalytics,
@@ -48,6 +50,8 @@ router.get("/admin/dashboard", getDashboardSummary);
 
 router.put("/admin/:id", updateBooking);
 router.delete("/admin/:id", cancelBooking);
+router.post("/extend", extendBooking);
+router.post("/confirm-extension-payment", confirmExtensionPayment);
 
 router.get("/admin/users", getAllUsers);
 router.get("/admin/users/analytics", getUserAnalytics);

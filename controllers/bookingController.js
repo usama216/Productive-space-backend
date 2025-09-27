@@ -776,7 +776,7 @@ exports.getUserBookings = async (req, res) => {
       .from('Booking')
       .select('*', { count: 'exact' })
       .eq('userId', userId)
-      .or('confirmedPayment.eq.true,refundstatus.eq.APPROVED') // Include confirmed payments AND refunded bookings
+      .or('confirmedPayment.eq.true,refundstatus.eq.APPROVED,extensionamounts.not.is.null') // Include confirmed payments, refunded bookings, AND extension bookings
       .is('deletedAt', null); // Exclude deleted bookings 
 
     if (status) {
@@ -2151,6 +2151,303 @@ exports.confirmBookingWithPackage = async (req, res) => {
     res.status(500).json({
       error: "Internal server error",
       message: err.message
+    });
+  }
+};
+
+exports.extendBooking = async (req, res) => {
+  try {
+    console.log("Extend booking request:", req.body);
+    
+    const {
+      bookingId,
+      newEndAt,
+      seatNumbers,
+      extensionHours,
+      extensionCost
+    } = req.body;
+
+    if (!bookingId || !newEndAt || !extensionHours || !extensionCost) {
+      return res.status(400).json({
+        error: "Missing required fields",
+        message: "bookingId, newEndAt, extensionHours, and extensionCost are required"
+      });
+    }
+
+    // Get the current booking
+    const { data: booking, error: bookingError } = await supabase
+      .from("Booking")
+      .select("*")
+      .eq("id", bookingId)
+      .single();
+
+    console.log("Booking query result:", { booking, bookingError });
+
+    if (bookingError || !booking) {
+      return res.status(404).json({
+        error: "Booking not found",
+        message: "The specified booking does not exist",
+        details: bookingError?.message
+      });
+    }
+
+    // Check if booking is confirmed and paid
+    if (!booking.confirmedPayment) {
+      return res.status(400).json({
+        error: "Cannot extend unpaid booking",
+        message: "Only paid bookings can be extended"
+      });
+    }
+
+    // Validate new end time is after current end time
+    const currentEndTime = new Date(booking.endAt);
+    const newEndTime = new Date(newEndAt);
+    
+    if (newEndTime <= currentEndTime) {
+      return res.status(400).json({
+        error: "Invalid extension time",
+        message: "New end time must be after current end time"
+      });
+    }
+
+    // Check seat availability for the extended time period
+    if (seatNumbers && seatNumbers.length > 0) {
+      const { data: conflictingBookings, error: conflictError } = await supabase
+        .from("Booking")
+        .select("id, seatNumbers")
+        .eq("location", booking.location)
+        .eq("confirmedPayment", true)
+        .neq("id", bookingId) // Exclude current booking
+        .lt("startAt", newEndAt)
+        .gt("endAt", booking.endAt);
+
+      if (conflictError) {
+        console.error("Error checking seat conflicts:", conflictError);
+        return res.status(500).json({
+          error: "Database error",
+          message: "Failed to check seat availability",
+          details: conflictError.message
+        });
+      }
+
+      // Check if any of the selected seats are already booked
+      const conflictingSeats = [];
+      conflictingBookings?.forEach(conflictBooking => {
+        if (conflictBooking.seatNumbers) {
+          const conflictSeats = conflictBooking.seatNumbers.filter(seat => 
+            seatNumbers.includes(seat)
+          );
+          conflictingSeats.push(...conflictSeats);
+        }
+      });
+
+      if (conflictingSeats.length > 0) {
+        return res.status(400).json({
+          error: "Seat conflict",
+          message: `Seats ${conflictingSeats.join(', ')} are not available for the extended time`
+        });
+      }
+    }
+
+    // Don't update booking here - wait for payment confirmation
+    // Just return success to allow payment flow to continue
+    console.log("Extension request validated, proceeding to payment");
+
+    // Return success to allow payment flow to continue
+    res.json({
+      success: true,
+      message: "Extension request validated, proceed to payment",
+      extension: {
+        hours: extensionHours,
+        cost: extensionCost,
+        newEndTime: newEndAt
+      }
+    });
+
+  } catch (error) {
+    console.error("Error extending booking:", error);
+    res.status(500).json({
+      error: "Server error",
+      message: "Failed to extend booking"
+    });
+  }
+};
+
+exports.confirmExtensionPayment = async (req, res) => {
+  try {
+    const { bookingId, paymentId, extensionData } = req.body;
+
+    if (!bookingId || !paymentId || !extensionData) {
+      return res.status(400).json({
+        error: "Missing required fields",
+        message: "bookingId, paymentId, and extensionData are required"
+      });
+    }
+
+    console.log("Confirming extension payment:", { bookingId, paymentId, extensionData });
+
+    // First, get the existing booking to preserve original data
+    const { data: existingBooking, error: fetchError } = await supabase
+      .from("Booking")
+      .select("*")
+      .eq("id", bookingId)
+      .single();
+
+    if (fetchError || !existingBooking) {
+      console.error("Error fetching existing booking:", fetchError);
+      return res.status(404).json({
+        error: "Booking not found",
+        message: "The booking to extend was not found"
+      });
+    }
+
+    // Check if payment record already exists (to prevent duplicate key error)
+    const { data: existingPayment, error: paymentCheckError } = await supabase
+      .from("Payment")
+      .select("id")
+      .eq("id", paymentId)
+      .single();
+
+    if (existingPayment && !paymentCheckError) {
+      console.log("Payment record already exists for this payment ID:", paymentId);
+      
+      // Check if booking already has this extension
+      const hasExtension = existingBooking.extensionamounts && existingBooking.extensionamounts.length > 0;
+      
+      if (hasExtension) {
+        return res.json({
+          success: true,
+          message: "Extension already confirmed",
+          booking: existingBooking,
+          originalEndTime: existingBooking.endAt,
+          alreadyConfirmed: true
+        });
+      }
+    }
+
+    console.log("Existing booking data:", existingBooking);
+
+    // Get existing extension amounts array or create new one
+    let extensionAmounts = existingBooking.extensionamounts || []
+    const extensionCost = parseFloat(extensionData.extensionCost) || 0
+    
+    // Add new extension amount to array
+    extensionAmounts.push(extensionCost)
+    
+    console.log("Extension amounts array:", extensionAmounts)
+
+    // First, create a payment record for the extension
+    const paymentData = {
+      id: paymentId,
+      bookingRef: existingBooking.bookingRef,
+      startAt: existingBooking.startAt,
+      endAt: extensionData.newEndAt,
+      cost: parseFloat(extensionData.extensionCost) || 0,
+      totalAmount: parseFloat(extensionData.extensionCost) || 0,
+      paymentMethod: "EXTENSION",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    console.log("Creating payment record:", paymentData);
+
+    // Only create payment record if it doesn't already exist
+    let paymentRecord;
+    if (!existingPayment) {
+      const { data: newPaymentRecord, error: paymentError } = await supabase
+        .from("Payment")
+        .insert([paymentData])
+        .select()
+        .single();
+
+      if (paymentError) {
+        console.error("Error creating payment record:", paymentError);
+        return res.status(500).json({
+          error: "Database error",
+          message: "Failed to create payment record for extension",
+          details: paymentError.message
+        });
+      }
+      paymentRecord = newPaymentRecord;
+      console.log("Payment record created:", paymentRecord);
+    } else {
+      // Use existing payment record
+      const { data: existingPaymentData } = await supabase
+        .from("Payment")
+        .select("*")
+        .eq("id", paymentId)
+        .single();
+      paymentRecord = existingPaymentData;
+      console.log("Using existing payment record:", paymentRecord);
+    }
+
+    // Calculate total actual cost (original + all extensions)
+    const originalCost = parseFloat(existingBooking.totalCost) || 0
+    const totalExtensionCost = extensionAmounts.reduce((sum, amount) => sum + amount, 0)
+    const totalActualCost = originalCost + totalExtensionCost
+    
+    console.log("Cost calculation:", {
+      originalCost,
+      extensionAmounts,
+      totalExtensionCost,
+      totalActualCost
+    })
+
+    // Update the booking with extension details and payment confirmation
+    // IMPORTANT: If original booking was unpaid, mark it as paid when extending
+    const updateData = {
+      endAt: extensionData.newEndAt,
+      seatNumbers: extensionData.seatNumbers,
+      totalCost: (parseFloat(existingBooking.totalCost) || 0) + (parseFloat(extensionData.extensionCost) || 0),
+      totalAmount: (parseFloat(existingBooking.totalAmount) || 0) + (parseFloat(extensionData.extensionCost) || 0),
+      // If original booking was unpaid, mark as paid when extending
+      confirmedPayment: existingBooking.confirmedPayment || true, // If false, make it true
+      paymentId: paymentId, // Update paymentId to extension payment ID
+      updatedAt: new Date().toISOString()
+    };
+
+    // Add extension tracking columns (using correct column names from schema)
+    updateData.extensionamounts = extensionAmounts
+    updateData.totalactualcost = totalActualCost
+
+    console.log("Updating booking with extension data:", updateData);
+
+    const { data: updatedBooking, error: updateError } = await supabase
+      .from("Booking")
+      .update(updateData)
+      .eq("id", bookingId)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error("Error updating booking for extension:", updateError);
+      return res.status(500).json({
+        error: "Database error",
+        message: "Failed to update booking with extension details",
+        details: updateError.message
+      });
+    }
+
+    // Send confirmation email
+    try {
+      await sendBookingConfirmation(updatedBooking);
+    } catch (emailError) {
+      console.error("Error sending extension confirmation email:", emailError);
+      // Don't fail the request if email fails
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Extension payment confirmed successfully",
+      booking: updatedBooking,
+      payment: paymentRecord
+    });
+
+  } catch (error) {
+    console.error("Error confirming extension payment:", error);
+    res.status(500).json({
+      error: "Internal server error",
+      message: "Failed to confirm extension payment"
     });
   }
 };

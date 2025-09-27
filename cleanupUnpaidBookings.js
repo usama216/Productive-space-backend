@@ -14,12 +14,13 @@ async function cleanupUnpaidBookings() {
     // Calculate cutoff time (5 minutes ago)
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     
-    // Find unpaid bookings older than 5 minutes (exclude refunded bookings)
+    // Find unpaid bookings older than 5 minutes (exclude refunded bookings and extensions)
     const { data: unpaidBookings, error: fetchError } = await supabase
       .from('Booking')
-      .select('id, bookingRef, createdAt, confirmedPayment, refundstatus')
+      .select('id, bookingRef, createdAt, confirmedPayment, refundstatus, extensionamounts')
       .eq('confirmedPayment', false)
       .or('refundstatus.is.null,refundstatus.eq.NONE,refundstatus.eq.REQUESTED,refundstatus.eq.REJECTED') // Only include non-refunded bookings
+      .or('extensionamounts.is.null,extensionamounts.eq.{}') // Exclude bookings with extensions
       .lt('createdAt', fiveMinutesAgo);
     
     if (fetchError) {
@@ -39,12 +40,13 @@ async function cleanupUnpaidBookings() {
       console.log(`  - ${booking.bookingRef} (refund status: ${booking.refundstatus || 'NONE'})`);
     });
     
-    // Delete the unpaid bookings (exclude refunded bookings)
+    // Delete the unpaid bookings (exclude refunded bookings and extensions)
     const { error: deleteError } = await supabase
       .from('Booking')
       .delete()
       .eq('confirmedPayment', false)
       .or('refundstatus.is.null,refundstatus.eq.NONE,refundstatus.eq.REQUESTED,refundstatus.eq.REJECTED') // Only delete non-refunded bookings
+      .or('extensionamounts.is.null,extensionamounts.eq.{}') // Exclude bookings with extensions
       .lt('createdAt', fiveMinutesAgo);
     
     if (deleteError) {
