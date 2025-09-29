@@ -800,22 +800,10 @@ exports.confirmBookingPayment = async (req, res) => {
       }
     }
 
-    // Fetch credit usage information if credits were used
-    if (data.creditAmount && data.creditAmount > 0) {
-      try {
-        const { data: creditUsage, error: creditError } = await supabase
-          .from('creditusage')
-          .select('amountused')
-          .eq('bookingid', data.id);
-        
-        if (!creditError && creditUsage && creditUsage.length > 0) {
-          const totalCreditUsed = creditUsage.reduce((sum, usage) => sum + parseFloat(usage.amountused), 0);
-          data.creditAmount = totalCreditUsed;
-          console.log('💳 Credit amount added to booking data:', totalCreditUsed);
-        }
-      } catch (creditFetchError) {
-        console.error('❌ Error fetching credit usage:', creditFetchError);
-      }
+    // Handle credit amount - if discountamount exists and no promo code, treat as credit
+    if (data.discountamount && data.discountamount > 0 && !data.promoCodeId && !data.promocodeid) {
+      data.creditAmount = data.discountamount;
+      console.log('💳 Credit amount from discountamount field:', data.creditAmount);
     }
 
     // Log booking confirmation data
