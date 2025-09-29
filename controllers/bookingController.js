@@ -351,37 +351,36 @@ exports.confirmBookingPayment = async (req, res) => {
       });
     }
 
-    // COMMENTED OUT FOR TESTING - Re-enable in production
-    // if (existingBooking.confirmedPayment === true || existingBooking.confirmedPayment === "true") {
-    //   let paymentData = null;
-    //   if (existingBooking.paymentId) {
-    //     const { data: payment, error: paymentError } = await supabase
-    //       .from("Payment")
-    //       .select("*")
-    //       .eq("id", existingBooking.paymentId)
-    //       .single();
+    if (existingBooking.confirmedPayment === true || existingBooking.confirmedPayment === "true") {
+      let paymentData = null;
+      if (existingBooking.paymentId) {
+        const { data: payment, error: paymentError } = await supabase
+          .from("Payment")
+          .select("*")
+          .eq("id", existingBooking.paymentId)
+          .single();
 
-    //     if (!paymentError) {
-    //       paymentData = payment;
-    //     }
-    //   }
+        if (!paymentError) {
+          paymentData = payment;
+        }
+      }
 
      
-    //   return res.status(400).json({
-    //     error: "Booking already confirmed",
-    //     message: "This booking has already been confirmed. Cannot confirm again.",
-    //     booking: {
-    //       ...existingBooking,
-    //       confirmedPayment: true,
-    //       status: "already_confirmed"
-    //     },
-    //     payment: paymentData,
-    //     totalAmount: existingBooking.totalAmount,
-    //     confirmedPayment: true,
-    //     alreadyConfirmed: true, 
-    //     requestedBookingId: bookingId
-    //   });
-    // }
+      return res.status(400).json({
+        error: "Booking already confirmed",
+        message: "This booking has already been confirmed. Cannot confirm again.",
+        booking: {
+          ...existingBooking,
+          confirmedPayment: true,
+          status: "already_confirmed"
+        },
+        payment: paymentData,
+        totalAmount: existingBooking.totalAmount,
+        confirmedPayment: true,
+        alreadyConfirmed: true, 
+        requestedBookingId: bookingId
+      });
+    }
 
     if (existingBooking.paymentId) {
       const { data: payment, error: paymentError } = await supabase
