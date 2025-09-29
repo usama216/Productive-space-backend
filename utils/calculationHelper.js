@@ -90,6 +90,8 @@ function calculatePaymentDetails(bookingData) {
   const totalAmount = parseFloat(bookingData.totalAmount || 0);
   const originalAmount = parseFloat(bookingData.totalCost || totalAmount);
   const discountAmount = parseFloat(bookingData.discountAmount || 0);
+  const packageDiscountAmount = parseFloat(bookingData.packageDiscountAmount || 0);
+  const creditAmount = parseFloat(bookingData.creditAmount || 0);
   const paymentMethod = bookingData.paymentMethod || bookingData.paymentDetails?.paymentMethod;
   
   const discount = discountAmount > 0 ? {
@@ -125,7 +127,11 @@ function calculatePaymentDetails(bookingData) {
     paymentMethod: getPaymentMethodDisplayName(paymentMethod),
     isCardPayment: isCardPayment,
     promoCodeId: bookingData.promoCodeId,
-    promoCodeName: bookingData.promoCodeName
+    promoCodeName: bookingData.promoCodeName,
+    packageDiscountAmount: packageDiscountAmount,
+    packageName: bookingData.packageName,
+    packageDiscountId: bookingData.packageDiscountId,
+    creditAmount: creditAmount
   };
 }
 

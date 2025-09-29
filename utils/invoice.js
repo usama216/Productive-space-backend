@@ -171,43 +171,62 @@ try {
                 
             }
 
-            if (bookingData.promoCodeId && bookingData.discountAmount && bookingData.discountAmount > 0) {
+            // Check if any discounts or credits were applied
+            const hasPromoCodeDiscount = bookingData.promoCodeId && bookingData.discountAmount && bookingData.discountAmount > 0;
+            const hasPackageDiscount = bookingData.packageDiscountAmount && bookingData.packageDiscountAmount > 0;
+            const hasCreditsApplied = bookingData.creditAmount && bookingData.creditAmount > 0;
+            
+            if (hasPromoCodeDiscount || hasPackageDiscount || hasCreditsApplied) {
                 currentY += 20;
                 doc.font(headerFont).fontSize(sectionHeaderFontSize)
-                    .text('Promo Code Applied', 50, currentY);
+                    .text('Discounts & Credits Applied', 50, currentY);
                 
                 currentY += 20;
                 
-                doc.font(bodyFont).fontSize(bodyFontSize)
-                    .text(`Code: ${bookingData.promoCode || bookingData.promoCodeId}`, 50, currentY);
-                currentY += 15;
-                
-                if (bookingData.promoCodeName) {
+                if (hasPromoCodeDiscount) {
                     doc.font(bodyFont).fontSize(bodyFontSize)
-                        .text(`Name: ${bookingData.promoCodeName}`, 50, currentY);
+                        .text(`Promo Code: ${bookingData.promoCode || bookingData.promoCodeId}`, 50, currentY);
+                    currentY += 15;
+                    
+                    if (bookingData.promoCodeName) {
+                        doc.font(bodyFont).fontSize(bodyFontSize)
+                            .text(`Name: ${bookingData.promoCodeName}`, 50, currentY);
+                        currentY += 15;
+                    }
+                    
+                    doc.font(bodyFont).fontSize(bodyFontSize)
+                        .text(`Promo Discount: SGD ${(parseFloat(bookingData.discountAmount) || 0).toFixed(2)}`, 50, currentY);
                     currentY += 15;
                 }
                 
-                doc.font(bodyFont).fontSize(bodyFontSize)
-                    .text(`Original Amount: SGD ${(parseFloat(bookingData.totalCost) || 0).toFixed(2)}`, 50, currentY);
-                currentY += 15;
-                
-                doc.font(bodyFont).fontSize(bodyFontSize)
-                    .text(`Discount Amount: SGD ${(parseFloat(bookingData.discountAmount) || 0).toFixed(2)}`, 50, currentY);
-                currentY += 15;
-                
-                const originalAmount = parseFloat(bookingData.totalCost) || 0;
-                const discountAmount = parseFloat(bookingData.discountAmount) || 0;
-                if (originalAmount > 0 && discountAmount > 0) {
-                    const discountPercentage = ((discountAmount / originalAmount) * 100).toFixed(1);
+                if (hasPackageDiscount) {
+                    // When package fully covers the booking, show the actual booking amount
+                    // Otherwise show the calculated package discount amount
+                    const packageAmount = parseFloat(bookingData.totalAmount) === 0 ? 
+                        parseFloat(bookingData.totalCost) || 0 : 
+                        parseFloat(bookingData.packageDiscountAmount) || 0;
+                    
                     doc.font(bodyFont).fontSize(bodyFontSize)
-                        .text(`Discount: ${discountPercentage}%`, 50, currentY);
+                        .text(`Package Applied: SGD ${packageAmount.toFixed(2)}`, 50, currentY);
+                    currentY += 15;
+                    
+                    if (bookingData.packageName) {
+                        doc.font(bodyFont).fontSize(bodyFontSize)
+                            .text(`Package: ${bookingData.packageName}`, 50, currentY);
+                        currentY += 15;
+                    }
+                    
+                  
+                }
+                
+                if (hasCreditsApplied) {
+                    doc.font(bodyFont).fontSize(bodyFontSize)
+                        .text(`Credits Applied: SGD ${(parseFloat(bookingData.creditAmount) || 0).toFixed(2)}`, 50, currentY);
                     currentY += 15;
                 }
                 
-                doc.font(bodyFont).fontSize(bodyFontSize)
-                    .text(`Final Amount: SGD ${(parseFloat(bookingData.totalAmount) || 0).toFixed(2)}`, 50, currentY);
-                
+            
+               
                 currentY += 20;
             }
 
@@ -218,8 +237,11 @@ try {
             const summaryWidth = pageWidth * 0.4; 
             const summaryStartX = pageWidth - summaryWidth - 50; 
             
-            const hasPromoCode = bookingData.promoCodeId && bookingData.discountAmount && bookingData.discountAmount > 0;
-            if (hasRoleInfo || hasPromoCode) {
+            const hasPromoCodeSummary = bookingData.promoCodeId && bookingData.discountAmount && bookingData.discountAmount > 0;
+            const hasPackageSummary = bookingData.packageDiscountAmount && bookingData.packageDiscountAmount > 0;
+            const hasCreditsSummary = bookingData.creditAmount && bookingData.creditAmount > 0;
+            
+            if (hasRoleInfo || hasPromoCodeSummary || hasPackageSummary || hasCreditsSummary) {
                 currentY += 20; 
             } else {
                 currentY += 50; 
@@ -235,6 +257,28 @@ try {
                     .text('Promo Code Discount', summaryStartX, currentY)
                     .font(bodyFont).fontSize(bodyFontSize)
                     .text(`-SGD ${paymentDetails.discount.discountAmount.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
+            }
+
+            if (hasPackageSummary) {
+                currentY += 20;
+                // When package fully covers the booking, show the actual booking amount
+                // Otherwise show the calculated package discount amount
+                const packageAmount = parseFloat(bookingData.totalAmount) === 0 ? 
+                    parseFloat(bookingData.totalCost) || 0 : 
+                    parseFloat(bookingData.packageDiscountAmount) || 0;
+                
+                doc.font(bodyFont).fontSize(bodyFontSize)
+                    .text('Package Discount', summaryStartX, currentY)
+                    .font(bodyFont).fontSize(bodyFontSize)
+                    .text(`-SGD ${packageAmount.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
+            }
+
+            if (hasCreditsSummary) {
+                currentY += 20;
+                doc.font(bodyFont).fontSize(bodyFontSize)
+                    .text('Credits Applied', summaryStartX, currentY)
+                    .font(bodyFont).fontSize(bodyFontSize)
+                    .text(`-SGD ${(parseFloat(bookingData.creditAmount) || 0).toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
             }
 
             if (paymentDetails.isCardPayment) {

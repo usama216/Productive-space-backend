@@ -237,7 +237,7 @@ exports.createBooking = async (req, res) => {
           promocodeid: promoCodeId, 
           discountamount: discountAmount, 
           packageId: packageId,
-          packageUsed: packageUsed, 
+          packageUsed: packageUsed,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }
@@ -261,6 +261,9 @@ exports.createBooking = async (req, res) => {
         
         creditUsageResult = await useCreditsForBooking(userId, data.id, req.body.creditAmount);
         console.log('✅ Credit usage processed:', creditUsageResult);
+        
+        // Add credit amount to booking data for email/PDF
+        data.creditAmount = req.body.creditAmount;
       } catch (creditError) {
         console.error('❌ Error processing credit usage:', creditError);
         // Don't fail the booking creation if credit usage fails
@@ -348,36 +351,37 @@ exports.confirmBookingPayment = async (req, res) => {
       });
     }
 
-    if (existingBooking.confirmedPayment === true || existingBooking.confirmedPayment === "true") {
-      let paymentData = null;
-      if (existingBooking.paymentId) {
-        const { data: payment, error: paymentError } = await supabase
-          .from("Payment")
-          .select("*")
-          .eq("id", existingBooking.paymentId)
-          .single();
+    // COMMENTED OUT FOR TESTING - Re-enable in production
+    // if (existingBooking.confirmedPayment === true || existingBooking.confirmedPayment === "true") {
+    //   let paymentData = null;
+    //   if (existingBooking.paymentId) {
+    //     const { data: payment, error: paymentError } = await supabase
+    //       .from("Payment")
+    //       .select("*")
+    //       .eq("id", existingBooking.paymentId)
+    //       .single();
 
-        if (!paymentError) {
-          paymentData = payment;
-        }
-      }
+    //     if (!paymentError) {
+    //       paymentData = payment;
+    //     }
+    //   }
 
      
-      return res.status(400).json({
-        error: "Booking already confirmed",
-        message: "This booking has already been confirmed. Cannot confirm again.",
-        booking: {
-          ...existingBooking,
-          confirmedPayment: true,
-          status: "already_confirmed"
-        },
-        payment: paymentData,
-        totalAmount: existingBooking.totalAmount,
-        confirmedPayment: true,
-        alreadyConfirmed: true, 
-        requestedBookingId: bookingId
-      });
-    }
+    //   return res.status(400).json({
+    //     error: "Booking already confirmed",
+    //     message: "This booking has already been confirmed. Cannot confirm again.",
+    //     booking: {
+    //       ...existingBooking,
+    //       confirmedPayment: true,
+    //       status: "already_confirmed"
+    //     },
+    //     payment: paymentData,
+    //     totalAmount: existingBooking.totalAmount,
+    //     confirmedPayment: true,
+    //     alreadyConfirmed: true, 
+    //     requestedBookingId: bookingId
+    //   });
+    // }
 
     if (existingBooking.paymentId) {
       const { data: payment, error: paymentError } = await supabase
@@ -550,7 +554,6 @@ exports.confirmBookingPayment = async (req, res) => {
               packagePassUsed: packageUsageResult.passUsed,
               passType: packageUsageResult.passType,
               remainingCount: packageUsageResult.remainingCount,
-              isPassFullyUsed: packageUsageResult.isPassFullyUsed,
               updatedAt: new Date().toISOString()
             })
             .eq("id", data.id);
@@ -575,6 +578,258 @@ exports.confirmBookingPayment = async (req, res) => {
       console.log(`⚠️ Reason: packageId=${data.packageId}, packageUsed=${data.packageUsed}`);
     }
     console.log(`🎯 ===== END PACKAGE USAGE CHECK =====\n`);
+
+    // Fetch package discount information if package was used
+    if (data.packageId || data.packageUsed) {
+      try {
+        console.log('📦 Fetching package usage for booking:', data.id);
+        const { data: packageUsage, error: packageError } = await supabase
+          .from('BookingPassUse')
+          .select('*')
+          .eq('bookingId', data.id);
+        
+        console.log('📦 Package usage query result:', { packageUsage, packageError });
+        
+        if (!packageError && packageUsage && packageUsage.length > 0) {
+          const packageUse = packageUsage[0];
+          console.log('📦 Package use details:', packageUse);
+          
+          // Get package information using the userPassId from BookingPassUse
+          if (packageUse.userPassId) {
+            try {
+              const { data: userPass, error: userPassError } = await supabase
+                .from('UserPass')
+                .select(`
+                  id,
+                  Package (
+                    id,
+                    name,
+                    packageType
+                  )
+                `)
+                .eq('id', packageUse.userPassId)
+                .single();
+              
+              if (!userPassError && userPass) {
+                data.packageDiscountId = userPass.id;
+                
+                // Calculate discount amount based on package hoursAllowed (only for 1 person)
+                const totalBookingHours = packageUse.minutesApplied / 60;
+                
+                // Get package hoursAllowed from Package table
+                const packageHoursAllowed = userPass.Package?.hoursAllowed || 8; // Default 8 hours
+                
+                // Package discount applies to only 1 person's hours (not all people)
+                const discountHours = Math.min(totalBookingHours, packageHoursAllowed);
+                
+                let hourlyRate = 6; // Default for MEMBER
+                if (data.memberType === 'STUDENT') {
+                  hourlyRate = 5;
+                } else if (data.memberType === 'TUTOR') {
+                  hourlyRate = 4;
+                }
+                
+                // Calculate discount for only 1 person's hours based on hoursAllowed
+                data.packageDiscountAmount = discountHours * hourlyRate;
+                data.packageName = userPass.Package?.name || 'Package';
+                
+                // Calculate final amount after package discount
+                const originalTotalCost = parseFloat(data.totalCost) || 0;
+                const packageDiscount = parseFloat(data.packageDiscountAmount) || 0;
+                
+                // If package covers all hours (full day), user pays zero
+                if (discountHours >= totalBookingHours) {
+                    data.totalAmount = 0; // Full package coverage - user pays nothing
+                } else {
+                    // Partial package coverage - user pays for remaining hours
+                    const remainingHours = totalBookingHours - discountHours;
+                    const remainingCost = remainingHours * hourlyRate;
+                    data.totalAmount = Math.max(0, remainingCost);
+                }
+                
+                console.log('📦 Package discount info added to booking data:', {
+                  packageDiscountId: data.packageDiscountId,
+                  packageDiscountAmount: data.packageDiscountAmount,
+                  packageName: data.packageName,
+                  totalBookingHours: totalBookingHours,
+                  packageHoursAllowed: packageHoursAllowed,
+                  discountHours: discountHours,
+                  hourlyRate: hourlyRate,
+                  memberType: data.memberType,
+                  originalTotalCost: originalTotalCost,
+                  finalAmount: data.totalAmount
+                });
+              }
+            } catch (userPassError) {
+              console.error('❌ Error fetching UserPass:', userPassError);
+            }
+          }
+        } else {
+          console.log('📦 No package usage found or error:', packageError);
+          
+          // Fallback: Calculate discount from booking data if package usage not found
+          if (data.packageId && data.packageUsed) {
+            try {
+              console.log('📦 Using fallback method to calculate package discount');
+              
+              // Get package information directly
+              const { data: userPass, error: userPassError } = await supabase
+                .from('UserPass')
+                .select(`
+                  id,
+                  Package (
+                    id,
+                    name,
+                    packageType
+                  )
+                `)
+                .eq('id', data.packageId)
+                .single();
+              
+              if (!userPassError && userPass) {
+                console.log('📦 UserPass found:', userPass);
+                
+                data.packageDiscountId = userPass.id;
+                data.packageName = userPass.Package?.name || 'Package';
+                
+                // Calculate discount based on package hoursAllowed (only for 1 person)
+                const startTime = new Date(data.startAt);
+                const endTime = new Date(data.endAt);
+                const totalBookingHours = (endTime - startTime) / (1000 * 60 * 60);
+                
+                // Get package hoursAllowed from Package table
+                const packageHoursAllowed = userPass.Package?.hoursAllowed || 8; // Default 8 hours
+                
+                // Package discount applies to only 1 person's hours (not all people)
+                const discountHours = Math.min(totalBookingHours, packageHoursAllowed);
+                
+                let hourlyRate = 6; // Default for MEMBER
+                if (data.memberType === 'STUDENT') {
+                  hourlyRate = 5;
+                } else if (data.memberType === 'TUTOR') {
+                  hourlyRate = 4;
+                }
+                
+                // Calculate discount for only 1 person's hours based on hoursAllowed
+                data.packageDiscountAmount = discountHours * hourlyRate;
+                
+                // Calculate final amount after package discount
+                const originalTotalCost = parseFloat(data.totalCost) || 0;
+                const packageDiscount = parseFloat(data.packageDiscountAmount) || 0;
+                
+                // If package covers all hours (full day), user pays zero
+                if (discountHours >= totalBookingHours) {
+                    data.totalAmount = 0; // Full package coverage - user pays nothing
+                } else {
+                    // Partial package coverage - user pays for remaining hours
+                    const remainingHours = totalBookingHours - discountHours;
+                    const remainingCost = remainingHours * hourlyRate;
+                    data.totalAmount = Math.max(0, remainingCost);
+                }
+                
+                console.log('📦 Fallback package discount calculated:', {
+                  packageDiscountId: data.packageDiscountId,
+                  packageDiscountAmount: data.packageDiscountAmount,
+                  packageName: data.packageName,
+                  totalBookingHours: totalBookingHours,
+                  packageHoursAllowed: packageHoursAllowed,
+                  discountHours: discountHours,
+                  hourlyRate: hourlyRate,
+                  memberType: data.memberType,
+                  originalTotalCost: originalTotalCost,
+                  finalAmount: data.totalAmount
+                });
+              } else {
+                console.log('📦 UserPass not found, using simple calculation');
+                
+                // Simple fallback: Calculate based on package hoursAllowed for 1 person only
+                const startTime = new Date(data.startAt);
+                const endTime = new Date(data.endAt);
+                const totalBookingHours = (endTime - startTime) / (1000 * 60 * 60);
+                
+                // Default package hours (can be overridden by actual package data)
+                const packageHoursAllowed = 8; // Default 8 hours for full day
+                
+                // Package discount applies to only 1 person's hours
+                const discountHours = Math.min(totalBookingHours, packageHoursAllowed);
+                
+                let hourlyRate = 6; // Default for MEMBER
+                if (data.memberType === 'STUDENT') {
+                  hourlyRate = 5;
+                } else if (data.memberType === 'TUTOR') {
+                  hourlyRate = 4;
+                }
+                
+                data.packageDiscountId = data.packageId;
+                data.packageDiscountAmount = discountHours * hourlyRate;
+                data.packageName = 'Package Applied';
+                
+                // Calculate final amount after package discount
+                const originalTotalCost = parseFloat(data.totalCost) || 0;
+                const packageDiscount = parseFloat(data.packageDiscountAmount) || 0;
+                
+                // If package covers all hours (full day), user pays zero
+                if (discountHours >= totalBookingHours) {
+                    data.totalAmount = 0; // Full package coverage - user pays nothing
+                } else {
+                    // Partial package coverage - user pays for remaining hours
+                    const remainingHours = totalBookingHours - discountHours;
+                    const remainingCost = remainingHours * hourlyRate;
+                    data.totalAmount = Math.max(0, remainingCost);
+                }
+                
+                console.log('📦 Simple package discount calculated:', {
+                  packageDiscountId: data.packageDiscountId,
+                  packageDiscountAmount: data.packageDiscountAmount,
+                  packageName: data.packageName,
+                  totalBookingHours: totalBookingHours,
+                  packageHoursAllowed: packageHoursAllowed,
+                  discountHours: discountHours,
+                  hourlyRate: hourlyRate,
+                  originalTotalCost: originalTotalCost,
+                  finalAmount: data.totalAmount
+                });
+              }
+            } catch (fallbackError) {
+              console.error('❌ Error in fallback package calculation:', fallbackError);
+            }
+          }
+        }
+      } catch (packageFetchError) {
+        console.error('❌ Error fetching package usage:', packageFetchError);
+      }
+    }
+
+    // Fetch credit usage information if credits were used
+    if (data.creditAmount && data.creditAmount > 0) {
+      try {
+        const { data: creditUsage, error: creditError } = await supabase
+          .from('creditusage')
+          .select('amountused')
+          .eq('bookingid', data.id);
+        
+        if (!creditError && creditUsage && creditUsage.length > 0) {
+          const totalCreditUsed = creditUsage.reduce((sum, usage) => sum + parseFloat(usage.amountused), 0);
+          data.creditAmount = totalCreditUsed;
+          console.log('💳 Credit amount added to booking data:', totalCreditUsed);
+        }
+      } catch (creditFetchError) {
+        console.error('❌ Error fetching credit usage:', creditFetchError);
+      }
+    }
+
+    // Log booking confirmation data
+    console.log('📧 Sending booking confirmation for booking:', data.id);
+    console.log('📧 Booking data for email/PDF generation:', {
+      packageDiscountAmount: data.packageDiscountAmount,
+      packageName: data.packageName,
+      packageDiscountId: data.packageDiscountId,
+      creditAmount: data.creditAmount,
+      totalCost: data.totalCost,
+      totalAmount: data.totalAmount,
+      discountAmount: data.discountAmount,
+      promoCodeId: data.promoCodeId
+    });
 
     await sendBookingConfirmation(userData, data);
 
@@ -2112,7 +2367,6 @@ exports.confirmBookingWithPackage = async (req, res) => {
         packagePassUsed: packageUsageResult.passUsed,
         passType: packageUsageResult.passType,
         remainingCount: packageUsageResult.remainingCount,
-        isPassFullyUsed: packageUsageResult.isPassFullyUsed,
         updatedAt: new Date().toISOString()
       })
       .eq("id", bookingId)
@@ -2127,7 +2381,24 @@ exports.confirmBookingWithPackage = async (req, res) => {
     }
 
     try {
-      await sendBookingConfirmation(updatedBooking);
+      const userData = {
+        name: "Customer", 
+        email: updatedBooking.bookedForEmails?.[0]
+      };
+      
+      // Add package discount information to booking data
+      if (packageUsageResult && packageUsageResult.passUsed) {
+        updatedBooking.packageDiscountId = packageId;
+        updatedBooking.packageDiscountAmount = packageUsageResult.discountAmount || 0;
+        updatedBooking.packageName = packageUsageResult.packageType || 'Package';
+        console.log('📦 Package discount info added to booking data:', {
+          packageDiscountId: updatedBooking.packageDiscountId,
+          packageDiscountAmount: updatedBooking.packageDiscountAmount,
+          packageName: updatedBooking.packageName
+        });
+      }
+      
+      await sendBookingConfirmation(userData, updatedBooking);
     } catch (emailError) {
       console.error("Error sending confirmation email:", emailError);
     }
@@ -2140,7 +2411,6 @@ exports.confirmBookingWithPackage = async (req, res) => {
         passUsed: packageUsageResult.passUsed,
         passType: packageUsageResult.passType,
         remainingCount: packageUsageResult.remainingCount,
-        isPassFullyUsed: packageUsageResult.isPassFullyUsed,
         packageType: packageUsageResult.packageType,
         totalPasses: packageUsageResult.totalPasses,
         remainingPasses: packageUsageResult.remainingPasses

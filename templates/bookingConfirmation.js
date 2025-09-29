@@ -96,6 +96,8 @@ const bookingConfirmationTemplate = (userData, bookingData) => ({
               const { calculatePaymentDetails } = require('../utils/calculationHelper');
               const paymentDetails = calculatePaymentDetails(bookingData);
               
+              // Package and credit information will be displayed in email
+              
               let displayPaymentMethod = 'Unknown';
               if (bookingData.paymentMethod) {
                   displayPaymentMethod = bookingData.paymentMethod;
@@ -114,6 +116,14 @@ const bookingConfirmationTemplate = (userData, bookingData) => ({
                 ${paymentDetails.discount && paymentDetails.discount.discountAmount > 0 ? `
                   <p><strong>Discount Applied:</strong> <span class="highlight">-SGD ${paymentDetails.discount.discountAmount.toFixed(2)}</span></p>
                   ${paymentDetails.promoCodeId ? `<p><strong>Promo Code:</strong> <span class="highlight">${paymentDetails.promoCodeId}</span></p>` : ''}
+                ` : ''}
+                ${bookingData.packageDiscountAmount && bookingData.packageDiscountAmount > 0 ? `
+                  <p><strong>Package Applied:</strong> <span class="highlight">-SGD ${(parseFloat(bookingData.totalAmount) === 0 ? parseFloat(bookingData.totalCost) || 0 : parseFloat(bookingData.packageDiscountAmount) || 0).toFixed(2)}</span></p>
+                  ${bookingData.packageName ? `<p><strong>Package:</strong> <span class="highlight">${bookingData.packageName}</span></p>` : ''}
+                  ${bookingData.packageDiscountId ? `<p><strong>Package ID:</strong> <span class="highlight">${bookingData.packageDiscountId}</span></p>` : ''}
+                ` : ''}
+                ${bookingData.creditAmount && bookingData.creditAmount > 0 ? `
+                  <p><strong>Credits Applied:</strong> <span class="highlight">-SGD ${parseFloat(bookingData.creditAmount).toFixed(2)}</span></p>
                 ` : ''}
                 ${paymentDetails.isCardPayment ? `<p><strong>Card Processing Fee (5%):</strong> <span class="highlight">SGD ${paymentDetails.cardFee.toFixed(2)}</span></p>` : ''}
                 <p><strong>Total Amount Paid:</strong> <span class="highlight">SGD ${paymentDetails.finalTotal.toFixed(2)}</span></p>
