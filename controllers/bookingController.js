@@ -249,6 +249,14 @@ exports.createBooking = async (req, res) => {
       return res.status(400).json({ error: error.message });
     }
 
+    // Map database fields to camelCase for consistency
+    if (data.promocodeid && !data.promoCodeId) {
+      data.promoCodeId = data.promocodeid;
+    }
+    if (data.discountamount !== undefined && data.discountAmount === undefined) {
+      data.discountAmount = data.discountamount;
+    }
+
     // Handle credit usage if credits were used
     let creditUsageResult = null;
     if (req.body.creditAmount && req.body.creditAmount > 0) {
@@ -294,6 +302,18 @@ exports.getAllBookings = async (req, res) => {
       return res.status(400).json({ error: error.message });
     }
 
+    // Map database fields to camelCase for consistency
+    if (data && Array.isArray(data)) {
+      data.forEach(booking => {
+        if (booking.promocodeid && !booking.promoCodeId) {
+          booking.promoCodeId = booking.promocodeid;
+        }
+        if (booking.discountamount !== undefined && booking.discountAmount === undefined) {
+          booking.discountAmount = booking.discountamount;
+        }
+      });
+    }
+
     res.status(200).json({ bookings: data });
   } catch (err) {
     res.status(500).json({ error: "Internal Server Error" });
@@ -315,6 +335,16 @@ exports.getBookingById = async (req, res) => {
         success: false,
         error: "Booking not found" 
       });
+    }
+
+    // Map database fields to camelCase for consistency
+    if (data) {
+      if (data.promocodeid && !data.promoCodeId) {
+        data.promoCodeId = data.promocodeid;
+      }
+      if (data.discountamount && !data.discountAmount) {
+        data.discountAmount = data.discountamount;
+      }
     }
 
     res.status(200).json({ 
@@ -461,7 +491,19 @@ exports.confirmBookingPayment = async (req, res) => {
         data.promoCodeDescription = promoCode.description;
         data.promoCodeType = promoCode.discounttype;
         data.promoCodeValue = promoCode.discountvalue;
+        
+        // Map database fields to camelCase for invoice generation
+        data.promoCodeId = data.promocodeid;
+        data.discountAmount = data.discountamount;
       }
+    }
+    
+    // Map database fields to camelCase even if promo code lookup fails
+    if (data.promocodeid && !data.promoCodeId) {
+      data.promoCodeId = data.promocodeid;
+    }
+    if (data.discountamount && !data.discountAmount) {
+      data.discountAmount = data.discountamount;
     }
 
     if (data.promocodeid && data.discountamount && data.discountamount > 0) {
@@ -1138,6 +1180,16 @@ exports.getUserBookings = async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch user bookings', details: error.message });
     }
 
+    // Map database fields to camelCase for consistency
+    bookings.forEach(booking => {
+      if (booking.promocodeid && !booking.promoCodeId) {
+        booking.promoCodeId = booking.promocodeid;
+      }
+      if (booking.discountamount !== undefined && booking.discountAmount === undefined) {
+        booking.discountAmount = booking.discountamount;
+      }
+    });
+
     const promoCodeIds = bookings
       .filter(b => b.promoCodeId)
       .map(b => b.promoCodeId);
@@ -1518,6 +1570,16 @@ exports.getAllBookings = async (req, res) => {
     if (error) {
       return res.status(500).json({ error: 'Failed to fetch bookings', details: error.message });
     }
+
+    // Map database fields to camelCase for consistency
+    bookings.forEach(booking => {
+      if (booking.promocodeid && !booking.promoCodeId) {
+        booking.promoCodeId = booking.promocodeid;
+      }
+      if (booking.discountamount !== undefined && booking.discountAmount === undefined) {
+        booking.discountAmount = booking.discountamount;
+      }
+    });
 
     const userIds = bookings
       .filter(b => b.userId)

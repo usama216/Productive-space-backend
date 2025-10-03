@@ -76,9 +76,9 @@ try {
                 .text('Due Date:', 400, 200).text(currentDate, 480, 200);
 
             doc.font(headerFont).fontSize(sectionHeaderFontSize)
-                .text('Bill To', 50, 230)
+                .text('Bill To', 20, 230)
                 .font(bodyFont).fontSize(bodyFontSize)
-                .text(userData.email || '', 50, 265, { width: 200 });
+                .text(userData.email || '', 20, 265, { width: 200 });
 
             const tableTop = 300;
             doc.rect(50, tableTop, 500, 25).fill('#2C3E50').stroke();
@@ -131,7 +131,14 @@ try {
                 `${bookingData.location} - ${startDateSGT} (${startTimeSGT} - ${endTimeSGT})` :
                 `Workspace Booking - ${startDateSGT} (${startTimeSGT} - ${endTimeSGT})`;
 
-            const rate = bookingData.hourlyRate || (parseFloat(bookingData.totalAmount || 0) / hours) || 10;
+            // Calculate payment details to get the subtotal (before fees and discounts)
+            const { calculatePaymentDetails } = require('./calculationHelper');
+            const paymentDetails = calculatePaymentDetails(bookingData);
+            
+            // Calculate rate from subtotal divided by people (total cost per person)
+            const totalPeople = bookingData.pax || 1;
+            const subtotal = paymentDetails.originalAmount || parseFloat(bookingData.totalCost || 0);
+            const rate = bookingData.hourlyRate || (subtotal / totalPeople) || 10;
             const amount = parseFloat(bookingData.totalAmount || 0);
 
             doc.fillColor('#000000').font(bodyFont).fontSize(bodyFontSize)
@@ -180,7 +187,14 @@ try {
                 currentY += 20;
                 doc.font(headerFont).fontSize(sectionHeaderFontSize)
                     .text('Discounts & Credits Applied', 50, currentY);
-                
+                  
+                    currentY += 15;
+
+                    doc.font(bodyFont).fontSize(8)
+                        .fillColor('#666666')
+                        .text('All Discounts, Pass, Credits applied are not refundable.', 50, currentY);
+                    doc.fillColor('#000000'); // Reset to black
+                   
                 currentY += 20;
                 
                 if (hasPromoCodeDiscount) {
@@ -190,7 +204,7 @@ try {
                     
                     if (bookingData.promoCodeName) {
                         doc.font(bodyFont).fontSize(bodyFontSize)
-                            .text(`Name: ${bookingData.promoCodeName}`, 50, currentY);
+                            .text(`Promo Code Name: ${bookingData.promoCodeName}`, 50, currentY);
                         currentY += 15;
                     }
                     
@@ -224,14 +238,11 @@ try {
                         .text(`Credits Applied: SGD ${(parseFloat(bookingData.creditAmount) || 0).toFixed(2)}`, 50, currentY);
                     currentY += 15;
                 }
-                
-            
                
                 currentY += 20;
             }
 
-            const { calculatePaymentDetails } = require('./calculationHelper');
-            const paymentDetails = calculatePaymentDetails(bookingData);
+            // paymentDetails already calculated above for rate calculation
 
             const pageWidth = 595;
             const summaryWidth = pageWidth * 0.4; 
