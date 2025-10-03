@@ -5,21 +5,15 @@ const path = require("path");
 const generatePackageInvoicePDF = (userData, packageData) => {
     return new Promise((resolve, reject) => {
         try {
-            console.log("📄 Starting PDF generation for package:", packageData.packageName);
-            console.log("📄 Order ID:", packageData.orderId);
-            console.log("📄 User:", userData.email);
+          
             
             const doc = new PDFDocument({ margin: 50, size: 'A4' });
 
             const fileName = `PackageInvoice_${packageData.orderId || packageData.id || Date.now()}.pdf`;
             const filePath = path.join('/tmp', fileName);
 
-            console.log("📄 PDF file path:", filePath);
-
-            // On Vercel, /tmp directory should already exist
-            // No need to create it as it's provided by the serverless environment
-
-            console.log("📄 Creating PDF document...");
+           
+            
             doc.pipe(fs.createWriteStream(filePath));
 
             const headerFont = 'Helvetica-Bold';
@@ -97,7 +91,13 @@ const generatePackageInvoicePDF = (userData, packageData) => {
                 month: 'short',
                 day: 'numeric'
             });
-            const expiresDate = new Date(packageData.expiresAt).toLocaleDateString('en-SG', { 
+            
+            // Calculate expiry date properly: activatedAt + validityDays
+            // This ensures the expiry date is always correct even if not provided
+            const activatedTime = new Date(packageData.activatedAt).getTime();
+            const validityDays = packageData.validityDays || 30;
+            const expiryTime = activatedTime + (validityDays * 24 * 60 * 60 * 1000);
+            const expiresDate = new Date(expiryTime).toLocaleDateString('en-SG', { 
                 timeZone: 'Asia/Singapore',
                 year: 'numeric',
                 month: 'short',
