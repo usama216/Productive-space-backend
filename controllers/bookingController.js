@@ -1210,15 +1210,19 @@ exports.getUserBookings = async (req, res) => {
 
     const now = new Date();
     const bookingsWithStatus = bookings.map(booking => {
-      const startAt = new Date(booking.startAt);
-      const endAt = new Date(booking.endAt);
+      // Ensure UTC timestamps have 'Z' suffix for proper timezone handling
+      const startAtUTC = booking.startAt.endsWith('Z') ? booking.startAt : booking.startAt + 'Z';
+      const endAtUTC = booking.endAt.endsWith('Z') ? booking.endAt : booking.endAt + 'Z';
+      
+      const startAt = new Date(startAtUTC);
+      const endAt = new Date(endAtUTC);
       
       const isRefunded = booking.refundstatus === 'APPROVED';
       const isCancelled = booking.deletedAt !== null;
-      const isUpcoming = !isCancelled && !isRefunded && startAt > now;
       const isOngoing = !isCancelled && !isRefunded && startAt <= now && endAt > now;
-      const isCompleted = !isCancelled && !isRefunded && endAt <= now;
       const isToday = !isCancelled && !isRefunded && startAt.toDateString() === now.toDateString();
+      const isCompleted = !isCancelled && !isRefunded && endAt <= now;
+      const isUpcoming = !isCancelled && !isRefunded && !isOngoing && !isToday && startAt > now;
       
       const durationMs = endAt.getTime() - startAt.getTime();
       const durationHours = Math.round(durationMs / (1000 * 60 * 60) * 100) / 100;
@@ -1235,13 +1239,16 @@ exports.getUserBookings = async (req, res) => {
 
       return {
         ...booking,
+        startAt: startAtUTC,  // Return with UTC suffix
+        endAt: endAtUTC,      // Return with UTC suffix
         isUpcoming,
         isOngoing,
         isCompleted,
         isToday,
         durationHours,
         timeUntilBooking,
-        status: isRefunded ? 'refunded' : isCancelled ? 'cancelled' : isUpcoming ? 'upcoming' : isOngoing ? 'ongoing' : 'completed',
+        // Priority: ongoing/today first, then upcoming, then completed
+        status: isRefunded ? 'refunded' : isCancelled ? 'cancelled' : isOngoing ? 'ongoing' : isToday ? 'today' : isUpcoming ? 'upcoming' : 'completed',
         PromoCode: promoCode
       };
     });
@@ -1619,13 +1626,17 @@ exports.getAllBookings = async (req, res) => {
 
     const now = new Date();
     const bookingsWithStatus = bookings.map(booking => {
-      const startAt = new Date(booking.startAt);
-      const endAt = new Date(booking.endAt);
+      // Ensure UTC timestamps have 'Z' suffix for proper timezone handling
+      const startAtUTC = booking.startAt.endsWith('Z') ? booking.startAt : booking.startAt + 'Z';
+      const endAtUTC = booking.endAt.endsWith('Z') ? booking.endAt : booking.endAt + 'Z';
       
-      const isUpcoming = startAt > now;
+      const startAt = new Date(startAtUTC);
+      const endAt = new Date(endAtUTC);
+      
       const isOngoing = startAt <= now && endAt > now;
-      const isCompleted = endAt <= now;
       const isToday = startAt.toDateString() === now.toDateString();
+      const isCompleted = endAt <= now;
+      const isUpcoming = !isOngoing && !isToday && startAt > now;
       
       const durationMs = endAt.getTime() - startAt.getTime();
       const durationHours = Math.round(durationMs / (1000 * 60 * 60) * 100) / 100;
@@ -1643,13 +1654,16 @@ exports.getAllBookings = async (req, res) => {
 
       return {
         ...booking,
+        startAt: startAtUTC,  // Return with UTC suffix
+        endAt: endAtUTC,      // Return with UTC suffix
         isUpcoming,
         isOngoing,
         isCompleted,
         isToday,
         durationHours,
         timeUntilBooking,
-        status: isUpcoming ? 'upcoming' : isOngoing ? 'ongoing' : 'completed',
+        // Priority: ongoing/today first, then upcoming, then completed
+        status: isOngoing ? 'ongoing' : isToday ? 'today' : isUpcoming ? 'upcoming' : 'completed',
         User: user,
         PromoCode: promoCode
       };
