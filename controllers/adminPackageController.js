@@ -231,6 +231,7 @@ exports.updatePackage = async (req, res) => {
 exports.deletePackage = async (req, res) => {
   try {
     const { id } = req.params;
+    const { force } = req.query; // Allow force delete via query parameter
 
     if (!id) {
       return res.status(400).json({
@@ -239,7 +240,7 @@ exports.deletePackage = async (req, res) => {
       });
     }
 
-    console.log(`📦 Deleting package ${id}...`);
+    console.log(`📦 Deleting package ${id}... (force: ${force})`);
 
     const { data: existingPackage, error: fetchError } = await supabase
       .from("Package")
@@ -254,26 +255,29 @@ exports.deletePackage = async (req, res) => {
       });
     }
 
-    const { data: purchases, error: purchaseError } = await supabase
-      .from("PackagePurchase")
-      .select("id")
-      .eq("packageId", id)
-      .limit(1);
+    // Check for existing purchases only if not force deleting
+    if (force !== 'true') {
+      const { data: purchases, error: purchaseError } = await supabase
+        .from("PackagePurchase")
+        .select("id")
+        .eq("packageId", id)
+        .limit(1);
 
-    if (purchaseError) {
-      return res.status(500).json({
-        success: false,
-        error: "Database error",
-        message: "Failed to check package purchases"
-      });
-    }
+      if (purchaseError) {
+        return res.status(500).json({
+          success: false,
+          error: "Database error",
+          message: "Failed to check package purchases"
+        });
+      }
 
-    if (purchases && purchases.length > 0) {
-      return res.status(400).json({
-        success: false,
-        error: "Cannot delete package",
-        message: "Package has existing purchases and cannot be deleted"
-      });
+      if (purchases && purchases.length > 0) {
+        return res.status(400).json({
+          success: false,
+          error: "Cannot delete package",
+          message: "Package has existing purchases and cannot be deleted. Use force=true to override."
+        });
+      }
     }
 
     const { error: deleteError } = await supabase
@@ -292,7 +296,7 @@ exports.deletePackage = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Package deleted successfully"
+      message: force === 'true' ? "Package force deleted successfully" : "Package deleted successfully"
     });
 
   } catch (err) {

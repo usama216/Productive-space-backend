@@ -252,14 +252,17 @@ exports.getUserPackages = async (req, res) => {
           return purchase;
         }
 
-        const totalPasses = passes.reduce((sum, pass) => sum + (pass.totalCount || 0), 0);
-        const activePasses = passes.filter(p => p.status === "ACTIVE").reduce((sum, pass) => sum + (pass.remainingCount || 0), 0);
-        const usedPasses = passes.reduce((sum, pass) => sum + ((pass.totalCount || 0) - (pass.remainingCount || 0)), 0);
-        const expiredPasses = passes.filter(p => p.status === "EXPIRED").reduce((sum, pass) => sum + (pass.totalCount || 0), 0);
+        // For count-based packages, there should be only ONE UserPass entry per purchase
+        // Use the first pass data if available, otherwise use package defaults
+        const firstPass = passes && passes.length > 0 ? passes[0] : null;
+        
+        const totalPasses = firstPass ? firstPass.totalCount : (purchase.Package.passCount || 0);
+        const activePasses = firstPass && firstPass.status === "ACTIVE" ? firstPass.remainingCount : 0;
+        const usedPasses = firstPass ? (firstPass.totalCount - firstPass.remainingCount) : 0;
+        const expiredPasses = firstPass && firstPass.status === "EXPIRED" ? firstPass.totalCount : 0;
 
-
-        const finalTotalPasses = totalPasses > 0 ? totalPasses : (purchase.Package.passCount || 0);
-        const finalActivePasses = activePasses > 0 ? activePasses : (purchase.Package.passCount || 0);
+        const finalTotalPasses = totalPasses;
+        const finalActivePasses = activePasses > 0 ? activePasses : (purchase.paymentStatus === 'COMPLETED' ? (purchase.Package.passCount || 0) : 0);
         const finalUsedPasses = usedPasses;
         const finalExpiredPasses = expiredPasses;
 

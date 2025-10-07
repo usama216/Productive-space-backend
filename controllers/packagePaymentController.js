@@ -217,17 +217,33 @@ async function createUserPasses(packagePurchase) {
 
 
     if (userPasses.length > 0) {
-      
+      // Check if UserPass already exists to prevent duplicates
+      const { data: existingPasses, error: checkError } = await supabase
+        .from("UserPass")
+        .select("id")
+        .eq("packagepurchaseid", packagePurchase.id)
+        .limit(1);
+
+      if (checkError) {
+        console.error("❌ Error checking existing UserPass:", checkError);
+        throw checkError;
+      }
+
+      if (existingPasses && existingPasses.length > 0) {
+        console.log(`⚠️ UserPass already exists for purchase ${packagePurchase.id}, skipping creation`);
+        return;
+      }
+
       const { error: insertError } = await supabase
         .from("UserPass")
         .insert(userPasses);
 
       if (insertError) {
-       
+        console.error("❌ Error creating UserPass:", insertError);
         throw insertError;
       }
 
-      console.log(`Created ${userPasses.length} user passes for package purchase:`, packagePurchase.id);
+      console.log(`✅ Created ${userPasses.length} user passes for package purchase:`, packagePurchase.id);
       
       // Send package confirmation email with PDF
       console.log("📧 Starting package confirmation email process...");
@@ -483,16 +499,9 @@ exports.confirmPackagePayment = async (req, res) => {
     try {
       await createUserPasses(packagePurchase);
     } catch (createPassesError) {
-      console.error("Error creating user passes on first attempt:", createPassesError);
-      
-      try {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        await createUserPasses(packagePurchase);
-        console.log("User passes created successfully on retry");
-      } catch (retryError) {
-        console.error("Error creating user passes on retry:", retryError);
-      
-      }
+      console.error("Error creating user passes:", createPassesError);
+      // Don't retry - the duplicate check will prevent issues
+      // If it failed, it will be created on first booking attempt
     }
 
     const responseData = {
