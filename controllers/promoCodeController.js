@@ -17,12 +17,12 @@ function checkMinimumHoursRequirement(promoCode, startAt, endAt) {
   if (durationHours >= promoCode.minimum_hours) {
     return {
       isEligible: true,
-      reason: `Booking duration (${durationHours.toFixed(1)} hours) meets minimum requirement (${promoCode.minimum_hours} hours)`
+      reason: `Booking duration (${durationHours.toFixed(2)} hours) meets minimum requirement (${promoCode.minimum_hours} hours)`
     };
   } else {
     return {
       isEligible: false,
-      reason: `Booking duration (${durationHours.toFixed(1)} hours) does not meet minimum requirement (${promoCode.minimum_hours} hours)`
+      reason: `Booking duration (${durationHours.toFixed(2)} hours) does not meet minimum requirement (${promoCode.minimum_hours} hours)`
     };
   }
 }

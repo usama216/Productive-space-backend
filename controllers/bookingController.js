@@ -187,7 +187,7 @@ exports.createBooking = async (req, res) => {
         if (durationHours < promoCode.minimum_hours) {
           return res.status(400).json({
             error: "Minimum hours not met",
-            message: `This promo code requires a minimum booking duration of ${promoCode.minimum_hours} hours. Your booking is ${durationHours.toFixed(1)} hours.`
+            message: `This promo code requires a minimum booking duration of ${promoCode.minimum_hours} hours. Your booking is ${durationHours.toFixed(2)} hours.`
           });
         }
       }

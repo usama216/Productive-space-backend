@@ -2,11 +2,6 @@ const PDFDocument = require('pdfkit');
 const fs = require("fs");
 const path = require("path");
 
-// Function to round hours to the nearest 0.5
-const roundHoursToNearestHalf = (hours) => {
-    return Math.ceil(hours * 2) / 2;
-};
-
 const generateInvoicePDF = (userData, bookingData) => {
     return new Promise((resolve, reject) => {
         try {
@@ -75,10 +70,11 @@ try {
                 .text('Invoice Time:', 400, 185).text(currentTime, 480, 185)
                 .text('Due Date:', 400, 200).text(currentDate, 480, 200);
 
+            // Bill To section with proper alignment
             doc.font(headerFont).fontSize(sectionHeaderFontSize)
-                .text('Bill To', 20, 230)
+                .text('Bill To', 60, 230)
                 .font(bodyFont).fontSize(bodyFontSize)
-                .text(userData.email || '', 20, 265, { width: 200 });
+                .text(userData.email || '', 60, 250, { width: 300 });
 
             const tableTop = 300;
             doc.rect(50, tableTop, 500, 25).fill('#2C3E50').stroke();
@@ -86,7 +82,7 @@ try {
                 .text('#', 60, tableTop + 8)
                 .text('Location & Date/Time', 90, tableTop + 8)
                 .text('Hours', 380, tableTop + 8)
-                .text('Rate', 420, tableTop + 8)
+                .text('Rate/Hr', 415, tableTop + 8)
                 .text('Amount', 480, tableTop + 8);
 
             let currentY = tableTop + 30;
@@ -112,20 +108,14 @@ try {
                 minute: '2-digit'
             });
             
-            // Calculate actual hours
+            // Calculate actual hours (no rounding - exact time difference)
             const actualHours = bookingData.endAt ?
                 ((endDate - startDate) / (1000 * 60 * 60)) : 1;
             
-            // Round hours to nearest 0.5
-            const roundedHours = roundHoursToNearestHalf(actualHours);
-            
-            // Format hours without "Hours" text (since column header already shows "Hours")
-            const formattedHours = roundedHours % 1 === 0 ? 
-                `${roundedHours}` : 
-                `${roundedHours.toFixed(1)}`;
-            
-            // Use rounded hours for rate calculation
-            const hours = roundedHours;
+            // Format hours for DISPLAY (max 2 decimals, no rounding up)
+            const formattedHours = actualHours % 1 === 0 ? 
+                `${Math.floor(actualHours)}` : 
+                `${actualHours.toFixed(2)}`;
 
             let description = bookingData.location ?
                 `${bookingData.location} - ${startDateSGT} (${startTimeSGT} - ${endTimeSGT})` :
@@ -135,10 +125,12 @@ try {
             const { calculatePaymentDetails } = require('./calculationHelper');
             const paymentDetails = calculatePaymentDetails(bookingData);
             
-            // Calculate rate from subtotal divided by people (total cost per person)
+            // Calculate hourly rate: subtotal / (pax × booking hours)
             const totalPeople = bookingData.pax || 1;
             const subtotal = paymentDetails.originalAmount || parseFloat(bookingData.totalCost || 0);
-            const rate = bookingData.hourlyRate || (subtotal / totalPeople) || 10;
+            const totalHoursForCalculation = totalPeople * actualHours; // Total person-hours (exact)
+            const hourlyRate = subtotal / totalHoursForCalculation;
+            const rate = bookingData.hourlyRate || hourlyRate || 10;
             const amount = parseFloat(bookingData.totalAmount || 0);
 
             doc.fillColor('#000000').font(bodyFont).fontSize(bodyFontSize)
