@@ -345,6 +345,23 @@ exports.getBookingById = async (req, res) => {
       if (data.discountamount && !data.discountAmount) {
         data.discountAmount = data.discountamount;
       }
+      
+      // Ensure timestamps are in proper UTC format with 'Z' suffix
+      if (data.startAt && !data.startAt.endsWith('Z')) {
+        data.startAt = data.startAt + 'Z';
+      }
+      if (data.endAt && !data.endAt.endsWith('Z')) {
+        data.endAt = data.endAt + 'Z';
+      }
+      if (data.bookedAt && !data.bookedAt.endsWith('Z')) {
+        data.bookedAt = data.bookedAt + 'Z';
+      }
+      if (data.createdAt && !data.createdAt.endsWith('Z')) {
+        data.createdAt = data.createdAt + 'Z';
+      }
+      if (data.updatedAt && !data.updatedAt.endsWith('Z')) {
+        data.updatedAt = data.updatedAt + 'Z';
+      }
     }
 
     res.status(200).json({ 
@@ -2851,11 +2868,35 @@ exports.confirmExtensionPayment = async (req, res) => {
       // Don't fail the request if email fails
     }
 
+    // Ensure timestamps are in proper UTC format with 'Z' suffix
+    if (updatedBooking.startAt && !updatedBooking.startAt.endsWith('Z')) {
+      updatedBooking.startAt = updatedBooking.startAt + 'Z';
+    }
+    if (updatedBooking.endAt && !updatedBooking.endAt.endsWith('Z')) {
+      updatedBooking.endAt = updatedBooking.endAt + 'Z';
+    }
+    if (updatedBooking.bookedAt && !updatedBooking.bookedAt.endsWith('Z')) {
+      updatedBooking.bookedAt = updatedBooking.bookedAt + 'Z';
+    }
+    if (updatedBooking.createdAt && !updatedBooking.createdAt.endsWith('Z')) {
+      updatedBooking.createdAt = updatedBooking.createdAt + 'Z';
+    }
+    if (updatedBooking.updatedAt && !updatedBooking.updatedAt.endsWith('Z')) {
+      updatedBooking.updatedAt = updatedBooking.updatedAt + 'Z';
+    }
+
+    // Also format originalEndTime
+    let formattedOriginalEndTime = existingBooking.endAt;
+    if (formattedOriginalEndTime && !formattedOriginalEndTime.endsWith('Z')) {
+      formattedOriginalEndTime = formattedOriginalEndTime + 'Z';
+    }
+
     res.status(200).json({
       success: true,
       message: "Extension payment confirmed successfully",
       booking: updatedBooking,
-      payment: paymentRecord
+      payment: paymentRecord,
+      originalEndTime: formattedOriginalEndTime // Send original end time before extension
     });
 
   } catch (error) {
