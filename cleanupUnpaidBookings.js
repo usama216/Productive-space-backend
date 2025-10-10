@@ -40,14 +40,24 @@ async function cleanupUnpaidBookings() {
       console.log(`  - ${booking.bookingRef} (refund status: ${booking.refundstatus || 'NONE'})`);
     });
     
-    // Delete the unpaid bookings (exclude refunded bookings and extensions)
+    const bookingIds = unpaidBookings.map(b => b.id);
+    
+    // Step 1: Delete related creditusage records first (to avoid foreign key constraint)
+    console.log('🗑️  Deleting related creditusage records...');
+    const { error: creditUsageError } = await supabase
+      .from('creditusage')
+      .delete()
+      .in('bookingid', bookingIds);
+    
+    if (creditUsageError) {
+      console.error('⚠️  Error deleting creditusage records:', creditUsageError);
+    }
+    
+    // Step 2: Delete the unpaid bookings
     const { error: deleteError } = await supabase
       .from('Booking')
       .delete()
-      .eq('confirmedPayment', false)
-      .or('refundstatus.is.null,refundstatus.eq.NONE,refundstatus.eq.REQUESTED,refundstatus.eq.REJECTED') // Only delete non-refunded bookings
-      .or('extensionamounts.is.null,extensionamounts.eq.{}') // Exclude bookings with extensions
-      .lt('createdAt', fiveMinutesAgo);
+      .in('id', bookingIds);
     
     if (deleteError) {
       console.error('❌ Error deleting unpaid bookings:', deleteError);

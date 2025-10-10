@@ -230,7 +230,7 @@ exports.getUserPackages = async (req, res) => {
         )
       `)
       .eq("userId", userId)
-      .eq("isActive", true)
+      .eq("paymentStatus", "COMPLETED")  // Changed: Only show COMPLETED packages instead of isActive check
       .order("createdAt", { ascending: false });
 
     if (error) {
@@ -244,7 +244,7 @@ exports.getUserPackages = async (req, res) => {
       purchases.map(async (purchase) => {
         const { data: passes, error: passesError } = await supabase
           .from("UserPass")
-          .select("status, totalCount, remainingCount")
+          .select("id, status, totalCount, remainingCount")
           .eq("packagepurchaseid", purchase.id);
 
         if (passesError) {
@@ -252,18 +252,38 @@ exports.getUserPackages = async (req, res) => {
           return purchase;
         }
 
-        // For count-based packages, there should be only ONE UserPass entry per purchase
-        // Use the first pass data if available, otherwise use package defaults
-        const firstPass = passes && passes.length > 0 ? passes[0] : null;
+        // Total passes should always be from Package.passCount (the original package size)
+        // Not the sum of UserPass.totalCount (which could have duplicates due to race conditions)
+        const totalPasses = purchase.Package.passCount || 0;
         
-        const totalPasses = firstPass ? firstPass.totalCount : (purchase.Package.passCount || 0);
-        const activePasses = firstPass && firstPass.status === "ACTIVE" ? firstPass.remainingCount : 0;
-        const usedPasses = firstPass ? (firstPass.totalCount - firstPass.remainingCount) : 0;
-        const expiredPasses = firstPass && firstPass.status === "EXPIRED" ? firstPass.totalCount : 0;
+        let activePasses = 0;
+        let expiredPasses = 0;
+
+        if (passes && passes.length > 0) {
+          // Sum up remaining count from all ACTIVE passes
+          // (Handle case where duplicate UserPass records exist)
+          passes.forEach(pass => {
+            if (pass.status === "ACTIVE") {
+              activePasses += pass.remainingCount || 0;
+            }
+            if (pass.status === "EXPIRED") {
+              expiredPasses += pass.totalCount || 0;
+            }
+          });
+        } else {
+          // No UserPass exists yet - use package defaults if payment completed
+          if (purchase.paymentStatus === 'COMPLETED') {
+            activePasses = totalPasses;
+          }
+        }
+
+        // Calculate used passes as: total - remaining
+        // Cap at totalPasses to avoid showing more used than total (in case of duplicates)
+        const usedPasses = Math.min(totalPasses - activePasses, totalPasses);
 
         const finalTotalPasses = totalPasses;
-        const finalActivePasses = activePasses > 0 ? activePasses : (purchase.paymentStatus === 'COMPLETED' ? (purchase.Package.passCount || 0) : 0);
-        const finalUsedPasses = usedPasses;
+        const finalActivePasses = Math.min(activePasses, totalPasses); // Cap at totalPasses
+        const finalUsedPasses = Math.max(usedPasses, 0); // Never negative
         const finalExpiredPasses = expiredPasses;
 
 

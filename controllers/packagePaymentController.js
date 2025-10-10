@@ -221,8 +221,7 @@ async function createUserPasses(packagePurchase) {
       const { data: existingPasses, error: checkError } = await supabase
         .from("UserPass")
         .select("id")
-        .eq("packagepurchaseid", packagePurchase.id)
-        .limit(1);
+        .eq("packagepurchaseid", packagePurchase.id);
 
       if (checkError) {
         console.error("❌ Error checking existing UserPass:", checkError);
@@ -230,15 +229,21 @@ async function createUserPasses(packagePurchase) {
       }
 
       if (existingPasses && existingPasses.length > 0) {
-        console.log(`⚠️ UserPass already exists for purchase ${packagePurchase.id}, skipping creation`);
+        console.log(`⚠️ UserPass already exists for purchase ${packagePurchase.id} (${existingPasses.length} records found), skipping creation`);
         return;
       }
 
+      // Try to insert, but handle duplicate key errors gracefully
       const { error: insertError } = await supabase
         .from("UserPass")
         .insert(userPasses);
 
       if (insertError) {
+        // If it's a duplicate key error, just log and return (race condition happened)
+        if (insertError.code === '23505' || insertError.message?.includes('duplicate')) {
+          console.log(`⚠️ UserPass creation skipped - already exists (race condition) for purchase ${packagePurchase.id}`);
+          return;
+        }
         console.error("❌ Error creating UserPass:", insertError);
         throw insertError;
       }
