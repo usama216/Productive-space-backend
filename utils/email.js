@@ -1,10 +1,10 @@
 const nodemailer = require("nodemailer");
 const fs = require('fs');
 const path = require('path');
-const { paymentConfirmationTemplate, bookingConfirmationTemplate } = require("../templates/bookingConfirmation");
+const { paymentConfirmationTemplate, bookingConfirmationTemplate, extensionConfirmationTemplate } = require("../templates/bookingConfirmation");
 const { packageConfirmationTemplate } = require("../templates/packageConfirmation");
 const { refundConfirmationTemplate } = require("../templates/refundConfirmation");
-const { generateInvoicePDF } = require("./invoice");
+const { generateInvoicePDF, generateExtensionInvoicePDF } = require("./invoice");
 const { generatePackageInvoicePDF } = require("./packageInvoice"); 
 
 const transporter = nodemailer.createTransport({
@@ -158,10 +158,68 @@ const sendRefundConfirmation = async (data) => {
   }
 };
 
+const sendExtensionConfirmation = async (userData, bookingData, extensionInfo) => {
+  try {
+    console.log("📄 Generating extension invoice PDF...");
+    const { filePath, fileName } = await generateExtensionInvoicePDF(userData, bookingData, extensionInfo);
+    console.log("✅ PDF generated:", fileName);
+    
+    console.log("📝 Creating extension email content...");
+    const emailContent = extensionConfirmationTemplate(userData, bookingData, extensionInfo);
+    console.log("✅ Email content created, subject:", emailContent.subject);
+
+    console.log("📎 Preparing email attachments...");
+    const logoPath = path.join(process.cwd(), 'public', 'logo.png');
+    const logoExists = fs.existsSync(logoPath);
+    console.log("🖼️ Logo file exists:", logoExists, "at:", logoPath);
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: userData.email,
+      subject: emailContent.subject,
+      html: emailContent.html,
+      attachments: [
+        {
+          filename: fileName,
+          path: filePath,
+          contentType: 'application/pdf'
+        },
+        ...(logoExists ? [{
+          filename: 'logo.png',
+          path: logoPath,
+          cid: 'logo'
+        }] : [])
+      ]
+    };
+
+    console.log("📧 Sending extension confirmation email via Gmail SMTP...");
+    console.log("📧 From:", process.env.EMAIL_USER);
+    console.log("📧 To:", userData.email);
+    console.log("📧 Attachments:", mailOptions.attachments.length);
+    
+    const info = await transporter.sendMail(mailOptions);
+    
+    console.log("🗑️ Cleaning up temporary PDF file...");
+    fs.unlinkSync(filePath);
+    console.log("✅ Temporary file deleted:", filePath);
+    
+    console.log("✅ Extension confirmation email sent successfully!");
+    console.log("📧 Message ID:", info.messageId);
+    console.log("📧 Response:", info.response);
+    
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error("❌ Error in sendExtensionConfirmation:", error.message);
+    console.error("❌ Error stack:", error.stack);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = { 
   sendEmail, 
   sendBookingConfirmation,
   sendPaymentConfirmation,
   sendPackageConfirmation,
-  sendRefundConfirmation
+  sendRefundConfirmation,
+  sendExtensionConfirmation
 };

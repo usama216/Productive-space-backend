@@ -1,6 +1,6 @@
 const { createClient } = require("@supabase/supabase-js");
 const { v4: uuidv4 } = require("uuid");
-const { sendBookingConfirmation } = require("../utils/email");
+const { sendBookingConfirmation, sendExtensionConfirmation } = require("../utils/email");
 const { applyPromoCodeToBooking } = require("./promoCodeController");
 const { handlePackageUsage, calculateExcessCharge } = require("../utils/packageUsageHelper");
 const { 
@@ -2831,6 +2831,33 @@ exports.confirmExtensionPayment = async (req, res) => {
     updateData.extensionamounts = extensionAmounts
     updateData.totalactualcost = totalActualCost
 
+    // Use credits as discount for extension payment (OPTIONAL)
+    console.log("💳 Checking for credit discount on extension...");
+    const creditAmount = parseFloat(extensionData.creditAmount) || 0;
+    
+    if (creditAmount > 0 && existingBooking.userId) {
+      try {
+        console.log(`💳 Applying ${creditAmount} credits as discount...`);
+        
+        // Use credits for the extension as a discount
+        const creditResult = await useCreditsForBooking(
+          existingBooking.userId,
+          bookingId,
+          creditAmount
+        );
+        
+        console.log("✅ Credits used as discount for extension:", creditResult);
+        
+      } catch (creditError) {
+        console.error("❌ Error applying credits as discount:", creditError);
+        // Don't fail the entire request - just log the error
+        // The extension can still proceed without credits
+        console.log("⚠️ Extension will proceed without credit discount");
+      }
+    } else {
+      console.log("ℹ️ No credits applied to this extension");
+    }
+
     console.log("Updating booking with extension data:", updateData);
 
     const { data: updatedBooking, error: updateError } = await supabase
@@ -2849,11 +2876,30 @@ exports.confirmExtensionPayment = async (req, res) => {
       });
     }
 
-    // Send confirmation email
+    // Get user data for email
+    const { data: userData, error: userError } = await supabase
+      .from("User")
+      .select("*")
+      .eq("id", updatedBooking.userId)
+      .single();
+
+    if (userError) {
+      console.error("Error fetching user data:", userError);
+    }
+
+    // Send extension confirmation email with invoice PDF
     try {
-      await sendBookingConfirmation(updatedBooking);
+      if (userData) {
+        await sendExtensionConfirmation(userData, updatedBooking, {
+          extensionHours: extensionData.extensionHours,
+          extensionCost: extensionData.extensionCost,
+          originalEndAt: extensionData.originalEndAt || formattedOriginalEndTime,
+          creditAmount: creditAmount || 0 // Include credit amount used
+        });
+        console.log("✅ Extension confirmation email sent successfully");
+      }
     } catch (emailError) {
-      console.error("Error sending extension confirmation email:", emailError);
+      console.error("❌ Error sending extension confirmation email:", emailError);
       // Don't fail the request if email fails
     }
 

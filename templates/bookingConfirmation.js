@@ -206,7 +206,107 @@ const bookingConfirmationTemplate = (userData, bookingData) => ({
   `
 });
 
+const extensionConfirmationTemplate = (userData, bookingData, extensionInfo) => ({
+  subject: `Booking Extended - Ref #${bookingData.bookingRef || 'N/A'} - My Productive Space`,
+  html: `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Booking Extension Confirmation</title>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #ff6900 0%, #ff8533 100%); color: white; padding: 6px 20px; text-align: center; border-radius: 10px 10px 0 0; }
+        .logo-container { text-align: center; margin-bottom: 20px; }
+        .logo { max-width: 220px; height: auto; border-radius: 0px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+        .booking-details { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #ff6900; }
+        .extension-highlight { background: #fff8e6; padding: 15px; margin: 15px 0; border-radius: 5px; border-left: 4px solid #ffc107; }
+        .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
+        .button { display: inline-block; background: #ff6900; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 10px 0; }
+        .highlight { color: #ff6900; font-weight: bold; }
+        .section { margin: 20px 0; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <div class="logo-container">
+            <img src="cid:logo" alt="My Productive Space Logo" class="logo">
+          </div>
+          <h3>✅ Booking Extended Successfully!</h3>
+        </div>
+        
+        <div class="content">
+          <h2>Hello ${userData.firstName || "Guest"},</h2>
+          
+          <p>Great news! Your booking has been successfully extended. Thank you for using My Productive Space!</p>
+          
+          <div class="extension-highlight">
+            <h3>⏰ Extension Details</h3>
+            <p><strong>Additional Hours:</strong> ${extensionInfo.extensionHours || 0} hour(s)</p>
+            <p><strong>Extension Cost:</strong> SGD ${parseFloat(extensionInfo.extensionCost || 0).toFixed(2)}</p>
+            ${extensionInfo.creditAmount && parseFloat(extensionInfo.creditAmount) > 0 ? 
+              `<p><strong>Credits Applied:</strong> <span style="color: green;">-SGD ${parseFloat(extensionInfo.creditAmount).toFixed(2)}</span></p>
+               <p><strong>Amount Paid:</strong> SGD ${(parseFloat(extensionInfo.extensionCost) - parseFloat(extensionInfo.creditAmount)).toFixed(2)}</p>` : 
+              `<p><strong>Amount Paid:</strong> SGD ${parseFloat(extensionInfo.extensionCost || 0).toFixed(2)}</p>`}
+            <p><strong>Original End Time:</strong> ${new Date(extensionInfo.originalEndAt).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })}</p>
+            <p><strong>New End Time:</strong> <span class="highlight">${new Date(bookingData.endAt).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })}</span></p>
+          </div>
+          
+          <div class="booking-details">
+            <h3>📋 Updated Booking Details</h3>
+            <p><strong>Reference Number:</strong> <span class="highlight">${bookingData.bookingRef || 'N/A'}</span></p>
+            <p><strong>Location:</strong> ${bookingData.location || 'N/A'}</p>
+            <p><strong>Start Time:</strong> ${new Date(bookingData.startAt).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })}</p>
+            <p><strong>End Time:</strong> ${new Date(bookingData.endAt).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })}</p>
+            ${bookingData.seatNumbers && bookingData.seatNumbers.length > 0 ? 
+              `<p><strong>Seat Numbers:</strong> ${bookingData.seatNumbers.join(', ')}</p>` : ''}
+            <p><strong>Number of People:</strong> ${bookingData.pax || 1}</p>
+            <p><strong>Total Amount Paid:</strong> SGD ${parseFloat(bookingData.totalAmount || 0).toFixed(2)}</p>
+          </div>
+
+          <div class="section">
+            <h3>📄 Invoice</h3>
+            <p>Please find your updated invoice attached to this email for your records.</p>
+          </div>
+
+          <div class="section">
+            <h3>📍 Location Details</h3>
+            <p><strong>My Productive Space</strong></p>
+            <p>Blk 208 Hougang St 21 #01-201</p>
+            <p>Hougang 530208, Singapore</p>
+            <p>📞 Contact: 89202462</p>
+          </div>
+
+          <div class="section">
+            <h3>⚠️ Important Reminders</h3>
+            <ul>
+              <li>Please arrive on time to make the most of your extended booking.</li>
+              <li>If you need further extensions, please contact us at least 30 minutes before your current end time.</li>
+              <li>Credits used for extensions are non-refundable.</li>
+            </ul>
+          </div>
+
+          <p style="margin-top: 30px;">If you have any questions or need assistance, please don't hesitate to contact us!</p>
+          
+          <p>Thank you for choosing My Productive Space! 🎉</p>
+        </div>
+        
+        <div class="footer">
+          <p>© 2025 My Productive Space. All rights reserved.</p>
+          <p>📧 myproductivespacecontact@gmail.com | 📞 89202462</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `
+});
+
 module.exports = {
   paymentConfirmationTemplate,
-  bookingConfirmationTemplate
+  bookingConfirmationTemplate,
+  extensionConfirmationTemplate
 };

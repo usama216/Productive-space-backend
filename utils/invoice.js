@@ -332,6 +332,198 @@ try {
     });
 };
 
+const generateExtensionInvoicePDF = (userData, bookingData, extensionInfo) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 50, size: 'A4' });
+
+            const fileName = `Extension_Invoice_${bookingData.bookingRef || bookingData.id || Date.now()}.pdf`;
+            const filePath = path.join('/tmp', fileName);
+
+            const tempDir = path.dirname(filePath);
+            if (!fs.existsSync(tempDir)) {
+                fs.mkdirSync(tempDir, { recursive: true });
+            }
+
+            doc.pipe(fs.createWriteStream(filePath));
+
+            const headerFont = 'Helvetica-Bold';
+            const bodyFont = 'Helvetica';
+            const titleFontSize = 18;
+            const sectionHeaderFontSize = 12;
+            const bodyFontSize = 10;
+            const smallFontSize = 8;
+
+            // Logo
+            try {
+                const logoPath = path.join(process.cwd(), "public", "logo.png");
+                if (fs.existsSync(logoPath)) {
+                    doc.image(logoPath, 60, 60, { width: 150, height: 60 });
+                } else {
+                    doc.font(headerFont).fontSize(titleFontSize).text("MY PRODUCTIVE SPACE", 60, 60);
+                }
+            } catch (logoError) {
+                doc.font(headerFont).fontSize(titleFontSize).text("MY PRODUCTIVE SPACE", 60, 60);
+            }
+
+            // Company details
+            doc.fillColor('#000000')
+                .font(bodyFont).fontSize(smallFontSize)
+                .text('My Productive Space', 60, 130)  
+                .text('Company ID: 53502976D', 60, 140)  
+                .text('Blk 208 Hougang st 21 #01-201', 60, 150)  
+                .text('Hougang 530208', 60, 160)  
+                .text('Singapore', 60, 170)  
+                .text('Tel: 89202462', 60, 180);
+
+            // Bill To section
+            doc.fillColor('#000000')
+                .font(headerFont).fontSize(sectionHeaderFontSize)
+                .text('Bill To', 400, 130);
+
+            doc.fillColor('#000000')
+                .font(bodyFont).fontSize(bodyFontSize)
+                .text(userData.email || 'N/A', 400, 150);
+
+            // Invoice title
+            doc.fillColor('#000000')
+                .font(headerFont).fontSize(titleFontSize)
+                .text('BOOKING EXTENSION INVOICE', 60, 220);
+
+            // Extension details
+            const startDate = new Date(bookingData.startAt);
+            const originalEndDate = new Date(extensionInfo.originalEndAt || bookingData.endAt);
+            const newEndDate = new Date(bookingData.endAt);
+            
+            const formatDate = (date) => {
+                return date.toLocaleDateString('en-SG', {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric'
+                });
+            };
+
+            const formatTime = (date) => {
+                return date.toLocaleTimeString('en-SG', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: true
+                });
+            };
+
+            // Extension summary
+            doc.fillColor('#000000')
+                .font(bodyFont).fontSize(bodyFontSize)
+                .text(`Reference: ${bookingData.bookingRef || 'N/A'}`, 60, 260)
+                .text(`Location: ${bookingData.location || 'N/A'}`, 60, 275)
+                .text(`Extension Date: ${formatDate(newEndDate)}`, 60, 290)
+                .text(`Original End Time: ${formatTime(originalEndDate)}`, 60, 305)
+                .text(`New End Time: ${formatTime(newEndDate)}`, 60, 320)
+                .text(`Extension Hours: ${extensionInfo.extensionHours || 0}`, 60, 335);
+
+            // Table header
+            const tableTop = 360;
+            const col1 = 60;
+            const col2 = 120;
+            const col3 = 250;
+            const col4 = 320;
+            const col5 = 420;
+            const col6 = 500;
+
+            doc.fillColor('#333333')
+                .rect(col1, tableTop, col6 - col1, 20)
+                .fill();
+
+            doc.fillColor('#FFFFFF')
+                .font(headerFont).fontSize(bodyFontSize)
+                .text('#', col1 + 5, tableTop + 5)
+                .text('Description', col2, tableTop + 5)
+                .text('Hours', col3, tableTop + 5)
+                .text('Rate/Hr', col4, tableTop + 5)
+                .text('Amount', col5, tableTop + 5);
+
+            // Extension item row
+            const itemTop = tableTop + 20;
+            doc.fillColor('#F8F8F8')
+                .rect(col1, itemTop, col6 - col1, 20)
+                .fill();
+
+            const extensionHours = extensionInfo.extensionHours || 0;
+            const ratePerHour = bookingData.memberType === 'STUDENT' ? 4.00 : 
+                               bookingData.memberType === 'TUTOR' ? 6.00 : 5.00;
+            const extensionAmount = extensionInfo.extensionCost || 0;
+
+            doc.fillColor('#000000')
+                .font(bodyFont).fontSize(bodyFontSize)
+                .text('1', col1 + 5, itemTop + 5)
+                .text(`Extension - ${bookingData.location}`, col2, itemTop + 5)
+                .text(`${extensionHours.toFixed(2)}`, col3, itemTop + 5)
+                .text(`$${ratePerHour.toFixed(2)}`, col4, itemTop + 5)
+                .text(`$${extensionAmount.toFixed(2)}`, col5, itemTop + 5);
+
+            // Role & Seat Information
+            const roleTop = itemTop + 40;
+            doc.fillColor('#000000')
+                .font(headerFont).fontSize(bodyFontSize)
+                .text('Role & Seat Information', 60, roleTop);
+
+            const memberTypeText = bookingData.memberType === 'STUDENT' ? 'Student(s)' : 
+                                  bookingData.memberType === 'TUTOR' ? 'Tutor(s)' : 'Member(s)';
+
+            doc.fillColor('#000000')
+                .font(bodyFont).fontSize(bodyFontSize)
+                .text(`Total: ${bookingData.pax || 1} ${memberTypeText}`, 60, roleTop + 20)
+                .text(`Assigned Seats: ${(bookingData.seatNumbers || []).join(', ') || 'N/A'}`, 60, roleTop + 35);
+
+            // Totals section
+            const totalsTop = roleTop + 80;
+            const subtotal = extensionAmount;
+            const creditAmount = extensionInfo.creditAmount || 0;
+            const totalPaid = Math.max(0, subtotal - creditAmount);
+
+            doc.fillColor('#000000')
+                .font(bodyFont).fontSize(bodyFontSize)
+                .text('Sub Total:', col4, totalsTop)
+                .text(`SGD ${subtotal.toFixed(2)}`, col5, totalsTop);
+
+            if (creditAmount > 0) {
+                doc.fillColor('#000000')
+                    .font(bodyFont).fontSize(bodyFontSize)
+                    .text('Credits Applied:', col4, totalsTop + 15)
+                    .text(`-SGD ${creditAmount.toFixed(2)}`, col5, totalsTop + 15);
+            }
+
+            doc.fillColor('#000000')
+                .font(headerFont).fontSize(bodyFontSize)
+                .text('Total:', col4, totalsTop + (creditAmount > 0 ? 35 : 15))
+                .text(`SGD ${totalPaid.toFixed(2)}`, col5, totalsTop + (creditAmount > 0 ? 35 : 15));
+
+            doc.fillColor('#000000')
+                .font(bodyFont).fontSize(bodyFontSize)
+                .text('Paid:', col4, totalsTop + (creditAmount > 0 ? 50 : 30))
+                .text(`SGD ${totalPaid.toFixed(2)}`, col5, totalsTop + (creditAmount > 0 ? 50 : 30));
+
+            // Footer
+         
+            doc.end();
+
+            doc.on('end', () => {
+                resolve({ filePath, fileName });
+            });
+
+            doc.on('error', (error) => {
+                console.error('PDF generation error:', error);
+                reject(error);
+            });
+
+        } catch (error) {
+            console.error('Extension invoice generation error:', error);
+            reject(error);
+        }
+    });
+};
+
 module.exports = {
-    generateInvoicePDF
+    generateInvoicePDF,
+    generateExtensionInvoicePDF
 };
