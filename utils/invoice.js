@@ -131,7 +131,7 @@ try {
             const totalHoursForCalculation = totalPeople * actualHours; // Total person-hours (exact)
             const hourlyRate = subtotal / totalHoursForCalculation;
             const rate = bookingData.hourlyRate || hourlyRate || 10;
-            const amount = parseFloat(bookingData.totalAmount || 0);
+            const amount = subtotal; // Use subtotal (before discounts), not final paid amount
 
             doc.fillColor('#000000').font(bodyFont).fontSize(bodyFontSize)
                 .text('1', 60, currentY + 10)
@@ -254,7 +254,8 @@ try {
                 .font(bodyFont).fontSize(bodyFontSize)
                 .text(`SGD ${paymentDetails.originalAmount.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
 
-            if (paymentDetails.discount && paymentDetails.discount.discountAmount > 0) {
+            // Only show promo code discount if there's actually a promo code used
+            if (bookingData.promoCodeId && paymentDetails.discount && paymentDetails.discount.discountAmount > 0) {
                 currentY += 20;
                 doc.font(bodyFont).fontSize(bodyFontSize)
                     .text('Promo Code Discount', summaryStartX, currentY)
@@ -292,11 +293,16 @@ try {
                     .text(`SGD ${paymentDetails.cardFee.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
             }
 
-            currentY += 20;
-            doc.font(bodyFont).fontSize(bodyFontSize)
-                .text('Payment Method', summaryStartX, currentY)
-                .font(bodyFont).fontSize(bodyFontSize)
-                .text(paymentDetails.paymentMethod, summaryStartX + summaryWidth - 80, currentY);
+            // Only show payment method if it has a valid value
+            if (paymentDetails.paymentMethod && 
+                paymentDetails.paymentMethod.toLowerCase() !== 'unknown' && 
+                paymentDetails.paymentMethod.trim() !== '') {
+                currentY += 20;
+                doc.font(bodyFont).fontSize(bodyFontSize)
+                    .text('Payment Method', summaryStartX, currentY)
+                    .font(bodyFont).fontSize(bodyFontSize)
+                    .text(paymentDetails.paymentMethod, summaryStartX + summaryWidth - 80, currentY);
+            }
 
             currentY += 20;
             doc.font(headerFont).fontSize(sectionHeaderFontSize)

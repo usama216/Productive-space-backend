@@ -604,23 +604,12 @@ exports.confirmBookingPayment = async (req, res) => {
           console.log(`✅ Pass Type: ${packageUsageResult.passType}`);
           console.log(`✅ Is Pass Fully Used: ${packageUsageResult.isPassFullyUsed}`);
 
-          // Update booking with package usage details
-          console.log(`📦 Updating booking with package usage details...`);
-          const { error: updateError } = await supabase
-            .from("Booking")
-            .update({
-              packagePassUsed: packageUsageResult.passUsed,
-              passType: packageUsageResult.passType,
-              remainingCount: packageUsageResult.remainingCount,
-              updatedAt: new Date().toISOString()
-            })
-            .eq("id", data.id);
-
-          if (updateError) {
-            console.error(`❌ Error updating booking:`, updateError);
-          } else {
-            console.log(`✅ Booking updated successfully with package usage details`);
-          }
+          // Add package discount info to booking data for PDF generation
+          data.packageDiscountId = data.packageId;
+          // Calculate actual discount amount (remove card processing fee from totalAmount)
+          const baseAmount = data.totalAmount / 1.05; // Remove 5% card fee
+          data.packageDiscountAmount = data.totalCost - baseAmount; // Calculate actual discount amount
+          data.packageName = packageUsageResult.packageName || 'Package';
         } else {
           console.error(`\n❌ ===== PACKAGE USAGE FAILED =====`);
           console.error(`❌ Error: ${packageUsageResult.error}`);

@@ -45,6 +45,7 @@ exports.handlePackageUsage = async (userId, packageId, hoursUsed, bookingId, loc
     }
 
     const packageType = userPackages[0].Package.packageType;
+    const packageName = userPackages[0].Package.name;
     const passCount = userPackages[0].Package.passCount;
 
     // Check if UserPass records exist
@@ -141,6 +142,7 @@ exports.handlePackageUsage = async (userId, packageId, hoursUsed, bookingId, loc
       remainingCount: newRemainingCount,
       isPassFullyUsed: isPassFullyUsed,
       packageType: packageType,
+      packageName: packageName,
       totalPasses: passCount,
       remainingPasses: newRemainingCount
     };
