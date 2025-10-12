@@ -26,7 +26,11 @@ exports.createPayment = async (req, res) => {
       send_email = false,
       send_sms = false,
       allow_repeated_payments = false,
-      bookingId, 
+      bookingId,
+      isExtension,
+      extensionData,
+      isReschedule,
+      rescheduleData
     } = req.body;
 
     if (!amount || !currency || !email || !name || !purpose || !reference_number || !redirect_url || !bookingId) {
@@ -60,6 +64,14 @@ exports.createPayment = async (req, res) => {
 
     const response = await hitpayClient.post("/v1/payment-requests", payload);
     
+    // Determine payment method type
+    let paymentMethod = "BOOKING";
+    if (isExtension) {
+      paymentMethod = "EXTENSION";
+    } else if (isReschedule) {
+      paymentMethod = "RESCHEDULE";
+    }
+
     const { data: paymentData, error: paymentError } = await supabase
       .from('Payment')
       .insert({
@@ -68,11 +80,11 @@ exports.createPayment = async (req, res) => {
         endAt: new Date().toISOString(),
         cost: parseFloat(amount),
         totalAmount: parseFloat(amount),
-        paidAt: new Date().toISOString(),
+        paidAt: null, // Will be set when payment is confirmed
         bookingRef: reference_number,
         paidBy: email,
         discountCode: null,
-        paymentMethod: payment_methods[0] || "paynow_online",
+        paymentMethod: paymentMethod,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       })
@@ -101,13 +113,21 @@ exports.createPayment = async (req, res) => {
       });
     }
 
+    // Update booking with payment info
+    // IMPORTANT: For reschedule/extension, don't set confirmedPayment to false since booking is already paid
+    const bookingUpdateData = {
+      paymentId: paymentData.id,
+      totalAmount: parseFloat(amount)
+    };
+    
+    // Only set confirmedPayment to false for NEW bookings, not for reschedule/extension
+    if (!isExtension && !isReschedule) {
+      bookingUpdateData.confirmedPayment = false;
+    }
+    
     const { error: bookingError } = await supabase
       .from('Booking')
-      .update({
-        paymentId: paymentData.id,
-        totalAmount: parseFloat(amount),
-        confirmedPayment: false
-      })
+      .update(bookingUpdateData)
       .eq('id', bookingId);
 
     if (bookingError) {
@@ -142,12 +162,15 @@ exports.handleWebhook = async (req, res) => {
 
     const isPackagePayment = event.reference_number.startsWith('PKG_');
     const isBookingPayment = event.reference_number.startsWith('ORD_') || event.reference_number.startsWith('BOOK_');
+    const isReschedulePayment = event.reference_number.startsWith('RESCHEDULE_');
 
     if (event.status === 'completed') {
       if (isPackagePayment) {
         await handlePackagePaymentCompletion(event, paymentDetails);
       } else if (isBookingPayment) {
         await handleBookingPaymentCompletion(event, paymentDetails);
+      } else if (isReschedulePayment) {
+        await handleReschedulePaymentCompletion(event, paymentDetails);
       } else {
         console.log("Unknown payment type for reference:", event.reference_number);
       }
@@ -365,6 +388,36 @@ async function createUserPasses(packagePurchase) {
 
   } catch (error) {
     console.error("Error in createUserPasses:", error);
+    throw error;
+  }
+}
+
+async function handleReschedulePaymentCompletion(event, paymentDetails) {
+  try {
+    console.log("Processing reschedule payment completion:", event.reference_number);
+    
+    // Update payment record using bookingRef (which is the HitPay reference number)
+    const { error: paymentUpdateError } = await supabase
+      .from('Payment')
+      .update({
+        paidAt: new Date(),
+        paymentMethod: event.payment_method || paymentDetails?.payment_methods?.[0] || "Online",
+        updatedAt: new Date()
+      })
+      .eq('bookingRef', event.reference_number);
+
+    if (paymentUpdateError) {
+      console.error("Reschedule payment update error:", paymentUpdateError);
+    } else {
+      console.log("✅ Reschedule payment marked as paid:", event.reference_number);
+    }
+
+    // The actual reschedule logic (booking update) will be handled by the reschedule controller
+    // when the user confirms the payment on the frontend
+    console.log("Reschedule payment completed successfully:", event.reference_number);
+    
+  } catch (error) {
+    console.error("Error in handleReschedulePaymentCompletion:", error);
     throw error;
   }
 }

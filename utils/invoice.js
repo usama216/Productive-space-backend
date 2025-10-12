@@ -1,9 +1,50 @@
 const PDFDocument = require('pdfkit');
 const fs = require("fs");
 const path = require("path");
+const { createClient } = require('@supabase/supabase-js');
+
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
+
+// Function to get pricing configuration for a location and member type
+const getPricingConfig = async (location, memberType) => {
+  try {
+    const { data, error } = await supabase
+      .from('pricing_configuration')
+      .select('*')
+      .eq('location', location)
+      .eq('memberType', memberType)
+      .eq('isActive', true)
+      .single();
+
+    if (error || !data) {
+      // Fallback to default pricing if not found
+      const defaultPricing = {
+        student: { oneHourRate: 4.00, overOneHourRate: 4.00 },
+        member: { oneHourRate: 5.00, overOneHourRate: 5.00 },
+        tutor: { oneHourRate: 6.00, overOneHourRate: 6.00 }
+      };
+      return defaultPricing[memberType?.toLowerCase()] || defaultPricing.member;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error fetching pricing config:', error);
+    // Fallback to default pricing
+    const defaultPricing = {
+      student: { oneHourRate: 4.00, overOneHourRate: 4.00 },
+      member: { oneHourRate: 5.00, overOneHourRate: 5.00 },
+      tutor: { oneHourRate: 6.00, overOneHourRate: 6.00 }
+    };
+    return defaultPricing[memberType?.toLowerCase()] || defaultPricing.member;
+  }
+};
 
 const generateInvoicePDF = (userData, bookingData) => {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
         try {
             const doc = new PDFDocument({ margin: 50, size: 'A4' });
 
@@ -125,13 +166,27 @@ try {
             const { calculatePaymentDetails } = require('./calculationHelper');
             const paymentDetails = calculatePaymentDetails(bookingData);
             
-            // Calculate hourly rate: subtotal / (pax × booking hours)
-            const totalPeople = bookingData.pax || 1;
-            const subtotal = paymentDetails.originalAmount || parseFloat(bookingData.totalCost || 0);
-            const totalHoursForCalculation = totalPeople * actualHours; // Total person-hours (exact)
-            const hourlyRate = subtotal / totalHoursForCalculation;
-            const rate = bookingData.hourlyRate || hourlyRate || 10;
-            const amount = subtotal; // Use subtotal (before discounts), not final paid amount
+            // Calculate hourly rate using dynamic pricing: (Members × memberRate) + (Tutors × tutorRate) + (Students × studentRate)
+            const members = bookingData.members || 0;
+            const tutors = bookingData.tutors || 0;
+            const students = bookingData.students || 0;
+            const location = bookingData.location || 'Kovan'; // Default location
+            
+            // Get pricing configuration for each member type
+            const memberPricing = await getPricingConfig(location, 'member');
+            const tutorPricing = await getPricingConfig(location, 'tutor');
+            const studentPricing = await getPricingConfig(location, 'student');
+            
+            // Determine which rate to use based on duration (1 hour vs over 1 hour)
+            const isOneHour = actualHours === 1;
+            const memberRate = isOneHour ? memberPricing.oneHourRate : memberPricing.overOneHourRate;
+            const tutorRate = isOneHour ? tutorPricing.oneHourRate : tutorPricing.overOneHourRate;
+            const studentRate = isOneHour ? studentPricing.oneHourRate : studentPricing.overOneHourRate;
+            
+            // Apply the formula: (Members × memberRate) + (Tutors × tutorRate) + (Students × studentRate)
+            const hourlyRate = (members * memberRate) + (tutors * tutorRate) + (students * studentRate);
+            const rate = hourlyRate || 10; // Fallback to $10 if no roles specified
+            const amount = rate * actualHours; // Calculate amount using the new rate formula
 
             doc.fillColor('#000000').font(bodyFont).fontSize(bodyFontSize)
                 .text('1', 60, currentY + 10)
@@ -523,7 +578,189 @@ const generateExtensionInvoicePDF = (userData, bookingData, extensionInfo) => {
     });
 };
 
+const generateRescheduleInvoicePDF = (userData, bookingData, rescheduleInfo) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 50, size: 'A4' });
+
+            const fileName = `Reschedule_Invoice_${bookingData.bookingRef || bookingData.id || Date.now()}.pdf`;
+            const filePath = path.join('/tmp', fileName);
+
+            const tempDir = path.dirname(filePath);
+            if (!fs.existsSync(tempDir)) {
+                fs.mkdirSync(tempDir, { recursive: true });
+            }
+
+            doc.pipe(fs.createWriteStream(filePath));
+
+            const headerFont = 'Helvetica-Bold';
+            const bodyFont = 'Helvetica';
+            const titleFontSize = 18;
+            const sectionHeaderFontSize = 12;
+            const bodyFontSize = 10;
+            const smallFontSize = 8;
+
+            // Logo
+            try {
+                const logoPath = path.join(process.cwd(), "public", "logo.png");
+                if (fs.existsSync(logoPath)) {
+                    doc.image(logoPath, 60, 60, { width: 150, height: 60 });
+                } else {
+                    doc.font(headerFont).fontSize(titleFontSize).text("MY PRODUCTIVE SPACE", 60, 60);
+                }
+            } catch (logoError) {
+                doc.font(headerFont).fontSize(titleFontSize).text("MY PRODUCTIVE SPACE", 60, 60);
+            }
+
+            // Company details
+            doc.fillColor('#000000')
+                .font(bodyFont).fontSize(smallFontSize)
+                .text('My Productive Space', 60, 130)  
+                .text('Company ID: 53502976D', 60, 140)  
+                .text('Blk 208 Hougang st 21 #01-201', 60, 150)  
+                .text('Hougang 530208', 60, 160)  
+                .text('Singapore', 60, 170)  
+                .text('Tel: 89202462', 60, 180);
+
+            // Bill To section
+            doc.fillColor('#000000')
+                .font(headerFont).fontSize(sectionHeaderFontSize)
+                .text('Bill To', 400, 130);
+
+            doc.fillColor('#000000')
+                .font(bodyFont).fontSize(bodyFontSize)
+                .text(userData.email || 'N/A', 400, 150);
+
+            // Invoice title
+            doc.fillColor('#000000')
+                .font(headerFont).fontSize(titleFontSize)
+                .text('BOOKING RESCHEDULE INVOICE', 60, 220);
+
+            // Reschedule details
+            const originalStartDate = new Date(rescheduleInfo.originalStartAt);
+            const originalEndDate = new Date(rescheduleInfo.originalEndAt);
+            const newStartDate = new Date(rescheduleInfo.newStartAt);
+            const newEndDate = new Date(rescheduleInfo.newEndAt);
+            
+            const formatDate = (date) => {
+                return date.toLocaleDateString('en-SG', {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric'
+                });
+            };
+
+            const formatTime = (date) => {
+                return date.toLocaleTimeString('en-SG', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: true
+                });
+            };
+
+            // Reschedule summary
+            doc.fillColor('#000000')
+                .font(bodyFont).fontSize(bodyFontSize)
+                .text(`Reference: ${bookingData.bookingRef || 'N/A'}`, 60, 260)
+                .text(`Location: ${bookingData.location || 'N/A'}`, 60, 275)
+                .text(`Reschedule Date: ${formatDate(newStartDate)}`, 60, 290)
+                .text(`Original Time: ${formatTime(originalStartDate)} - ${formatTime(originalEndDate)}`, 60, 305)
+                .text(`New Time: ${formatTime(newStartDate)} - ${formatTime(newEndDate)}`, 60, 320)
+                .text(`Additional Hours: ${rescheduleInfo.additionalHours || 0}`, 60, 335);
+
+            // Table header
+            const tableTop = 360;
+            const col1 = 60;
+            const col2 = 120;
+            const col3 = 250;
+            const col4 = 320;
+            const col5 = 420;
+            const col6 = 500;
+
+            doc.fillColor('#333333')
+                .rect(col1, tableTop, col6 - col1, 20)
+                .fill();
+
+            doc.fillColor('#FFFFFF')
+                .font(headerFont).fontSize(bodyFontSize)
+                .text('#', col1 + 5, tableTop + 5)
+                .text('Description', col2, tableTop + 5)
+                .text('Hours', col3, tableTop + 5)
+                .text('Rate/Hr', col4, tableTop + 5)
+                .text('Amount', col5, tableTop + 5);
+
+            // Reschedule item row
+            const itemTop = tableTop + 20;
+            doc.fillColor('#F8F8F8')
+                .rect(col1, itemTop, col6 - col1, 20)
+                .fill();
+
+            const additionalHours = rescheduleInfo.additionalHours || 0;
+            const ratePerHour = bookingData.memberType === 'STUDENT' ? 4.00 : 
+                               bookingData.memberType === 'TUTOR' ? 6.00 : 5.00;
+            const additionalAmount = rescheduleInfo.additionalCost || 0;
+
+            doc.fillColor('#000000')
+                .font(bodyFont).fontSize(bodyFontSize)
+                .text('1', col1 + 5, itemTop + 5)
+                .text(`Reschedule - ${bookingData.location}`, col2, itemTop + 5)
+                .text(`${additionalHours.toFixed(2)}`, col3, itemTop + 5)
+                .text(`$${ratePerHour.toFixed(2)}`, col4, itemTop + 5)
+                .text(`$${additionalAmount.toFixed(2)}`, col5, itemTop + 5);
+
+            // Role & Seat Information
+            const roleTop = itemTop + 40;
+            doc.fillColor('#000000')
+                .font(headerFont).fontSize(bodyFontSize)
+                .text('Role & Seat Information', 60, roleTop);
+
+            const memberTypeText = bookingData.memberType === 'STUDENT' ? 'Student(s)' : 
+                                  bookingData.memberType === 'TUTOR' ? 'Tutor(s)' : 'Member(s)';
+
+            doc.fillColor('#000000')
+                .font(bodyFont).fontSize(bodyFontSize)
+                .text(`Total: ${bookingData.pax || 1} ${memberTypeText}`, 60, roleTop + 20)
+                .text(`Assigned Seats: ${(bookingData.seatNumbers || []).join(', ') || 'N/A'}`, 60, roleTop + 35);
+
+            // Totals section
+            const totalsTop = roleTop + 80;
+            const subtotal = additionalAmount;
+
+            doc.fillColor('#000000')
+                .font(bodyFont).fontSize(bodyFontSize)
+                .text('Sub Total:', col4, totalsTop)
+                .text(`SGD ${subtotal.toFixed(2)}`, col5, totalsTop);
+
+            doc.fillColor('#000000')
+                .font(headerFont).fontSize(bodyFontSize)
+                .text('Total:', col4, totalsTop + 15)
+                .text(`SGD ${subtotal.toFixed(2)}`, col5, totalsTop + 15);
+
+            doc.fillColor('#000000')
+                .font(bodyFont).fontSize(bodyFontSize)
+                .text('Paid:', col4, totalsTop + 30)
+                .text(`SGD ${subtotal.toFixed(2)}`, col5, totalsTop + 30);
+
+            doc.end();
+
+            doc.on('end', () => {
+                resolve({ filePath, fileName });
+            });
+
+            doc.on('error', (error) => {
+                console.error('PDF generation error:', error);
+                reject(error);
+            });
+
+        } catch (error) {
+            console.error('Reschedule invoice generation error:', error);
+            reject(error);
+        }
+    });
+};
+
 module.exports = {
     generateInvoicePDF,
-    generateExtensionInvoicePDF
+    generateExtensionInvoicePDF,
+    generateRescheduleInvoicePDF
 };

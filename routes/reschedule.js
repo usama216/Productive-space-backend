@@ -1,6 +1,6 @@
 const express = require('express')
 const router = express.Router()
-const { rescheduleBooking, getAvailableSeatsForReschedule } = require('../controllers/rescheduleController')
+const { rescheduleBooking, getAvailableSeatsForReschedule, confirmReschedulePayment } = require('../controllers/rescheduleController')
 
 // Middleware to authenticate user (you may need to adjust this based on your auth setup)
 const authenticateUser = (req, res, next) => {
@@ -14,5 +14,8 @@ router.put('/booking/:bookingId', authenticateUser, rescheduleBooking)
 
 // Get available seats for reschedule
 router.get('/booking/:bookingId/available-seats', authenticateUser, getAvailableSeatsForReschedule)
+
+// Confirm reschedule payment
+router.post('/confirm-payment', authenticateUser, confirmReschedulePayment)
 
 module.exports = router

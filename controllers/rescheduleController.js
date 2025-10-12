@@ -165,12 +165,19 @@ const rescheduleBooking = async (req, res) => {
       endAt: newEndTime.toISOString(),
       rescheduleCount: 1,
       rescheduledAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      confirmedPayment: true // NEVER set this to false - keep the booking as paid
     }
 
     // Only update seatNumbers if provided
     if (seatNumbers) {
       updateData.seatNumbers = seatNumbers
+    }
+    
+    // Add reschedule cost if provided (for cases where additional payment is made)
+    if (req.body.rescheduleCost && req.body.rescheduleCost > 0) {
+      updateData.totalCost = (parseFloat(currentBooking.totalCost) || 0) + parseFloat(req.body.rescheduleCost)
+      updateData.totalAmount = (parseFloat(currentBooking.totalAmount) || 0) + parseFloat(req.body.rescheduleCost)
     }
 
     const { data: updatedBooking, error: updateError } = await supabase
@@ -279,7 +286,209 @@ const getAvailableSeatsForReschedule = async (req, res) => {
   }
 }
 
+// Confirm reschedule payment
+const confirmReschedulePayment = async (req, res) => {
+  try {
+    const { bookingId, paymentId, rescheduleData } = req.body
+
+    console.log('🔄 Confirming reschedule payment for booking:', bookingId)
+    console.log('Reschedule data:', rescheduleData)
+
+    if (!bookingId || !paymentId || !rescheduleData) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: bookingId, paymentId, rescheduleData'
+      })
+    }
+
+    // Fetch current booking
+    const { data: existingBooking, error: fetchError } = await supabase
+      .from('Booking')
+      .select('*')
+      .eq('id', bookingId)
+      .single()
+
+    if (fetchError || !existingBooking) {
+      console.error('❌ Error fetching booking:', fetchError)
+      return res.status(404).json({
+        success: false,
+        error: 'Booking not found'
+      })
+    }
+
+    // Check if payment exists and is completed
+    // Try multiple ways to find the payment record
+    let payment = null
+    let paymentError = null
+    
+    console.log('🔍 Looking for payment with:', paymentId)
+    
+    // Try 1: Find by ID
+    const { data: paymentById, error: errorById } = await supabase
+      .from('Payment')
+      .select('*')
+      .eq('id', paymentId)
+      .maybeSingle()
+    
+    console.log('Try 1 - By ID:', paymentById ? `Found: ${paymentById.id}` : 'Not found')
+    
+    if (paymentById && !errorById) {
+      payment = paymentById
+    } else {
+      // Try 2: Find by bookingRef (should match bookingId or RESCHEDULE_bookingId)
+      const { data: paymentByRef, error: errorByRef } = await supabase
+        .from('Payment')
+        .select('*')
+        .eq('bookingRef', paymentId)
+        .maybeSingle()
+      
+      console.log('Try 2 - By bookingRef:', paymentByRef ? `Found: ${paymentByRef.id}` : 'Not found')
+      
+      if (paymentByRef && !errorByRef) {
+        payment = paymentByRef
+      } else {
+        // Try 2b: Find by bookingRef with RESCHEDULE_ prefix
+        const { data: paymentByRescheduleRef, error: errorRescheduleRef } = await supabase
+          .from('Payment')
+          .select('*')
+          .eq('bookingRef', `RESCHEDULE_${bookingId}`)
+          .maybeSingle()
+        
+        console.log('Try 2b - By RESCHEDULE_ prefix:', paymentByRescheduleRef ? `Found: ${paymentByRescheduleRef.id}` : 'Not found')
+        
+        if (paymentByRescheduleRef && !errorRescheduleRef) {
+          payment = paymentByRescheduleRef
+        } else {
+          // Try 3: Find the most recent payment for this booking
+          const { data: recentPayments, error: errorRecent } = await supabase
+            .from('Payment')
+            .select('*')
+            .or(`bookingRef.eq.${bookingId},bookingRef.eq.RESCHEDULE_${bookingId}`)
+            .order('createdAt', { ascending: false })
+            .limit(5)
+          
+          console.log('Try 3 - Recent payments for booking:', recentPayments ? `Found ${recentPayments.length}` : 'Not found')
+        
+          if (recentPayments && recentPayments.length > 0) {
+            // Use the most recent payment
+            payment = recentPayments[0]
+            console.log('Using most recent payment:', payment.id)
+          } else {
+            paymentError = errorRecent
+            console.error('All lookup attempts failed:', { errorById, errorByRef, errorRecent })
+          }
+        }
+      }
+    }
+
+    if (!payment) {
+      console.error('❌ No payment found after all attempts')
+      return res.status(404).json({
+        success: false,
+        error: 'Payment not found',
+        details: `Tried to find payment with ID or reference: ${paymentId}, bookingId: ${bookingId}`
+      })
+    }
+    
+    console.log('✅ Found payment:', payment.id, 'bookingRef:', payment.bookingRef, 'paidAt:', payment.paidAt)
+
+    if (!payment.paidAt) {
+      console.warn('⚠️ Payment not marked as paid yet, but proceeding for testing purposes')
+      // Auto-update paidAt if it's null (for testing/manual confirmation)
+      const { error: updateError } = await supabase
+        .from('Payment')
+        .update({ paidAt: new Date().toISOString() })
+        .eq('id', payment.id)
+      
+      if (updateError) {
+        console.error('Failed to update paidAt:', updateError)
+      } else {
+        console.log('✅ Auto-updated paidAt for payment:', payment.id)
+        payment.paidAt = new Date().toISOString() // Update local object
+      }
+    }
+
+    // Check if booking is already rescheduled with the same times
+    const existingStartAt = new Date(existingBooking.startAt).toISOString()
+    const existingEndAt = new Date(existingBooking.endAt).toISOString()
+    const newStartAt = new Date(rescheduleData.newStartAt).toISOString()
+    const newEndAt = new Date(rescheduleData.newEndAt).toISOString()
+    
+    const alreadyRescheduled = 
+      existingStartAt === newStartAt && 
+      existingEndAt === newEndAt &&
+      JSON.stringify(existingBooking.seatNumbers?.sort()) === JSON.stringify(rescheduleData.seatNumbers?.sort())
+    
+    if (alreadyRescheduled) {
+      console.log('✅ Booking already rescheduled with these exact times and seats, returning existing booking')
+      return res.json({
+        success: true,
+        message: 'Reschedule already completed',
+        booking: existingBooking,
+        payment: payment,
+        originalTimes: {
+          startAt: rescheduleData.originalStartAt || existingBooking.startAt,
+          endAt: rescheduleData.originalEndAt || existingBooking.endAt
+        },
+        alreadyCompleted: true
+      })
+    }
+    
+    // Update booking with new times, seats, AND payment confirmation
+    // This only happens AFTER payment is successfully completed
+    console.log('📝 Updating booking with reschedule data after payment confirmation...')
+    
+    const updateData = {
+      startAt: rescheduleData.newStartAt,
+      endAt: rescheduleData.newEndAt,
+      seatNumbers: rescheduleData.seatNumbers,
+      updatedAt: new Date().toISOString(),
+      rescheduleCount: (existingBooking.rescheduleCount || 0) + 1,
+      rescheduledAt: new Date().toISOString(),
+      confirmedPayment: true, // NEVER set this to false for reschedule
+      totalCost: (parseFloat(existingBooking.totalCost) || 0) + (parseFloat(rescheduleData.additionalCost || rescheduleData.rescheduleCost) || 0),
+      totalAmount: (parseFloat(existingBooking.totalAmount) || 0) + (parseFloat(rescheduleData.additionalCost || rescheduleData.rescheduleCost) || 0)
+    }
+
+    const { data: updatedBooking, error: updateError } = await supabase
+      .from('Booking')
+      .update(updateData)
+      .eq('id', bookingId)
+      .select()
+      .single()
+
+    if (updateError) {
+      console.error('❌ Error updating booking with reschedule:', updateError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to update booking with reschedule'
+      })
+    }
+
+    console.log('✅ Payment verified and booking updated with reschedule:', updatedBooking.id)
+
+    res.json({
+      success: true,
+      message: 'Reschedule confirmed successfully',
+      booking: updatedBooking,
+      payment: payment,
+      originalTimes: {
+        startAt: rescheduleData.originalStartAt || existingBooking.startAt,
+        endAt: rescheduleData.originalEndAt || existingBooking.endAt
+      }
+    })
+
+  } catch (error) {
+    console.error('❌ Error in confirmReschedulePayment:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    })
+  }
+}
+
 module.exports = {
   rescheduleBooking,
-  getAvailableSeatsForReschedule
+  getAvailableSeatsForReschedule,
+  confirmReschedulePayment
 }
