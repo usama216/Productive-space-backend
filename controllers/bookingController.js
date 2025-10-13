@@ -2803,15 +2803,24 @@ exports.confirmExtensionPayment = async (req, res) => {
     }
 
     // Calculate total actual cost (original + all extensions)
-    const originalCost = parseFloat(existingBooking.totalCost) || 0
+    // The original cost should be totalAmount (which is the actual paid amount before extensions)
+    const existingExtensions = (existingBooking.extensionamounts || []).reduce((sum, amount) => sum + amount, 0);
+    const originalCost = parseFloat(existingBooking.totalAmount) || 0;
+    
     const totalExtensionCost = extensionAmounts.reduce((sum, amount) => sum + amount, 0)
     const totalActualCost = originalCost + totalExtensionCost
     
+    // Don't update totalCost with extension - keep it as the original booking cost
+    // totalCost should remain the original booking cost, not include extensions
+    
     console.log("Cost calculation:", {
       originalCost,
+      existingExtensions,
       extensionAmounts,
       totalExtensionCost,
-      totalActualCost
+      totalActualCost,
+      existingTotalCost: existingBooking.totalCost,
+      existingTotalActualCost: existingBooking.totalactualcost
     })
 
     // Update the booking with extension details and payment confirmation
@@ -2819,8 +2828,8 @@ exports.confirmExtensionPayment = async (req, res) => {
     const updateData = {
       endAt: extensionData.newEndAt,
       seatNumbers: extensionData.seatNumbers,
-      totalCost: (parseFloat(existingBooking.totalCost) || 0) + (parseFloat(extensionData.extensionCost) || 0),
-      totalAmount: (parseFloat(existingBooking.totalAmount) || 0) + (parseFloat(extensionData.extensionCost) || 0),
+      // Don't update totalCost - it should remain the original booking cost
+      // Don't update totalAmount - it should remain the original booking amount
       // If original booking was unpaid, mark as paid when extending
       confirmedPayment: existingBooking.confirmedPayment || true, // If false, make it true
       paymentId: paymentId, // Update paymentId to extension payment ID

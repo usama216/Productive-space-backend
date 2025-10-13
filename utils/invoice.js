@@ -413,7 +413,7 @@ try {
 };
 
 const generateExtensionInvoicePDF = (userData, bookingData, extensionInfo) => {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
         try {
             const doc = new PDFDocument({ margin: 50, size: 'A4' });
 
@@ -529,16 +529,18 @@ const generateExtensionInvoicePDF = (userData, bookingData, extensionInfo) => {
                 .fill();
 
             const extensionHours = extensionInfo.extensionHours || 0;
-            const ratePerHour = bookingData.memberType === 'STUDENT' ? 4.00 : 
-                               bookingData.memberType === 'TUTOR' ? 6.00 : 5.00;
             const extensionAmount = extensionInfo.extensionCost || 0;
+            
+            // Calculate per person rate for extension display
+            const totalPeople = (bookingData.members || 0) + (bookingData.tutors || 0) + (bookingData.students || 0);
+            const perPersonRate = totalPeople > 0 ? extensionAmount / totalPeople : 0;
 
             doc.fillColor('#000000')
                 .font(bodyFont).fontSize(bodyFontSize)
                 .text('1', col1 + 5, itemTop + 5)
                 .text(`Extension - ${bookingData.location}`, col2, itemTop + 5)
                 .text(`${extensionHours.toFixed(2)}`, col3, itemTop + 5)
-                .text(`$${ratePerHour.toFixed(2)}`, col4, itemTop + 5)
+                .text(`$${perPersonRate.toFixed(2)}`, col4, itemTop + 5)
                 .text(`$${extensionAmount.toFixed(2)}`, col5, itemTop + 5);
 
             // Role & Seat Information
