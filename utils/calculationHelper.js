@@ -94,6 +94,7 @@ function calculatePaymentDetails(bookingData) {
   const creditAmount = parseFloat(bookingData.creditAmount || 0);
   const paymentMethod = bookingData.paymentMethod || bookingData.paymentDetails?.paymentMethod;
   
+  
   const discount = discountAmount > 0 ? {
     originalAmount: originalAmount,
     discountAmount: discountAmount,

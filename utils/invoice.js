@@ -12,6 +12,8 @@ const supabase = createClient(
 // Function to get pricing configuration for a location and member type
 const getPricingConfig = async (location, memberType) => {
   try {
+    console.log('🔍 Fetching pricing config from DB:', { location, memberType });
+    
     const { data, error } = await supabase
       .from('pricing_configuration')
       .select('*')
@@ -20,7 +22,9 @@ const getPricingConfig = async (location, memberType) => {
       .eq('isActive', true)
       .single();
 
-    if (error || !data) {
+    if (error) {
+      console.error('❌ Error fetching pricing config:', error);
+      console.log('⚠️ Using default pricing as fallback');
       // Fallback to default pricing if not found
       const defaultPricing = {
         student: { oneHourRate: 4.00, overOneHourRate: 4.00 },
@@ -30,9 +34,20 @@ const getPricingConfig = async (location, memberType) => {
       return defaultPricing[memberType?.toLowerCase()] || defaultPricing.member;
     }
 
+    if (!data) {
+      console.log('⚠️ No data found in pricing_configuration table, using defaults');
+      const defaultPricing = {
+        student: { oneHourRate: 4.00, overOneHourRate: 4.00 },
+        member: { oneHourRate: 5.00, overOneHourRate: 5.00 },
+        tutor: { oneHourRate: 6.00, overOneHourRate: 6.00 }
+      };
+      return defaultPricing[memberType?.toLowerCase()] || defaultPricing.member;
+    }
+
+    console.log('✅ Found pricing config in DB:', data);
     return data;
   } catch (error) {
-    console.error('Error fetching pricing config:', error);
+    console.error('❌ Exception in getPricingConfig:', error);
     // Fallback to default pricing
     const defaultPricing = {
       student: { oneHourRate: 4.00, overOneHourRate: 4.00 },
@@ -123,7 +138,7 @@ try {
                 .text('#', 60, tableTop + 8)
                 .text('Location & Date/Time', 90, tableTop + 8)
                 .text('Hours', 380, tableTop + 8)
-                .text('Rate/Hr', 415, tableTop + 8)
+                .text('Rate', 415, tableTop + 8)
                 .text('Amount', 480, tableTop + 8);
 
             let currentY = tableTop + 30;
@@ -166,27 +181,37 @@ try {
             const { calculatePaymentDetails } = require('./calculationHelper');
             const paymentDetails = calculatePaymentDetails(bookingData);
             
-            // Calculate hourly rate using dynamic pricing: (Members × memberRate) + (Tutors × tutorRate) + (Students × studentRate)
+            // Dynamic pricing: Use the correct formula with dynamic rates from pricing_configuration table
             const members = bookingData.members || 0;
             const tutors = bookingData.tutors || 0;
             const students = bookingData.students || 0;
-            const location = bookingData.location || 'Kovan'; // Default location
+            const location = bookingData.location || 'Kovan';
             
-            // Get pricing configuration for each member type
-            const memberPricing = await getPricingConfig(location, 'member');
-            const tutorPricing = await getPricingConfig(location, 'tutor');
-            const studentPricing = await getPricingConfig(location, 'student');
+            let rate = 0;
             
-            // Determine which rate to use based on duration (1 hour vs over 1 hour)
-            const isOneHour = actualHours === 1;
-            const memberRate = isOneHour ? memberPricing.oneHourRate : memberPricing.overOneHourRate;
-            const tutorRate = isOneHour ? tutorPricing.oneHourRate : tutorPricing.overOneHourRate;
-            const studentRate = isOneHour ? studentPricing.oneHourRate : studentPricing.overOneHourRate;
+            if (members > 0 || tutors > 0 || students > 0) {
+                // Get dynamic pricing for each member type
+                const memberPricing = await getPricingConfig(location, 'MEMBER');
+                const tutorPricing = await getPricingConfig(location, 'TUTOR');
+                const studentPricing = await getPricingConfig(location, 'STUDENT');
+                
+                // Use oneHourRate for all calculations (as per your formula)
+                const memberRate = memberPricing.oneHourRate || 4.00;
+                const tutorRate = tutorPricing.oneHourRate || 5.00;
+                const studentRate = studentPricing.oneHourRate || 3.00;
+                
+                // Apply the formula: (Members × memberRate) + (Tutors × tutorRate) + (Students × studentRate)
+                rate = (members * memberRate) + (tutors * tutorRate) + (students * studentRate);
+            } else {
+                // Fallback: Use booking's memberType and pax
+                const memberType = bookingData.memberType || 'MEMBER';
+                const pax = bookingData.pax || 1;
+                const pricing = await getPricingConfig(location, memberType);
+                rate = pax * (pricing.oneHourRate || 4.00);
+            }
             
-            // Apply the formula: (Members × memberRate) + (Tutors × tutorRate) + (Students × studentRate)
-            const hourlyRate = (members * memberRate) + (tutors * tutorRate) + (students * studentRate);
-            const rate = hourlyRate || 10; // Fallback to $10 if no roles specified
-            const amount = rate * actualHours; // Calculate amount using the new rate formula
+            // Use the original amount from payment details
+            const amount = paymentDetails.originalAmount;
 
             doc.fillColor('#000000').font(bodyFont).fontSize(bodyFontSize)
                 .text('1', 60, currentY + 10)
@@ -494,7 +519,7 @@ const generateExtensionInvoicePDF = (userData, bookingData, extensionInfo) => {
                 .text('#', col1 + 5, tableTop + 5)
                 .text('Description', col2, tableTop + 5)
                 .text('Hours', col3, tableTop + 5)
-                .text('Rate/Hr', col4, tableTop + 5)
+                .text('Rate', col4, tableTop + 5)
                 .text('Amount', col5, tableTop + 5);
 
             // Extension item row
@@ -686,7 +711,7 @@ const generateRescheduleInvoicePDF = (userData, bookingData, rescheduleInfo) => 
                 .text('#', col1 + 5, tableTop + 5)
                 .text('Description', col2, tableTop + 5)
                 .text('Hours', col3, tableTop + 5)
-                .text('Rate/Hr', col4, tableTop + 5)
+                .text('Rate', col4, tableTop + 5)
                 .text('Amount', col5, tableTop + 5);
 
             // Reschedule item row

@@ -64,12 +64,14 @@ exports.createPayment = async (req, res) => {
 
     const response = await hitpayClient.post("/v1/payment-requests", payload);
     
-    // Determine payment method type
-    let paymentMethod = "BOOKING";
-    if (isExtension) {
-      paymentMethod = "EXTENSION";
-    } else if (isReschedule) {
-      paymentMethod = "RESCHEDULE";
+    // Determine payment method based on selected payment methods
+    let paymentMethod = "paynow_online"; // Default
+    
+    // Check if credit card is in the payment methods array
+    if (payment_methods.includes("credit_card") || payment_methods.includes("card")) {
+      paymentMethod = "credit_card";
+    } else if (payment_methods.includes("paynow_online")) {
+      paymentMethod = "paynow_online";
     }
 
     const { data: paymentData, error: paymentError } = await supabase
