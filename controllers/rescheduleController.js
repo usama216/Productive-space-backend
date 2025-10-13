@@ -1,4 +1,5 @@
 const { createClient } = require('@supabase/supabase-js')
+const { sendRescheduleConfirmation } = require('../utils/email')
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -14,6 +15,7 @@ const rescheduleBooking = async (req, res) => {
     const userId = req.user?.id
 
     console.log('🔄 Starting reschedule process for booking:', bookingId)
+    console.log('📥 Request body:', JSON.stringify(req.body, null, 2))
 
     // Validate required fields
     if (!startAt || !endAt) {
@@ -466,6 +468,35 @@ const confirmReschedulePayment = async (req, res) => {
     }
 
     console.log('✅ Payment verified and booking updated with reschedule:', updatedBooking.id)
+
+    // Send reschedule confirmation email and PDF
+    try {
+      const userData = {
+        name: updatedBooking.bookedForEmails?.[0]?.split('@')[0] || 'Customer',
+        email: updatedBooking.bookedForEmails?.[0] || 'customer@example.com',
+        firstName: updatedBooking.bookedForEmails?.[0]?.split('@')[0] || 'Customer'
+      };
+
+      const rescheduleInfo = {
+        originalStartAt: rescheduleData.originalStartAt || existingBooking.startAt,
+        originalEndAt: rescheduleData.originalEndAt || existingBooking.endAt,
+        newStartAt: rescheduleData.newStartAt,
+        newEndAt: rescheduleData.newEndAt,
+        additionalCost: rescheduleData.additionalCost || rescheduleData.rescheduleCost || 0,
+        additionalHours: rescheduleData.additionalHours || 0,
+        originalDate: new Date(rescheduleData.originalStartAt || existingBooking.startAt).toLocaleDateString('en-SG'),
+        originalTime: `${new Date(rescheduleData.originalStartAt || existingBooking.startAt).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: true })} - ${new Date(rescheduleData.originalEndAt || existingBooking.endAt).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: true })}`,
+        newDate: new Date(rescheduleData.newStartAt).toLocaleDateString('en-SG'),
+        newTime: `${new Date(rescheduleData.newStartAt).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: true })} - ${new Date(rescheduleData.newEndAt).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: true })}`
+      };
+
+      console.log('📧 Sending reschedule confirmation email...');
+      await sendRescheduleConfirmation(userData, updatedBooking, rescheduleInfo);
+      console.log('✅ Reschedule confirmation email sent successfully!');
+    } catch (emailError) {
+      console.error('❌ Error sending reschedule confirmation email:', emailError);
+      // Don't fail the entire request if email fails
+    }
 
     res.json({
       success: true,

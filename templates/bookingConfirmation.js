@@ -305,8 +305,92 @@ const extensionConfirmationTemplate = (userData, bookingData, extensionInfo) => 
   `
 });
 
+const rescheduleConfirmationTemplate = (userData, bookingData, rescheduleInfo) => ({
+  subject: `Booking Rescheduled - Ref #${bookingData.bookingRef || 'N/A'} - My Productive Space`,
+  html: `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Booking Reschedule Confirmation</title>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #ff6900 0%, #ff8533 100%); color: white; padding: 6px 20px; text-align: center; border-radius: 10px 10px 0 0; }
+        .logo-container { text-align: center; margin-bottom: 20px; }
+        .logo { max-width: 220px; height: auto; border-radius: 0px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+        .booking-details { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #ff6900; }
+        .reschedule-highlight { background: #e8f5e8; padding: 15px; margin: 15px 0; border-radius: 5px; border-left: 4px solid #28a745; }
+        .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
+        .button { display: inline-block; background: #ff6900; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 10px 0; }
+        .highlight { color: #ff6900; font-weight: bold; }
+        .section { margin: 20px 0; }
+        .time-comparison { display: flex; justify-content: space-between; margin: 15px 0; }
+        .original-time { background: #f8f9fa; padding: 10px; border-radius: 5px; flex: 1; margin-right: 10px; }
+        .new-time { background: #d4edda; padding: 10px; border-radius: 5px; flex: 1; margin-left: 10px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <div class="logo-container">
+            <img src="cid:logo" alt="My Productive Space Logo" class="logo">
+          </div>
+          <h3>✅ Booking Rescheduled Successfully!</h3>
+        </div>
+        
+        <div class="content">
+          <h2>Hello ${userData.firstName || "Guest"},</h2>
+          
+          <p>Your booking has been successfully rescheduled. Thank you for using My Productive Space!</p>
+          
+          <div class="reschedule-highlight">
+            <h3>📅 Reschedule Details</h3>
+            <div class="time-comparison">
+              <div class="original-time">
+                <h4>Original Booking</h4>
+                <p><strong>Date:</strong> ${rescheduleInfo.originalDate || 'N/A'}</p>
+                <p><strong>Time:</strong> ${rescheduleInfo.originalTime || 'N/A'}</p>
+              </div>
+              <div class="new-time">
+                <h4>New Booking</h4>
+                <p><strong>Date:</strong> ${rescheduleInfo.newDate || 'N/A'}</p>
+                <p><strong>Time:</strong> ${rescheduleInfo.newTime || 'N/A'}</p>
+              </div>
+            </div>
+            <p><strong>Additional Cost:</strong> $${rescheduleInfo.additionalCost || 0}</p>
+            <p><strong>Seats:</strong> ${bookingData.seatNumbers?.join(', ') || 'N/A'}</p>
+          </div>
+          
+          <div class="booking-details">
+            <h3>📋 Booking Summary</h3>
+            <p><strong>Reference:</strong> ${bookingData.bookingRef || 'N/A'}</p>
+            <p><strong>Location:</strong> ${bookingData.location || 'N/A'}</p>
+            <p><strong>Total Cost:</strong> $${bookingData.totalCost || 0}</p>
+            <p><strong>Reschedule Count:</strong> ${bookingData.rescheduleCount || 0}</p>
+          </div>
+          
+          <div class="section">
+            <p>If you have any questions about your rescheduled booking, please don't hesitate to contact us.</p>
+            <p>Thank you for choosing My Productive Space!</p>
+          </div>
+        </div>
+        
+        <div class="footer">
+          <p>© 2025 My Productive Space. All rights reserved.</p>
+          <p>This email was sent to ${userData.email || userData.name || "you"}</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `
+});
+
 module.exports = {
   paymentConfirmationTemplate,
   bookingConfirmationTemplate,
-  extensionConfirmationTemplate
+  extensionConfirmationTemplate,
+  rescheduleConfirmationTemplate
 };
