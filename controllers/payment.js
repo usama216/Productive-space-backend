@@ -165,6 +165,7 @@ exports.handleWebhook = async (req, res) => {
     const isPackagePayment = event.reference_number.startsWith('PKG_');
     const isBookingPayment = event.reference_number.startsWith('ORD_') || event.reference_number.startsWith('BOOK_');
     const isReschedulePayment = event.reference_number.startsWith('RESCHEDULE_');
+    const isExtensionPayment = event.reference_number.startsWith('EXTEND_');
 
     if (event.status === 'completed') {
       if (isPackagePayment) {
@@ -173,6 +174,8 @@ exports.handleWebhook = async (req, res) => {
         await handleBookingPaymentCompletion(event, paymentDetails);
       } else if (isReschedulePayment) {
         await handleReschedulePaymentCompletion(event, paymentDetails);
+      } else if (isExtensionPayment) {
+        await handleExtensionPaymentCompletion(event, paymentDetails);
       } else {
         console.log("Unknown payment type for reference:", event.reference_number);
       }
@@ -420,6 +423,36 @@ async function handleReschedulePaymentCompletion(event, paymentDetails) {
     
   } catch (error) {
     console.error("Error in handleReschedulePaymentCompletion:", error);
+    throw error;
+  }
+}
+
+async function handleExtensionPaymentCompletion(event, paymentDetails) {
+  try {
+    console.log("Processing extension payment completion:", event.reference_number);
+    
+    // Update payment record using bookingRef (which is the HitPay reference number)
+    const { error: paymentUpdateError } = await supabase
+      .from('Payment')
+      .update({
+        paidAt: new Date(),
+        paymentMethod: event.payment_method || paymentDetails?.payment_methods?.[0] || "Online",
+        updatedAt: new Date()
+      })
+      .eq('bookingRef', event.reference_number);
+
+    if (paymentUpdateError) {
+      console.error("Extension payment update error:", paymentUpdateError);
+    } else {
+      console.log("✅ Extension payment marked as paid:", event.reference_number);
+    }
+
+    // The actual extension logic (booking update and email) will be handled by confirmExtensionPayment
+    // when the user returns to the frontend after payment
+    console.log("Extension payment completed successfully:", event.reference_number);
+    
+  } catch (error) {
+    console.error("Error in handleExtensionPaymentCompletion:", error);
     throw error;
   }
 }

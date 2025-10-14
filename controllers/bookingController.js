@@ -2903,7 +2903,8 @@ exports.confirmExtensionPayment = async (req, res) => {
           extensionHours: extensionData.extensionHours,
           extensionCost: extensionData.extensionCost,
           originalEndAt: extensionData.originalEndAt || formattedOriginalEndTime,
-          creditAmount: creditAmount || 0 // Include credit amount used
+          creditAmount: creditAmount || 0, // Include credit amount used
+          paymentMethod: updatedBooking.paymentMethod || 'unknown' // Include payment method for card fee calculation
         });
         console.log("✅ Extension confirmation email sent successfully");
       }
@@ -2929,8 +2930,8 @@ exports.confirmExtensionPayment = async (req, res) => {
       updatedBooking.updatedAt = updatedBooking.updatedAt + 'Z';
     }
 
-    // Also format originalEndTime
-    let formattedOriginalEndTime = existingBooking.endAt;
+    // Also format originalEndTime (use from extensionData.originalEndAt if available, otherwise existingBooking.endAt)
+    let formattedOriginalEndTime = extensionData.originalEndAt || existingBooking.endAt;
     if (formattedOriginalEndTime && !formattedOriginalEndTime.endsWith('Z')) {
       formattedOriginalEndTime = formattedOriginalEndTime + 'Z';
     }
