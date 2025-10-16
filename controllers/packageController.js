@@ -274,6 +274,16 @@ exports.createPackagePaymentRequest = async (req, res) => {
 
     const referenceNumber = `PKG_${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
+    // Sanitize phone number: remove all non-numeric characters except leading +
+    // and limit to 15 characters to comply with HitPay API requirements
+    let sanitizedPhone = "";
+    if (customerInfo.phone) {
+      sanitizedPhone = customerInfo.phone.replace(/[\s\(\)\-]/g, '');
+      if (sanitizedPhone.length > 15) {
+        sanitizedPhone = sanitizedPhone.substring(0, 15);
+      }
+    }
+
      const paymentRequest = {
        amount: parseFloat(amount).toFixed(2),
        currency: "SGD",
@@ -285,7 +295,7 @@ exports.createPackagePaymentRequest = async (req, res) => {
        redirect_url: redirectUrl,
        webhook: webhookUrl,
        payment_methods: [paymentMethod],
-       phone: customerInfo.phone,
+       phone: sanitizedPhone,
        send_email: true,
        send_sms: false,
        allow_repeated_payments: false,

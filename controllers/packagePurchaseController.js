@@ -112,6 +112,16 @@ exports.initiatePackagePurchase = async (req, res) => {
     const frontendUrl = process.env.FRONTEND_URL || 'https://testmps.com';
     const backendUrl = process.env.BACKEND_URL || 'https://testmps.com';
     
+    // Sanitize phone number: remove all non-numeric characters except leading +
+    // and limit to 15 characters to comply with HitPay API requirements
+    let sanitizedPhone = "";
+    if (customerInfo.phone) {
+      sanitizedPhone = customerInfo.phone.replace(/[\s\(\)\-]/g, '');
+      if (sanitizedPhone.length > 15) {
+        sanitizedPhone = sanitizedPhone.substring(0, 15);
+      }
+    }
+    
     const paymentRequest = {
       amount: totalAmount.toFixed(2),
       currency: "SGD",
@@ -122,7 +132,7 @@ exports.initiatePackagePurchase = async (req, res) => {
       redirect_url: `${frontendUrl}/payment/success?orderId=${orderId}`,
       webhook: `${backendUrl}/api/packages/webhook`,
       payment_methods: [paymentMethod],
-      phone: customerInfo.phone,
+      phone: sanitizedPhone,
       send_email: true,
       send_sms: false,
       allow_repeated_payments: false,

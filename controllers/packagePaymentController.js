@@ -30,6 +30,18 @@ exports.createPackagePayment = async (req, res) => {
       });
     }
 
+    // Sanitize phone number: remove all non-numeric characters except leading +
+    // and limit to 15 characters to comply with HitPay API requirements
+    let sanitizedPhone = "";
+    if (customerInfo.phone) {
+      // Remove spaces, parentheses, dashes, and other formatting characters
+      sanitizedPhone = customerInfo.phone.replace(/[\s\(\)\-]/g, '');
+      // Limit to 15 characters
+      if (sanitizedPhone.length > 15) {
+        sanitizedPhone = sanitizedPhone.substring(0, 15);
+      }
+    }
+
     const payload = {
       amount: parseFloat(amount),
       currency: "SGD",
@@ -40,7 +52,7 @@ exports.createPackagePayment = async (req, res) => {
       redirect_url: redirectUrl,
       webhook: "https://productive-space-backend.vercel.app/api/payment/webhook",
       payment_methods: [paymentMethod],
-      phone: customerInfo.phone || "",
+      phone: sanitizedPhone,
       send_email: false,
       send_sms: false,
       allow_repeated_payments: false
