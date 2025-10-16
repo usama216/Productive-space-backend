@@ -477,13 +477,20 @@ const confirmReschedulePayment = async (req, res) => {
         firstName: updatedBooking.bookedForEmails?.[0]?.split('@')[0] || 'Customer'
       };
 
+      // Calculate additional hours if not provided
+      const originalDuration = (new Date(rescheduleData.originalEndAt || existingBooking.endAt).getTime() - 
+                               new Date(rescheduleData.originalStartAt || existingBooking.startAt).getTime()) / (1000 * 60 * 60);
+      const newDuration = (new Date(rescheduleData.newEndAt).getTime() - 
+                          new Date(rescheduleData.newStartAt).getTime()) / (1000 * 60 * 60);
+      const calculatedAdditionalHours = newDuration - originalDuration;
+
       const rescheduleInfo = {
         originalStartAt: rescheduleData.originalStartAt || existingBooking.startAt,
         originalEndAt: rescheduleData.originalEndAt || existingBooking.endAt,
         newStartAt: rescheduleData.newStartAt,
         newEndAt: rescheduleData.newEndAt,
         additionalCost: rescheduleData.additionalCost || rescheduleData.rescheduleCost || 0,
-        additionalHours: rescheduleData.additionalHours || 0,
+        additionalHours: rescheduleData.additionalHours || calculatedAdditionalHours || 0,
         originalDate: new Date(rescheduleData.originalStartAt || existingBooking.startAt).toLocaleDateString('en-SG'),
         originalTime: `${new Date(rescheduleData.originalStartAt || existingBooking.startAt).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: true })} - ${new Date(rescheduleData.originalEndAt || existingBooking.endAt).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: true })}`,
         newDate: new Date(rescheduleData.newStartAt).toLocaleDateString('en-SG'),
