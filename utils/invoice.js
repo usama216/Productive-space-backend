@@ -561,6 +561,26 @@ const generateExtensionInvoicePDF = (userData, bookingData, extensionInfo) => {
                 .text(`Total: ${bookingData.pax || 1} ${memberTypeText}`, 60, roleTop + 20)
                 .text(`Assigned Seats: ${(bookingData.seatNumbers || []).join(', ') || 'N/A'}`, 60, roleTop + 35);
 
+            // Discounts & Credits Applied Section
+            const discountsTop = roleTop + 55;
+            
+            // Check if any credits were applied
+            const hasCreditsApplied = extensionInfo.creditAmount && extensionInfo.creditAmount > 0;
+            
+            if (hasCreditsApplied) {
+                doc.fillColor('#000000')
+                    .font(headerFont).fontSize(bodyFontSize)
+                    .text('Discounts & Credits Applied', 60, discountsTop);
+                  
+                doc.font(bodyFont).fontSize(8)
+                    .fillColor('#666666')
+                    .text('All Discounts, Pass, Credits applied are not refundable.', 60, discountsTop + 15);
+                doc.fillColor('#000000'); // Reset to black
+               
+                doc.font(bodyFont).fontSize(bodyFontSize)
+                    .text(`Credits Applied: SGD ${(parseFloat(extensionInfo.creditAmount) || 0).toFixed(2)}`, 60, discountsTop + 35);
+            }
+
             // Totals section
             const totalsTop = roleTop + 80;
             const subtotal = extensionAmount;
