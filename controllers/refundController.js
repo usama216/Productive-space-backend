@@ -12,7 +12,7 @@ const requestRefund = async (req, res) => {
     console.log('🔍 Fetching booking data from database...');
     const { data: booking, error: bookingError } = await supabase
       .from('Booking')
-      .select('id, userId, totalAmount, confirmedPayment, refundstatus')
+      .select('id, userId, totalAmount, confirmedPayment, refundstatus, paymentId, bookingRef')
       .eq('id', bookingid)
       .single();
 
@@ -22,6 +22,82 @@ const requestRefund = async (req, res) => {
     }
 
     console.log('📊 Retrieved booking data:', booking);
+
+    // Fetch the actual paid amount from Payment table (excludes packages, promo codes, credits)
+    console.log('🔍 Fetching actual paid amount from Payment table...');
+    let actualPaidAmount = 0;
+    
+    if (booking.paymentId) {
+      // Try to get payment by paymentId first
+      const { data: payment, error: paymentError } = await supabase
+        .from('Payment')
+        .select('totalAmount, cost')
+        .eq('id', booking.paymentId)
+        .single();
+
+      if (payment && !paymentError) {
+        actualPaidAmount = parseFloat(payment.totalAmount) || parseFloat(payment.cost) || 0;
+        console.log('📊 Actual paid amount from Payment table (by paymentId):', actualPaidAmount);
+      } else {
+        console.log('⚠️ Payment not found by paymentId, trying by bookingRef...');
+        
+        // Fallback: try to get payment by bookingRef
+        const { data: paymentByRef, error: paymentByRefError } = await supabase
+          .from('Payment')
+          .select('totalAmount, cost')
+          .eq('bookingRef', booking.bookingRef)
+          .single();
+
+        if (paymentByRef && !paymentByRefError) {
+          actualPaidAmount = parseFloat(paymentByRef.totalAmount) || parseFloat(paymentByRef.cost) || 0;
+          console.log('📊 Actual paid amount from Payment table (by bookingRef):', actualPaidAmount);
+        } else {
+          console.log('⚠️ Payment not found by bookingRef either, using booking totalAmount as fallback');
+          actualPaidAmount = parseFloat(booking.totalAmount) || 0;
+        }
+      }
+    } else {
+      console.log('⚠️ No paymentId found, using booking totalAmount as fallback');
+      actualPaidAmount = parseFloat(booking.totalAmount) || 0;
+    }
+
+    console.log('💰 Final actual paid amount for refund:', actualPaidAmount);
+
+    // Check if payment was made by card and deduct 5% fee from refund amount
+    let finalRefundAmount = actualPaidAmount;
+    
+    if (booking.paymentId) {
+      // Get payment method to check if it was card payment
+      const { data: paymentMethod, error: paymentMethodError } = await supabase
+        .from('Payment')
+        .select('paymentMethod, totalAmount')
+        .eq('id', booking.paymentId)
+        .single();
+
+      if (paymentMethod && !paymentMethodError) {
+        const isCardPayment = paymentMethod.paymentMethod && 
+          (paymentMethod.paymentMethod.toLowerCase().includes('card') || 
+           paymentMethod.paymentMethod.toLowerCase().includes('credit'));
+        
+        if (isCardPayment) {
+          // Calculate original amount before 5% card fee
+          // If totalAmount includes 5% fee, then original amount = totalAmount / 1.05
+          const originalAmount = actualPaidAmount / 1.05;
+          finalRefundAmount = originalAmount;
+          
+          console.log('💳 Card payment detected - deducting 5% fee:', {
+            paidAmount: actualPaidAmount,
+            originalAmount: originalAmount,
+            cardFee: actualPaidAmount - originalAmount,
+            finalRefundAmount: finalRefundAmount
+          });
+        } else {
+          console.log('💳 Non-card payment - no fee deduction needed');
+        }
+      }
+    }
+
+    console.log('💰 Final refund amount after fee deduction:', finalRefundAmount);
 
     // Verify the booking belongs to the requesting user
     if (booking.userId !== userid) {
@@ -69,8 +145,8 @@ const requestRefund = async (req, res) => {
       .insert({
         userid: userid,
         bookingid: bookingid,
-        refundamount: parseFloat(booking.totalAmount),
-        creditamount: parseFloat(booking.totalAmount),
+        refundamount: finalRefundAmount,
+        creditamount: finalRefundAmount,
         refundreason: reason,
         refundstatus: 'REQUESTED'
       })
@@ -94,7 +170,7 @@ const requestRefund = async (req, res) => {
     // Create user credit
     console.log('🔄 Creating user credit:', {
       userid: userid,
-      amount: parseFloat(booking.totalAmount),
+      amount: finalRefundAmount,
       refundedfrombookingid: bookingid,
       expiresat: expiresat.toISOString()
     });
@@ -103,7 +179,7 @@ const requestRefund = async (req, res) => {
       .from('usercredits')
       .insert({
         userid: userid,
-        amount: parseFloat(booking.totalAmount),
+        amount: finalRefundAmount,
         refundedfrombookingid: bookingid,
         expiresat: expiresat.toISOString()
       })
@@ -168,7 +244,7 @@ const requestRefund = async (req, res) => {
       message: 'Refund approved successfully', 
       bookingid,
       creditid: credit.id,
-      creditamount: parseFloat(booking.totalAmount),
+      creditamount: finalRefundAmount,
       expiresat: expiresat.toISOString()
     });
   } catch (error) {

@@ -1294,6 +1294,56 @@ exports.getUserBookings = async (req, res) => {
   }
 };
 
+// Get booking payment details for refund calculation
+exports.getBookingPaymentDetails = async (req, res) => {
+  try {
+    const { bookingId } = req.body;
+
+    if (!bookingId) {
+      return res.status(400).json({ error: 'Booking ID is required' });
+    }
+
+    // Get booking details
+    const { data: booking, error: bookingError } = await supabase
+      .from('Booking')
+      .select('id, totalAmount, paymentId, bookingRef')
+      .eq('id', bookingId)
+      .single();
+
+    if (bookingError || !booking) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+
+    let paymentAmount = parseFloat(booking.totalAmount) || 0;
+    let paymentMethod = 'Unknown';
+
+    // Get payment details if paymentId exists
+    if (booking.paymentId) {
+      const { data: payment, error: paymentError } = await supabase
+        .from('Payment')
+        .select('totalAmount, cost, paymentMethod')
+        .eq('id', booking.paymentId)
+        .single();
+
+      if (payment && !paymentError) {
+        paymentAmount = parseFloat(payment.totalAmount) || parseFloat(payment.cost) || 0;
+        paymentMethod = payment.paymentMethod || 'Unknown';
+      }
+    }
+
+    res.json({
+      bookingId: booking.id,
+      paymentAmount: paymentAmount,
+      paymentMethod: paymentMethod,
+      bookingRef: booking.bookingRef
+    });
+
+  } catch (error) {
+    console.error('Error getting booking payment details:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 exports.getUserBookingAnalytics = async (req, res) => {
   try {
     const { userId } = req.body;
