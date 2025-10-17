@@ -2,6 +2,7 @@ const PDFDocument = require('pdfkit');
 const fs = require("fs");
 const path = require("path");
 const { createClient } = require('@supabase/supabase-js');
+const { formatForInvoice, getCurrentSingaporeDateTime } = require('./timezoneUtils');
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -114,17 +115,12 @@ try {
                 .text(`# ${invoiceNumber}`, 400, 85);
 
           
-            const currentDate = new Date().toLocaleDateString('en-SG', { timeZone: 'Asia/Singapore' });
-            const currentTime = new Date().toLocaleTimeString('en-SG', { 
-                timeZone: 'Asia/Singapore',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
+            const currentDateTime = getCurrentSingaporeDateTime();
             
             doc.fillColor('#000000').font(bodyFont).fontSize(bodyFontSize)
-                .text('Invoice Date:', 400, 170).text(currentDate, 480, 170)
-                .text('Invoice Time:', 400, 185).text(currentTime, 480, 185)
-                .text('Due Date:', 400, 200).text(currentDate, 480, 200);
+                .text('Invoice Date:', 400, 170).text(currentDateTime.date, 480, 170)
+                .text('Invoice Time:', 400, 185).text(currentDateTime.time, 480, 185)
+                .text('Due Date:', 400, 200).text(currentDateTime.date, 480, 200);
 
             // Bill To section with proper alignment
             doc.font(headerFont).fontSize(sectionHeaderFontSize)
@@ -144,27 +140,12 @@ try {
             let currentY = tableTop + 30;
             doc.rect(50, currentY, 500, 30).fill('#F8F9FA').stroke();
 
-            const startDate = bookingData.startAt ? new Date(bookingData.startAt) : new Date();
-            const endDate = bookingData.endAt ? new Date(bookingData.endAt) : new Date();
-            
-            const startDateSGT = startDate.toLocaleDateString('en-SG', { 
-                timeZone: 'Asia/Singapore',
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-            });
-            const startTimeSGT = startDate.toLocaleTimeString('en-SG', { 
-                timeZone: 'Asia/Singapore',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-            const endTimeSGT = endDate.toLocaleTimeString('en-SG', { 
-                timeZone: 'Asia/Singapore',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
+            const startFormatted = formatForInvoice(bookingData.startAt);
+            const endFormatted = formatForInvoice(bookingData.endAt);
             
             // Calculate actual hours (no rounding - exact time difference)
+            const startDate = bookingData.startAt ? new Date(bookingData.startAt) : new Date();
+            const endDate = bookingData.endAt ? new Date(bookingData.endAt) : new Date();
             const actualHours = bookingData.endAt ?
                 ((endDate - startDate) / (1000 * 60 * 60)) : 1;
             
@@ -174,8 +155,8 @@ try {
                 `${actualHours.toFixed(2)}`;
 
             let description = bookingData.location ?
-                `${bookingData.location} - ${startDateSGT} (${startTimeSGT} - ${endTimeSGT})` :
-                `Workspace Booking - ${startDateSGT} (${startTimeSGT} - ${endTimeSGT})`;
+                `${bookingData.location} - ${startFormatted.date} (${startFormatted.time} - ${endFormatted.time})` :
+                `Workspace Booking - ${startFormatted.date} (${startFormatted.time} - ${endFormatted.time})`;
 
             // Calculate payment details to get the subtotal (before fees and discounts)
             const { calculatePaymentDetails } = require('./calculationHelper');
@@ -476,21 +457,11 @@ const generateExtensionInvoicePDF = (userData, bookingData, extensionInfo) => {
             const newEndDate = new Date(bookingData.endAt);
             
             const formatDate = (date) => {
-                return date.toLocaleDateString('en-SG', {
-                    timeZone: 'Asia/Singapore',
-                    day: '2-digit',
-                    month: 'short',
-                    year: 'numeric'
-                });
+                return formatForInvoice(date).date;
             };
 
             const formatTime = (date) => {
-                return date.toLocaleTimeString('en-SG', {
-                    timeZone: 'Asia/Singapore',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: true
-                });
+                return formatForInvoice(date).time;
             };
 
             // Extension summary
@@ -707,21 +678,11 @@ const generateRescheduleInvoicePDF = (userData, bookingData, rescheduleInfo) => 
             const newEndDate = new Date(rescheduleInfo.newEndAt);
             
             const formatDate = (date) => {
-                return date.toLocaleDateString('en-SG', {
-                    timeZone: 'Asia/Singapore',
-                    day: '2-digit',
-                    month: 'short',
-                    year: 'numeric'
-                });
+                return formatForInvoice(date).date;
             };
 
             const formatTime = (date) => {
-                return date.toLocaleTimeString('en-SG', {
-                    timeZone: 'Asia/Singapore',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: true
-                });
+                return formatForInvoice(date).time;
             };
 
             // Reschedule summary

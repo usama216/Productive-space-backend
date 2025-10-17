@@ -17,7 +17,13 @@ const transporter = nodemailer.createTransport({
 
 const sendEmail = async (to, templateFn, userData, bookingData) => {
   try {
+    console.log('📧 [DEBUG] Starting sendEmail...');
+    console.log('📧 [DEBUG] To:', to);
+    console.log('📧 [DEBUG] UserData:', userData);
+    console.log('📧 [DEBUG] BookingData:', bookingData);
+    
     const emailContent = templateFn(userData, bookingData);
+    console.log('📧 [DEBUG] Email content generated:', emailContent.subject);
 
     const mailOptions = {
       from: process.env.EMAIL_USER,
@@ -26,9 +32,12 @@ const sendEmail = async (to, templateFn, userData, bookingData) => {
       html: emailContent.html
     };
 
+    console.log('📧 [DEBUG] Sending email...');
     const info = await transporter.sendMail(mailOptions);
+    console.log('📧 [DEBUG] Email sent successfully:', info.messageId);
     return { success: true, messageId: info.messageId };
   } catch (error) {
+    console.error('📧 [DEBUG] Email error:', error.message);
     return { success: false, error: error.message };
   }
 };
@@ -39,9 +48,17 @@ const sendPaymentConfirmation = (userData, bookingData) => {
 
 const sendBookingConfirmation = async (userData, bookingData) => {
   try {
-    const { filePath, fileName } = await generateInvoicePDF(userData, bookingData);
+    console.log('📧 [DEBUG] Starting sendBookingConfirmation...');
+    console.log('📧 [DEBUG] UserData:', userData);
+    console.log('📧 [DEBUG] BookingData:', bookingData);
     
+    console.log('📧 [DEBUG] Generating invoice PDF...');
+    const { filePath, fileName } = await generateInvoicePDF(userData, bookingData);
+    console.log('📧 [DEBUG] PDF generated:', fileName);
+    
+    console.log('📧 [DEBUG] Creating email content...');
     const emailContent = bookingConfirmationTemplate(userData, bookingData);
+    console.log('📧 [DEBUG] Email content created:', emailContent.subject);
 
     const mailOptions = {
       from: process.env.EMAIL_USER,
@@ -49,13 +66,12 @@ const sendBookingConfirmation = async (userData, bookingData) => {
       subject: emailContent.subject,
       html: emailContent.html,
       attachments: [
-      
         {
           filename: fileName,
           path: filePath,
           contentType: 'application/pdf'
         },
-          {
+        {
           filename: 'logo.png',
           path: path.join(process.cwd(), 'public', 'logo.png'),
           cid: 'logo'
@@ -63,11 +79,14 @@ const sendBookingConfirmation = async (userData, bookingData) => {
       ]
     };
 
+    console.log('📧 [DEBUG] Sending booking confirmation email...');
     const info = await transporter.sendMail(mailOptions);
+    console.log('📧 [DEBUG] Booking confirmation email sent:', info.messageId);
     
     fs.unlinkSync(filePath);    
     return { success: true, messageId: info.messageId };
   } catch (error) {
+    console.error('📧 [DEBUG] Booking confirmation error:', error.message);
     return { success: false, error: error.message };
   }
 };
@@ -123,8 +142,7 @@ const sendPackageConfirmation = async (userData, packageData) => {
     
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error("❌ Error in sendPackageConfirmation:", error.message);
-    console.error("❌ Error stack:", error.stack);
+    console.error("❌ Error in sendPackageConfirmation:", error);
     return { success: false, error: error.message };
   }
 };
@@ -209,8 +227,7 @@ const sendExtensionConfirmation = async (userData, bookingData, extensionInfo) =
     
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error("❌ Error in sendExtensionConfirmation:", error.message);
-    console.error("❌ Error stack:", error.stack);
+    console.error("❌ Error in sendExtensionConfirmation:", error);
     return { success: false, error: error.message };
   }
 };
@@ -266,16 +283,15 @@ const sendRescheduleConfirmation = async (userData, bookingData, rescheduleInfo)
     
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error("❌ Error in sendRescheduleConfirmation:", error.message);
-    console.error("❌ Error stack:", error.stack);
+    console.error("❌ Error in sendRescheduleConfirmation:", error);
     return { success: false, error: error.message };
   }
 };
 
-module.exports = { 
-  sendEmail, 
-  sendBookingConfirmation,
+module.exports = {
+  sendEmail,
   sendPaymentConfirmation,
+  sendBookingConfirmation,
   sendPackageConfirmation,
   sendRefundConfirmation,
   sendExtensionConfirmation,

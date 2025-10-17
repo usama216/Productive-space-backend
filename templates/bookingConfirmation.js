@@ -1,4 +1,5 @@
 // templates/emailTemplates.js
+const { formatSingaporeDateTime, formatSingaporeDate, formatSingaporeTime, getCurrentSingaporeDateTime } = require('../utils/timezoneUtils');
 
 const paymentConfirmationTemplate = (userData, bookingData) => ({
   subject: `Payment Confirmed! Welcome to My Productive Space`,
@@ -35,8 +36,8 @@ const paymentConfirmationTemplate = (userData, bookingData) => ({
           <h3>📋 Payment Details</h3>
           <p><strong>Reference Number:</strong> ${bookingData.reference_number || 'N/A'}</p>
           <p><strong>Amount Paid:</strong> SGD ${bookingData.amount}</p>
-          <p><strong>Date:</strong> ${new Date().toLocaleDateString('en-SG')}</p>
-          <p><strong>Time:</strong> ${new Date().toLocaleTimeString('en-SG')}</p>
+          <p><strong>Date:</strong> ${getCurrentSingaporeDateTime().date}</p>
+          <p><strong>Time:</strong> ${getCurrentSingaporeDateTime().time}</p>
 
           <p>We look forward to seeing you 🎉</p>
         </div>
@@ -47,12 +48,21 @@ const paymentConfirmationTemplate = (userData, bookingData) => ({
       </div>
     </body>
     </html>
-  `
+`
 });
 
-const bookingConfirmationTemplate = (userData, bookingData) => ({
-  subject: `Booking Confirmed - Ref #${bookingData.bookingRef || 'N/A'} - Welcome to My Productive Space`,
-  html: `
+const bookingConfirmationTemplate = (userData, bookingData) => {
+  try {
+    console.log('📧 [DEBUG] Creating booking confirmation template...');
+    console.log('📧 [DEBUG] UserData:', userData);
+    console.log('📧 [DEBUG] BookingData:', bookingData);
+    
+    const subject = `Booking Confirmed - Ref #${bookingData.bookingRef || 'N/A'} - Welcome to My Productive Space`;
+    console.log('📧 [DEBUG] Subject:', subject);
+    
+    return {
+      subject,
+      html: `
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -91,49 +101,17 @@ const bookingConfirmationTemplate = (userData, bookingData) => ({
           <div class="booking-details">
             <h3>📋 Payment Details</h3>
             <p><strong>Reference Number:</strong> <span class="highlight">${bookingData.bookingRef || 'N/A'}</span></p>
-            
+            <p><strong>Amount Paid:</strong> <span class="highlight">SGD ${Number(bookingData.totalAmount).toFixed(2)}</span></p>
             ${(() => {
-              const { calculatePaymentDetails } = require('../utils/calculationHelper');
-              const paymentDetails = calculatePaymentDetails(bookingData);
-              
-              // Package and credit information will be displayed in email
-              
-              let displayPaymentMethod = 'Unknown';
-              if (bookingData.paymentMethod) {
-                  displayPaymentMethod = bookingData.paymentMethod;
-              } else if (bookingData.paymentDetails && bookingData.paymentDetails.paymentMethod) {
-                  displayPaymentMethod = bookingData.paymentDetails.paymentMethod;
-              }
-              
-              if (displayPaymentMethod === 'paynow_online') {
-                  displayPaymentMethod = 'Pay Now';
-              } else if (displayPaymentMethod === 'credit_card' || displayPaymentMethod === 'card') {
-                  displayPaymentMethod = 'Credit Card';
-              }
-              
+              const displayPaymentMethod = bookingData.paymentMethod || 'N/A';
               return `
-                <p><strong>Original Amount:</strong> <span class="highlight">SGD ${paymentDetails.originalAmount.toFixed(2)}</span></p>
-                ${paymentDetails.discount && paymentDetails.discount.discountAmount > 0 ? `
-                  <p><strong>Discount Applied:</strong> <span class="highlight">-SGD ${paymentDetails.discount.discountAmount.toFixed(2)}</span></p>
-                  ${paymentDetails.promoCodeId ? `<p><strong>Promo Code:</strong> <span class="highlight">${paymentDetails.promoCodeId}</span></p>` : ''}
-                ` : ''}
-                ${bookingData.packageDiscountAmount && bookingData.packageDiscountAmount > 0 ? `
-                  <p><strong>Package Applied:</strong> <span class="highlight">-SGD ${(parseFloat(bookingData.totalAmount) === 0 ? parseFloat(bookingData.totalCost) || 0 : parseFloat(bookingData.packageDiscountAmount) || 0).toFixed(2)}</span></p>
-                  ${bookingData.packageName ? `<p><strong>Package:</strong> <span class="highlight">${bookingData.packageName}</span></p>` : ''}
-                  ${bookingData.packageDiscountId ? `<p><strong>Package ID:</strong> <span class="highlight">${bookingData.packageDiscountId}</span></p>` : ''}
-                ` : ''}
-                ${bookingData.creditAmount && bookingData.creditAmount > 0 ? `
-                  <p><strong>Credits Applied:</strong> <span class="highlight">-SGD ${parseFloat(bookingData.creditAmount).toFixed(2)}</span></p>
-                ` : ''}
-                ${paymentDetails.isCardPayment ? `<p><strong>Card Processing Fee (5%):</strong> <span class="highlight">SGD ${paymentDetails.cardFee.toFixed(2)}</span></p>` : ''}
-                <p><strong>Total Amount Paid:</strong> <span class="highlight">SGD ${paymentDetails.finalTotal.toFixed(2)}</span></p>
                 <p><strong>Payment Method:</strong> <span class="highlight">${displayPaymentMethod}</span></p>
               `;
             })()}
             
             <p><strong>Payment ID:</strong> <span class="highlight">${bookingData.paymentId || 'N/A'}</span></p>
-            <p><strong>Date:</strong> <span class="highlight">${new Date().toLocaleDateString('en-SG', { timeZone: 'Asia/Singapore' })}</span></p>
-            <p><strong>Time:</strong> <span class="highlight">${new Date().toLocaleTimeString('en-SG', { timeZone: 'Asia/Singapore' })}</span></p>
+            <p><strong>Date:</strong> <span class="highlight">${getCurrentSingaporeDateTime().date}</span></p>
+            <p><strong>Time:</strong> <span class="highlight">${getCurrentSingaporeDateTime().time}</span></p>
           </div>
 
           ${bookingData.location || bookingData.startAt || bookingData.endAt || bookingData.seatNumbers || bookingData.pax ? `
@@ -141,24 +119,9 @@ const bookingConfirmationTemplate = (userData, bookingData) => ({
             <h3>🏢 Booking Details</h3>
             ${bookingData.location ? `<p><strong>Location:</strong> <span class="highlight">${bookingData.location}</span></p>` : ''}
             ${(() => {
-              const startAt = bookingData.startAt ? new Date(bookingData.startAt) : null;
-              const endAt = bookingData.endAt ? new Date(bookingData.endAt) : null;
-              
-              if (startAt && endAt) {
-                const startSGT = startAt.toLocaleString("en-SG", { 
-                  timeZone: "Asia/Singapore",
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  weekday: 'long'
-                });
-                const endSGT = endAt.toLocaleString("en-SG", { 
-                  timeZone: "Asia/Singapore",
-                  hour: '2-digit',
-                  minute: '2-digit'
-                });
+              if (bookingData.startAt && bookingData.endAt) {
+                const startSGT = formatSingaporeDateTime(bookingData.startAt);
+                const endSGT = formatSingaporeTime(bookingData.endAt);
                 
                 return `
                   <p><strong>Start Time:</strong> <span class="highlight">${startSGT}</span></p>
@@ -172,19 +135,20 @@ const bookingConfirmationTemplate = (userData, bookingData) => ({
             ${bookingData.specialRequests && bookingData.specialRequests !== "None" ? `<p><strong>Special Requests:</strong> <span class="highlight">${bookingData.specialRequests}</span></p>` : ''}
           </div>
           ` : ''}
-          
+
           <div class="section">
             <h3>What's Next?</h3>
             <ul>
-              <li>Check your email for additional booking details</li>
-              <li>Arrive 10 minutes before your scheduled time</li>
+              <li>Your booking is confirmed and ready to use</li>
+              <li>Please arrive on time for your scheduled session</li>
+              <li>Bring a valid ID for verification if required</li>
               <li>Enjoy your productive time at our space!</li>
             </ul>
           </div>
           
           <div class="section">
             <h3>📞 Need Help?</h3>
-            <p>If you have any questions or need to make changes to your booking, please don't hesitate to contact us:</p>
+            <p>If you have any questions or need assistance, please don't hesitate to contact us:</p>
             <ul>
               <li>📧 Email: myproductivespacecontact@gmail.com</li>
               <li>📱 WhatsApp: +65 89202462</li>
@@ -198,13 +162,21 @@ const bookingConfirmationTemplate = (userData, bookingData) => ({
         
         <div class="footer">
           <p>© 2025 My Productive Space. All rights reserved.</p>
-          <p>This email was sent to ${userData.email || userData.name || "you"}</p>
+          <p>This email was sent to ${userData.email || userData.firstName || "you"}</p>
         </div>
       </div>
     </body>
     </html>
   `
-});
+    };
+  } catch (error) {
+    console.error('📧 [DEBUG] Booking confirmation template error:', error.message);
+    return {
+      subject: 'Booking Confirmed - My Productive Space',
+      html: '<h1>Booking Confirmed</h1><p>Your booking has been confirmed.</p>'
+    };
+  }
+};
 
 const extensionConfirmationTemplate = (userData, bookingData, extensionInfo) => ({
   subject: `Booking Extended - Ref #${bookingData.bookingRef || 'N/A'} - My Productive Space`,
@@ -223,7 +195,6 @@ const extensionConfirmationTemplate = (userData, bookingData, extensionInfo) => 
         .logo { max-width: 220px; height: auto; border-radius: 0px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
         .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
         .booking-details { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #ff6900; }
-        .extension-highlight { background: #fff8e6; padding: 15px; margin: 15px 0; border-radius: 5px; border-left: 4px solid #ffc107; }
         .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
         .button { display: inline-block; background: #ff6900; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 10px 0; }
         .highlight { color: #ff6900; font-weight: bold; }
@@ -236,68 +207,37 @@ const extensionConfirmationTemplate = (userData, bookingData, extensionInfo) => 
           <div class="logo-container">
             <img src="cid:logo" alt="My Productive Space Logo" class="logo">
           </div>
-          <h3>✅ Booking Extended Successfully!</h3>
+          <h3>Booking Extended!</h3>
         </div>
         
         <div class="content">
-          <h2>Hello ${userData.firstName || "Guest"},</h2>
+          <h2>Hello ${userData.firstName || userData.lastName || "Guest"},</h2>
           
-          <p>Great news! Your booking has been successfully extended. Thank you for using My Productive Space!</p>
-          
-          <div class="extension-highlight">
-            <h3>⏰ Extension Details</h3>
-            <p><strong>Additional Hours:</strong> ${extensionInfo.extensionHours || 0} hour(s)</p>
-            <p><strong>Extension Cost:</strong> SGD ${parseFloat(extensionInfo.extensionCost || 0).toFixed(2)}</p>
-            ${extensionInfo.creditAmount && parseFloat(extensionInfo.creditAmount) > 0 ? 
-              `<p><strong>Credits Applied:</strong> <span style="color: green;">-SGD ${parseFloat(extensionInfo.creditAmount).toFixed(2)}</span></p>
-               <p><strong>Amount Paid:</strong> SGD ${(parseFloat(extensionInfo.extensionCost) - parseFloat(extensionInfo.creditAmount)).toFixed(2)}</p>` : 
-              `<p><strong>Amount Paid:</strong> SGD ${parseFloat(extensionInfo.extensionCost || 0).toFixed(2)}</p>`}
-            <p><strong>Original End Time:</strong> ${new Date(extensionInfo.originalEndAt).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })}</p>
-            <p><strong>New End Time:</strong> <span class="highlight">${new Date(bookingData.endAt).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })}</span></p>
-          </div>
+          <p>Your booking has been successfully extended! Thank you for choosing My Productive Space.</p>
           
           <div class="booking-details">
-            <h3>📋 Updated Booking Details</h3>
+            <h3>📋 Extension Details</h3>
             <p><strong>Reference Number:</strong> <span class="highlight">${bookingData.bookingRef || 'N/A'}</span></p>
-            <p><strong>Location:</strong> ${bookingData.location || 'N/A'}</p>
-            <p><strong>Start Time:</strong> ${new Date(bookingData.startAt).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })}</p>
-            <p><strong>End Time:</strong> ${new Date(bookingData.endAt).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })}</p>
-            ${bookingData.seatNumbers && bookingData.seatNumbers.length > 0 ? 
-              `<p><strong>Seat Numbers:</strong> ${bookingData.seatNumbers.join(', ')}</p>` : ''}
-            <p><strong>Number of People:</strong> ${bookingData.pax || 1}</p>
-            <p><strong>Total Amount Paid:</strong> SGD ${parseFloat(bookingData.totalAmount || 0).toFixed(2)}</p>
+            <p><strong>Location:</strong> <span class="highlight">${bookingData.location || 'N/A'}</span></p>
+            <p><strong>Extension Hours:</strong> <span class="highlight">${extensionInfo.extensionHours || 0} hours</span></p>
+            <p><strong>Additional Cost:</strong> <span class="highlight">SGD ${Number(extensionInfo.extensionCost || 0).toFixed(2)}</span></p>
+            <p><strong>New End Time:</strong> <span class="highlight">${formatSingaporeDateTime(extensionInfo.newEndAt)}</span></p>
           </div>
 
           <div class="section">
-            <h3>📄 Invoice</h3>
-            <p>Please find your updated invoice attached to this email for your records.</p>
-          </div>
-
-          <div class="section">
-            <h3>📍 Location Details</h3>
-            <p><strong>My Productive Space</strong></p>
-            <p>Blk 208 Hougang St 21 #01-201</p>
-            <p>Hougang 530208, Singapore</p>
-            <p>📞 Contact: 89202462</p>
-          </div>
-
-          <div class="section">
-            <h3>⚠️ Important Reminders</h3>
+            <h3>What's Next?</h3>
             <ul>
-              <li>Please arrive on time to make the most of your extended booking.</li>
-              <li>If you need further extensions, please contact us at least 30 minutes before your current end time.</li>
-              <li>Credits used for extensions are non-refundable.</li>
+              <li>Your extended booking is confirmed and ready to use</li>
+              <li>Please note the new end time for your session</li>
+              <li>Enjoy your extended productive time at our space!</li>
             </ul>
           </div>
-
-          <p style="margin-top: 30px;">If you have any questions or need assistance, please don't hesitate to contact us!</p>
           
-          <p>Thank you for choosing My Productive Space! 🎉</p>
+          <p><strong>Thank you for choosing My Productive Space!</strong></p>
         </div>
         
         <div class="footer">
           <p>© 2025 My Productive Space. All rights reserved.</p>
-          <p>📧 myproductivespacecontact@gmail.com | 📞 89202462</p>
         </div>
       </div>
     </body>
@@ -322,14 +262,10 @@ const rescheduleConfirmationTemplate = (userData, bookingData, rescheduleInfo) =
         .logo { max-width: 220px; height: auto; border-radius: 0px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
         .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
         .booking-details { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #ff6900; }
-        .reschedule-highlight { background: #e8f5e8; padding: 15px; margin: 15px 0; border-radius: 5px; border-left: 4px solid #28a745; }
         .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
         .button { display: inline-block; background: #ff6900; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 10px 0; }
         .highlight { color: #ff6900; font-weight: bold; }
         .section { margin: 20px 0; }
-        .time-comparison { display: flex; justify-content: space-between; margin: 15px 0; }
-        .original-time { background: #f8f9fa; padding: 10px; border-radius: 5px; flex: 1; margin-right: 10px; }
-        .new-time { background: #d4edda; padding: 10px; border-radius: 5px; flex: 1; margin-left: 10px; }
       </style>
     </head>
     <body>
@@ -338,49 +274,38 @@ const rescheduleConfirmationTemplate = (userData, bookingData, rescheduleInfo) =
           <div class="logo-container">
             <img src="cid:logo" alt="My Productive Space Logo" class="logo">
           </div>
-          <h3>✅ Booking Rescheduled Successfully!</h3>
+          <h3>Booking Rescheduled!</h3>
         </div>
         
         <div class="content">
-          <h2>Hello ${userData.firstName || "Guest"},</h2>
+          <h2>Hello ${userData.firstName || userData.lastName || "Guest"},</h2>
           
-          <p>Your booking has been successfully rescheduled. Thank you for using My Productive Space!</p>
-          
-          <div class="reschedule-highlight">
-            <h3>📅 Reschedule Details</h3>
-            <div class="time-comparison">
-              <div class="original-time">
-                <h4>Original Booking</h4>
-                <p><strong>Date:</strong> ${rescheduleInfo.originalDate || 'N/A'}</p>
-                <p><strong>Time:</strong> ${rescheduleInfo.originalTime || 'N/A'}</p>
-              </div>
-              <div class="new-time">
-                <h4>New Booking</h4>
-                <p><strong>Date:</strong> ${rescheduleInfo.newDate || 'N/A'}</p>
-                <p><strong>Time:</strong> ${rescheduleInfo.newTime || 'N/A'}</p>
-              </div>
-            </div>
-            <p><strong>Additional Cost:</strong> $${rescheduleInfo.additionalCost || 0}</p>
-            <p><strong>Seats:</strong> ${bookingData.seatNumbers?.join(', ') || 'N/A'}</p>
-          </div>
+          <p>Your booking has been successfully rescheduled! Thank you for choosing My Productive Space.</p>
           
           <div class="booking-details">
-            <h3>📋 Booking Summary</h3>
-            <p><strong>Reference:</strong> ${bookingData.bookingRef || 'N/A'}</p>
-            <p><strong>Location:</strong> ${bookingData.location || 'N/A'}</p>
-            <p><strong>Total Cost:</strong> $${bookingData.totalCost || 0}</p>
-            <p><strong>Reschedule Count:</strong> ${bookingData.rescheduleCount || 0}</p>
+            <h3>📋 Reschedule Details</h3>
+            <p><strong>Reference Number:</strong> <span class="highlight">${bookingData.bookingRef || 'N/A'}</span></p>
+            <p><strong>Location:</strong> <span class="highlight">${bookingData.location || 'N/A'}</span></p>
+            <p><strong>Original Time:</strong> <span class="highlight">${formatSingaporeDateTime(rescheduleInfo.originalStartAt)} - ${formatSingaporeTime(rescheduleInfo.originalEndAt)}</span></p>
+            <p><strong>New Time:</strong> <span class="highlight">${formatSingaporeDateTime(rescheduleInfo.newStartAt)} - ${formatSingaporeTime(rescheduleInfo.newEndAt)}</span></p>
+            <p><strong>Additional Hours:</strong> <span class="highlight">${rescheduleInfo.additionalHours || 0} hours</span></p>
+            <p><strong>Additional Cost:</strong> <span class="highlight">SGD ${Number(rescheduleInfo.additionalCost || 0).toFixed(2)}</span></p>
+          </div>
+
+          <div class="section">
+            <h3>What's Next?</h3>
+            <ul>
+              <li>Your rescheduled booking is confirmed and ready to use</li>
+              <li>Please note the new time for your session</li>
+              <li>Enjoy your productive time at our space!</li>
+            </ul>
           </div>
           
-          <div class="section">
-            <p>If you have any questions about your rescheduled booking, please don't hesitate to contact us.</p>
-            <p>Thank you for choosing My Productive Space!</p>
-          </div>
+          <p><strong>Thank you for choosing My Productive Space!</strong></p>
         </div>
         
         <div class="footer">
           <p>© 2025 My Productive Space. All rights reserved.</p>
-          <p>This email was sent to ${userData.email || userData.name || "you"}</p>
         </div>
       </div>
     </body>

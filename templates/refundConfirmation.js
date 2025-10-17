@@ -1,14 +1,10 @@
+const { formatSingaporeDateTime, formatSingaporeDate } = require('../utils/timezoneUtils');
+
 const refundConfirmationTemplate = (data) => {
   const { user, booking, creditAmount, expiresAt } = data;
   
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    return formatSingaporeDateTime(dateString);
   };
 
   const formatCurrency = (amount) => {
@@ -170,7 +166,7 @@ const refundConfirmationTemplate = (data) => {
                 </div>
                 <div class="detail-row">
                     <span class="detail-label">Original Booking Date:</span>
-                    <span class="detail-value">${formatDate(booking.startAt)}</span>
+                    <span class="detail-value">${formatSingaporeDateTime(booking.startAt)}</span>
                 </div>
                 <div class="detail-row">
                     <span class="detail-label">Location:</span>

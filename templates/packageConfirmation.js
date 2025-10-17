@@ -1,3 +1,5 @@
+const { formatSingaporeDate, formatSingaporeTime, getCurrentSingaporeDateTime } = require('../utils/timezoneUtils');
+
 const packageConfirmationTemplate = (userData, packageData) => ({
   subject: `Package Purchase Confirmed - ${packageData.packageName} - Welcome to My Productive Space`,
   html: `
@@ -43,8 +45,8 @@ const packageConfirmationTemplate = (userData, packageData) => ({
             <p><strong>Total Passes:</strong> <span class="highlight">${packageData.passCount}</span></p>
             <p><strong>Hours Allowed:</strong> <span class="highlight">${packageData.hoursAllowed} hours</span></p>
             <p><strong>Validity:</strong> <span class="highlight">${packageData.validityDays} days</span></p>
-            <p><strong>Activated On:</strong> <span class="highlight">${new Date(packageData.activatedAt).toLocaleDateString('en-SG', { timeZone: 'Asia/Singapore' })}</span></p>
-            <p><strong>Expires On:</strong> <span class="highlight">${new Date(packageData.expiresAt).toLocaleDateString('en-SG', { timeZone: 'Asia/Singapore' })}</span></p>
+            <p><strong>Activated On:</strong> <span class="highlight">${formatSingaporeDate(packageData.activatedAt)}</span></p>
+            <p><strong>Expires On:</strong> <span class="highlight">${formatSingaporeDate(packageData.expiresAt)}</span></p>
           </div>
 
           <div class="package-details">
@@ -54,8 +56,8 @@ const packageConfirmationTemplate = (userData, packageData) => ({
             ${packageData.cardFee > 0 ? `<p><strong>Card Processing Fee (5%):</strong> <span class="highlight">SGD ${parseFloat(packageData.cardFee).toFixed(2)}</span></p>` : ''}
             <p><strong>Total Amount Paid:</strong> <span class="highlight">SGD ${parseFloat(packageData.totalAmount).toFixed(2)}</span></p>
             <p><strong>Payment Method:</strong> <span class="highlight">${packageData.paymentMethod}</span></p>
-            <p><strong>Purchase Date:</strong> <span class="highlight">${new Date(packageData.purchasedAt).toLocaleDateString('en-SG', { timeZone: 'Asia/Singapore' })}</span></p>
-            <p><strong>Purchase Time:</strong> <span class="highlight">${new Date(packageData.purchasedAt).toLocaleTimeString('en-SG', { timeZone: 'Asia/Singapore' })}</span></p>
+            <p><strong>Purchase Date:</strong> <span class="highlight">${formatSingaporeDate(packageData.purchasedAt)}</span></p>
+            <p><strong>Purchase Time:</strong> <span class="highlight">${formatSingaporeTime(packageData.purchasedAt)}</span></p>
           </div>
           
           <div class="section">

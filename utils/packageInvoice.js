@@ -1,6 +1,7 @@
 const PDFDocument = require('pdfkit');
 const fs = require("fs");
 const path = require("path");
+const { formatSingaporeDate, formatSingaporeTime, getCurrentSingaporeDateTime } = require('./timezoneUtils');
 
 const generatePackageInvoicePDF = (userData, packageData) => {
     return new Promise((resolve, reject) => {
@@ -54,16 +55,11 @@ const generatePackageInvoicePDF = (userData, packageData) => {
                 .text(`# ${invoiceNumber}`, 400, 85);
 
             // Dates
-            const currentDate = new Date().toLocaleDateString('en-SG', { timeZone: 'Asia/Singapore' });
-            const currentTime = new Date().toLocaleTimeString('en-SG', { 
-                timeZone: 'Asia/Singapore',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
+            const currentDateTime = getCurrentSingaporeDateTime();
             
             doc.fillColor('#000000').font(bodyFont).fontSize(bodyFontSize)
-                .text('Invoice Date:', 400, 170).text(currentDate, 480, 170)
-                .text('Invoice Time:', 400, 185).text(currentTime, 480, 185);
+                .text('Invoice Date:', 400, 170).text(currentDateTime.date, 480, 170)
+                .text('Invoice Time:', 400, 185).text(currentDateTime.time, 480, 185);
 
             // Bill To
             doc.font(headerFont).fontSize(sectionHeaderFontSize)
@@ -85,24 +81,14 @@ const generatePackageInvoicePDF = (userData, packageData) => {
             doc.rect(50, currentY, 500, 30).fill('#F8F9FA').stroke();
 
             // Package Item
-            const activatedDate = new Date(packageData.activatedAt).toLocaleDateString('en-SG', { 
-                timeZone: 'Asia/Singapore',
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-            });
+            const activatedDate = formatSingaporeDate(packageData.activatedAt);
             
             // Calculate expiry date properly: activatedAt + validityDays
             // This ensures the expiry date is always correct even if not provided
             const activatedTime = new Date(packageData.activatedAt).getTime();
             const validityDays = packageData.validityDays || 30;
             const expiryTime = activatedTime + (validityDays * 24 * 60 * 60 * 1000);
-            const expiresDate = new Date(expiryTime).toLocaleDateString('en-SG', { 
-                timeZone: 'Asia/Singapore',
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-            });
+            const expiresDate = formatSingaporeDate(new Date(expiryTime));
             
             const description = `${packageData.packageName} (${packageData.packageType} - ${packageData.passCount} Passes) - Valid: ${activatedDate} to ${expiresDate}`;
             const quantity = packageData.quantity || 1;
