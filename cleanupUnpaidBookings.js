@@ -9,7 +9,7 @@ const supabase = createClient(
 
 async function cleanupUnpaidBookings() {
   try {
-    console.log('Starting cleanup of unpaid bookings...');
+    
     
     // Calculate cutoff time (5 minutes ago)
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();

@@ -3,7 +3,7 @@ let moment;
 try {
   moment = require('moment-timezone');
 } catch (error) {
-  console.error('❌ moment-timezone not installed:', error.message);
+  // console.error(' moment-timezone not installed:', error.message);
   // Fallback to native Date methods
   moment = null;
 }

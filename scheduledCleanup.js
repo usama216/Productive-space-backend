@@ -9,7 +9,7 @@ cron.schedule('*/3 * * * *', () => {
   cleanupUnpaidBookings();
 });
 
-console.log('🕐 Scheduled cleanup job started - running every 3 minutes');
+
 
 // Export for use in app.js
 module.exports = { cleanupUnpaidBookings };
