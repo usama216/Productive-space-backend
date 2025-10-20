@@ -22,8 +22,8 @@ function calculatePaymentAmounts(totalAmount, paymentMethod) {
     cardFee = subtotal * 0.05;
     payNowFee = 0;
     finalTotal = subtotal + cardFee;
-  } else if (isPayNowPayment && totalAmount > 10) {
-    // PayNow fee of $0.20 for amounts over $10
+  } else if (isPayNowPayment && totalAmount < 10) {
+    // PayNow fee of $0.20 for amounts less than $10
     subtotal = totalAmount;
     cardFee = 0;
     payNowFee = 0.20;
@@ -134,8 +134,8 @@ function calculatePaymentDetails(bookingData) {
     cardFee = subtotal * 0.05;
     payNowFee = 0;
     finalTotal = subtotal + cardFee;
-  } else if (isPayNowPayment && totalAmount > 10) {
-    // PayNow fee of $0.20 for amounts over $10
+  } else if (isPayNowPayment && totalAmount < 10) {
+    // PayNow fee of $0.20 for amounts less than $10
     subtotal = totalAmount;
     cardFee = 0;
     payNowFee = 0.20;

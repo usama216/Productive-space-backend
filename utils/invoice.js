@@ -274,7 +274,7 @@ try {
                         parseFloat(bookingData.packageDiscountAmount) || 0;
                     
                     doc.font(bodyFont).fontSize(bodyFontSize)
-                        .text(`Package Applied: SGD ${packageAmount.toFixed(2)}`, 50, currentY);
+                        .text(`Package Discount: SGD ${packageAmount.toFixed(2)}`, 50, currentY);
                     currentY += 15;
                     
                     if (bookingData.packageName) {

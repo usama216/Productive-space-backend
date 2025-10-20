@@ -1373,8 +1373,8 @@ exports.getBookingPaymentDetails = async (req, res) => {
       // Therefore: cardFee = paymentAmount - (paymentAmount / 1.05)
       const subtotal = paymentAmount / 1.05;
       cardFee = paymentAmount - subtotal;
-    } else if (isPayNowPayment && paymentAmount > 10) {
-      // PayNow fee of $0.20 for amounts over $10
+    } else if (isPayNowPayment && paymentAmount < 10) {
+      // PayNow fee of $0.20 for amounts less than $10
       payNowFee = 0.20;
     }
 

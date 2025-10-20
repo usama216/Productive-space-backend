@@ -40,6 +40,7 @@ exports.getPackagesByRole = async (req, res) => {
       outletFee: parseFloat(pkg.outletFee),
       passCount: pkg.passCount,
       validityDays: pkg.validityDays,
+      hoursAllowed: pkg.hoursAllowed,
       discount: pkg.originalPrice ? Math.round(((pkg.originalPrice - pkg.price) / pkg.originalPrice) * 100) : 0
     }));
 
@@ -87,6 +88,7 @@ exports.getPackageById = async (req, res) => {
       outletFee: parseFloat(package.outletFee),
       passCount: package.passCount,
       validityDays: package.validityDays,
+      hoursAllowed: package.hoursAllowed || (package.packageType === 'HALF_DAY' ? 4 : package.packageType === 'FULL_DAY' ? 8 : 4),
       discount: package.originalPrice ? Math.round(((package.originalPrice - package.price) / package.originalPrice) * 100) : 0
     };
 
@@ -382,6 +384,7 @@ exports.getAllPackages = async (req, res) => {
       outletFee: parseFloat(pkg.outletFee),
       passCount: pkg.passCount,
       validityDays: pkg.validityDays,
+      hoursAllowed: pkg.hoursAllowed,
       isActive: pkg.isActive,
       discount: pkg.originalPrice ? Math.round(((pkg.originalPrice - pkg.price) / pkg.originalPrice) * 100) : 0,
       createdAt: pkg.createdAt,
@@ -497,6 +500,7 @@ exports.createPackage = async (req, res) => {
         outletFee: parseFloat(newPackage.outletFee),
         passCount: newPackage.passCount,
         validityDays: newPackage.validityDays,
+        hoursAllowed: newPackage.hoursAllowed || (newPackage.packageType === 'HALF_DAY' ? 4 : newPackage.packageType === 'FULL_DAY' ? 8 : 4),
         isActive: newPackage.isActive,
         createdAt: newPackage.createdAt
       }
@@ -606,6 +610,7 @@ exports.updatePackage = async (req, res) => {
         outletFee: parseFloat(updatedPackage.outletFee),
         passCount: updatedPackage.passCount,
         validityDays: updatedPackage.validityDays,
+        hoursAllowed: updatedPackage.hoursAllowed || (updatedPackage.packageType === 'HALF_DAY' ? 4 : updatedPackage.packageType === 'FULL_DAY' ? 8 : 4),
         isActive: updatedPackage.isActive,
         updatedAt: updatedPackage.updatedAt
       }
