@@ -1303,12 +1303,13 @@ exports.getBookingPaymentDetails = async (req, res) => {
       return res.status(400).json({ error: 'Booking ID is required' });
     }
 
-    // Get booking details
+    // Get booking details with all discount information
     const { data: booking, error: bookingError } = await supabase
       .from('Booking')
-      .select('id, totalAmount, paymentId, bookingRef')
+      .select('id, totalAmount, totalCost, discountamount, packageId, packageUsed, paymentId, bookingRef')
       .eq('id', bookingId)
       .single();
+
 
     if (bookingError || !booking) {
       return res.status(404).json({ error: 'Booking not found' });
@@ -1316,6 +1317,8 @@ exports.getBookingPaymentDetails = async (req, res) => {
 
     let paymentAmount = parseFloat(booking.totalAmount) || 0;
     let paymentMethod = 'Unknown';
+    const promoDiscountAmount = parseFloat(booking.discountamount) || 0;
+    const totalCost = parseFloat(booking.totalCost) || 0;
 
     // Get payment details if paymentId exists
     if (booking.paymentId) {
@@ -1330,12 +1333,63 @@ exports.getBookingPaymentDetails = async (req, res) => {
         paymentMethod = payment.paymentMethod || 'Unknown';
       }
     }
+    
+    // Calculate package discount amount if package was used
+    let packageDiscountAmount = 0;
+    if (booking.packageUsed && booking.packageId) {
+      // First, get the payment amount before card fee to calculate package discount correctly
+      let amountBeforeCardFee = paymentAmount;
+      const isCardPayment = paymentMethod && 
+        (paymentMethod.toLowerCase().includes('card') || 
+         paymentMethod.toLowerCase().includes('credit'));
+      
+      if (isCardPayment) {
+        // If card payment, remove the 5% fee to get the amount before card fee
+        amountBeforeCardFee = paymentAmount / 1.05;
+      }
+      
+      // Package discount = totalCost - amountBeforeCardFee
+      packageDiscountAmount = Math.max(0, totalCost - amountBeforeCardFee);
+    }
+    
+    // For now, credit amount is not stored separately, it's included in the total calculation
+    const creditAmount = 0;
+
+    // Calculate fees based on payment method
+    const isCardPayment = paymentMethod && 
+      (paymentMethod.toLowerCase().includes('card') || 
+       paymentMethod.toLowerCase().includes('credit'));
+    
+    const isPayNowPayment = paymentMethod && 
+      (paymentMethod.toLowerCase().includes('paynow') || 
+       paymentMethod.toLowerCase().includes('pay_now'));
+    
+    let cardFee = 0;
+    let payNowFee = 0;
+    
+    if (isCardPayment) {
+      // If card payment, the paymentAmount includes 5% fee
+      // So: paymentAmount = subtotal * 1.05
+      // Therefore: cardFee = paymentAmount - (paymentAmount / 1.05)
+      const subtotal = paymentAmount / 1.05;
+      cardFee = paymentAmount - subtotal;
+    } else if (isPayNowPayment && paymentAmount > 10) {
+      // PayNow fee of $0.20 for amounts over $10
+      payNowFee = 0.20;
+    }
 
     res.json({
       bookingId: booking.id,
       paymentAmount: paymentAmount,
       paymentMethod: paymentMethod,
-      bookingRef: booking.bookingRef
+      bookingRef: booking.bookingRef,
+      promoDiscountAmount: promoDiscountAmount,
+      packageDiscountAmount: packageDiscountAmount,
+      creditAmount: creditAmount,
+      totalDiscountAmount: promoDiscountAmount + packageDiscountAmount + creditAmount,
+      cardFee: Math.round(cardFee * 100) / 100, // Round to 2 decimal places
+      payNowFee: Math.round(payNowFee * 100) / 100, // Round to 2 decimal places
+      totalCost: totalCost
     });
 
   } catch (error) {

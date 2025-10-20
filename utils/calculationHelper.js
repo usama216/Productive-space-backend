@@ -10,23 +10,38 @@ function calculatePaymentAmounts(totalAmount, paymentMethod) {
     paymentMethod.toLowerCase().includes('credit')
   );
   
-  let subtotal, cardFee, finalTotal;
+  const isPayNowPayment = paymentMethod && (
+    paymentMethod.toLowerCase().includes('paynow') || 
+    paymentMethod.toLowerCase().includes('pay_now')
+  );
+  
+  let subtotal, cardFee, payNowFee, finalTotal;
   
   if (isCardPayment) {
     subtotal = totalAmount / 1.05;
     cardFee = subtotal * 0.05;
+    payNowFee = 0;
     finalTotal = subtotal + cardFee;
+  } else if (isPayNowPayment && totalAmount > 10) {
+    // PayNow fee of $0.20 for amounts over $10
+    subtotal = totalAmount;
+    cardFee = 0;
+    payNowFee = 0.20;
+    finalTotal = subtotal + payNowFee;
   } else {
     subtotal = totalAmount;
     cardFee = 0;
+    payNowFee = 0;
     finalTotal = totalAmount;
   }
   
   return {
     subtotal: Math.round(subtotal * 100) / 100,
     cardFee: Math.round(cardFee * 100) / 100,
+    payNowFee: Math.round(payNowFee * 100) / 100,
     finalTotal: Math.round(finalTotal * 100) / 100,
-    isCardPayment: isCardPayment
+    isCardPayment: isCardPayment,
+    isPayNowPayment: isPayNowPayment
   };
 }
 
@@ -107,15 +122,28 @@ function calculatePaymentDetails(bookingData) {
     paymentMethod.toLowerCase().includes('credit')
   );
   
-  let subtotal, cardFee, finalTotal;
+  const isPayNowPayment = paymentMethod && (
+    paymentMethod.toLowerCase().includes('paynow') || 
+    paymentMethod.toLowerCase().includes('pay_now')
+  );
+  
+  let subtotal, cardFee, payNowFee, finalTotal;
   
   if (isCardPayment) {
     subtotal = totalAmount / 1.05;
     cardFee = subtotal * 0.05;
+    payNowFee = 0;
     finalTotal = subtotal + cardFee;
+  } else if (isPayNowPayment && totalAmount > 10) {
+    // PayNow fee of $0.20 for amounts over $10
+    subtotal = totalAmount;
+    cardFee = 0;
+    payNowFee = 0.20;
+    finalTotal = subtotal + payNowFee;
   } else {
     subtotal = totalAmount;
     cardFee = 0;
+    payNowFee = 0;
     finalTotal = totalAmount;
   }
   
@@ -124,9 +152,11 @@ function calculatePaymentDetails(bookingData) {
     discount: discount,
     subtotal: Math.round(subtotal * 100) / 100,
     cardFee: Math.round(cardFee * 100) / 100,
+    payNowFee: Math.round(payNowFee * 100) / 100,
     finalTotal: Math.round(finalTotal * 100) / 100,
     paymentMethod: getPaymentMethodDisplayName(paymentMethod),
     isCardPayment: isCardPayment,
+    isPayNowPayment: isPayNowPayment,
     promoCodeId: bookingData.promoCodeId,
     promoCodeName: bookingData.promoCodeName,
     packageDiscountAmount: packageDiscountAmount,
