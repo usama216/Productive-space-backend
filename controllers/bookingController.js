@@ -1133,7 +1133,7 @@ exports.getUserBookings = async (req, res) => {
     const { userId } = req.body;
     const {
       page = 1,
-      limit = 20,
+      limit = 1000,
       status,
       paymentStatus,
       sortBy = 'startAt',
