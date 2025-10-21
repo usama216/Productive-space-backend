@@ -79,6 +79,10 @@ const requestRefund = async (req, res) => {
           (paymentMethod.paymentMethod.toLowerCase().includes('card') || 
            paymentMethod.paymentMethod.toLowerCase().includes('credit'));
         
+        const isPayNowPayment = paymentMethod.paymentMethod &&
+          (paymentMethod.paymentMethod.toLowerCase().includes('paynow') ||
+           paymentMethod.paymentMethod.toLowerCase().includes('pay_now'));
+        
         if (isCardPayment) {
           // Calculate original amount before 5% card fee
           // If totalAmount includes 5% fee, then original amount = totalAmount / 1.05
@@ -91,8 +95,20 @@ const requestRefund = async (req, res) => {
             cardFee: actualPaidAmount - originalAmount,
             finalRefundAmount: finalRefundAmount
           });
+        } else if (isPayNowPayment && actualPaidAmount < 10) {
+          // Calculate original amount before $0.20 PayNow fee
+          // If totalAmount includes $0.20 fee, then original amount = totalAmount - 0.20
+          const originalAmount = actualPaidAmount - 0.20;
+          finalRefundAmount = Math.max(0, originalAmount);
+          
+          console.log('💳 PayNow payment detected - deducting $0.20 transaction fee:', {
+            paidAmount: actualPaidAmount,
+            originalAmount: originalAmount,
+            transactionFee: 0.20,
+            finalRefundAmount: finalRefundAmount
+          });
         } else {
-          console.log('💳 Non-card payment - no fee deduction needed');
+          console.log('💳 Non-card/PayNow payment - no fee deduction needed');
         }
       }
     }

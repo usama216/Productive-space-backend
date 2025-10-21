@@ -116,15 +116,22 @@ exports.createPayment = async (req, res) => {
     }
 
     // Update booking with payment info
-    // IMPORTANT: For reschedule/extension, don't set confirmedPayment to false since booking is already paid
-    const bookingUpdateData = {
-      paymentId: paymentData.id,
-      totalAmount: parseFloat(amount)
+    // IMPORTANT: For reschedule/extension, DON'T update totalAmount here
+    // It will be updated in confirmReschedulePayment/confirmExtensionPayment after payment is confirmed
+    let bookingUpdateData = {
+      paymentId: paymentData.id
     };
     
-    // Only set confirmedPayment to false for NEW bookings, not for reschedule/extension
+    // Only update totalAmount and confirmedPayment for NEW bookings
     if (!isExtension && !isReschedule) {
+      bookingUpdateData.totalAmount = parseFloat(amount);
       bookingUpdateData.confirmedPayment = false;
+      
+      console.log('💰 New booking payment - Setting totalAmount:', {
+        totalAmount: parseFloat(amount)
+      });
+    } else {
+      console.log(`💰 ${isReschedule ? 'Reschedule' : 'Extension'} payment created - totalAmount will be updated after payment confirmation`);
     }
     
     const { error: bookingError } = await supabase
