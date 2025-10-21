@@ -751,22 +751,53 @@ const generateRescheduleInvoicePDF = (userData, bookingData, rescheduleInfo) => 
 
             // Totals section
             const totalsTop = roleTop + 80;
-            const subtotal = additionalAmount;
+            const baseAmount = rescheduleInfo.additionalCost || 0;
+            const creditAmount = rescheduleInfo.creditAmount || 0;
+            const subtotal = baseAmount - creditAmount;
+            const paymentFee = rescheduleInfo.paymentFee || 0;
+            const finalAmount = rescheduleInfo.finalAmount || subtotal + paymentFee;
 
+            // Base amount
             doc.fillColor('#000000')
                 .font(bodyFont).fontSize(bodyFontSize)
-                .text('Sub Total:', col4, totalsTop)
-                .text(`SGD ${subtotal.toFixed(2)}`, col5, totalsTop);
+                .text('Additional Cost:', col4, totalsTop)
+                .text(`SGD ${baseAmount.toFixed(2)}`, col5, totalsTop);
 
+            // Credits applied (if any)
+            if (creditAmount > 0) {
+                doc.fillColor('#28a745')
+                    .font(bodyFont).fontSize(bodyFontSize)
+                    .text('Credits Applied:', col4, totalsTop + 15)
+                    .text(`- SGD ${creditAmount.toFixed(2)}`, col5, totalsTop + 15);
+            }
+
+            // Subtotal
+            const subtotalTop = creditAmount > 0 ? totalsTop + 30 : totalsTop + 15;
+            doc.fillColor('#000000')
+                .font(bodyFont).fontSize(bodyFontSize)
+                .text('Sub Total:', col4, subtotalTop)
+                .text(`SGD ${subtotal.toFixed(2)}`, col5, subtotalTop);
+
+            // Payment fee (if any)
+            if (paymentFee > 0) {
+                doc.fillColor('#000000')
+                    .font(bodyFont).fontSize(bodyFontSize)
+                    .text(`${rescheduleInfo.paymentMethod} Fee:`, col4, subtotalTop + 15)
+                    .text(`SGD ${paymentFee.toFixed(2)}`, col5, subtotalTop + 15);
+            }
+
+            // Total
+            const totalTop = paymentFee > 0 ? subtotalTop + 30 : subtotalTop + 15;
             doc.fillColor('#000000')
                 .font(headerFont).fontSize(bodyFontSize)
-                .text('Total:', col4, totalsTop + 15)
-                .text(`SGD ${subtotal.toFixed(2)}`, col5, totalsTop + 15);
+                .text('Total:', col4, totalTop)
+                .text(`SGD ${finalAmount.toFixed(2)}`, col5, totalTop);
 
+            // Paid
             doc.fillColor('#000000')
                 .font(bodyFont).fontSize(bodyFontSize)
-                .text('Paid:', col4, totalsTop + 30)
-                .text(`SGD ${subtotal.toFixed(2)}`, col5, totalsTop + 30);
+                .text('Paid:', col4, totalTop + 15)
+                .text(`SGD ${finalAmount.toFixed(2)}`, col5, totalTop + 15);
 
             doc.end();
 

@@ -290,6 +290,10 @@ const rescheduleConfirmationTemplate = (userData, bookingData, rescheduleInfo) =
             <p><strong>New Time:</strong> <span class="highlight">${formatSingaporeDateTime(rescheduleInfo.newStartAt)} - ${formatSingaporeTime(rescheduleInfo.newEndAt)}</span></p>
             <p><strong>Additional Hours:</strong> <span class="highlight">${rescheduleInfo.additionalHours || 0} hours</span></p>
             <p><strong>Additional Cost:</strong> <span class="highlight">SGD ${Number(rescheduleInfo.additionalCost || 0).toFixed(2)}</span></p>
+            ${rescheduleInfo.creditAmount > 0 ? `<p><strong>Credits Applied:</strong> <span class="highlight" style="color: #28a745;">- SGD ${Number(rescheduleInfo.creditAmount).toFixed(2)}</span></p>` : ''}
+            <p><strong>Subtotal:</strong> <span class="highlight">SGD ${Number(rescheduleInfo.subtotal || 0).toFixed(2)}</span></p>
+            ${rescheduleInfo.paymentFee > 0 ? `<p><strong>${rescheduleInfo.paymentMethod} Fee:</strong> <span class="highlight">SGD ${Number(rescheduleInfo.paymentFee).toFixed(2)}</span></p>` : ''}
+            <p><strong>Total Paid:</strong> <span class="highlight" style="color: #ff6900; font-size: 16px;">SGD ${Number(rescheduleInfo.finalAmount || 0).toFixed(2)}</span></p>
           </div>
 
           <div class="section">
