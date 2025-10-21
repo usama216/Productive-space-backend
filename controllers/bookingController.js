@@ -1214,6 +1214,25 @@ exports.getUserBookings = async (req, res) => {
       }
     }
 
+    // Fetch payment methods for bookings with paymentId
+    const paymentIds = bookings
+      .filter(b => b.paymentId)
+      .map(b => b.paymentId);
+    
+    let paymentMethodData = {};
+    if (paymentIds.length > 0) {
+      const { data: payments, error: paymentError } = await supabase
+        .from('Payment')
+        .select('id, paymentMethod')
+        .in('id', paymentIds);
+      
+      if (!paymentError && payments) {
+        payments.forEach(payment => {
+          paymentMethodData[payment.id] = payment.paymentMethod;
+        });
+      }
+    }
+
     const now = new Date();
     const bookingsWithStatus = bookings.map(booking => {
       // Ensure UTC timestamps have 'Z' suffix for proper timezone handling
@@ -1242,6 +1261,7 @@ exports.getUserBookings = async (req, res) => {
       }
 
       const promoCode = booking.promoCodeId ? promoCodeData[booking.promoCodeId] : null;
+      const paymentMethod = booking.paymentId ? paymentMethodData[booking.paymentId] : null;
 
       return {
         ...booking,
@@ -1255,7 +1275,8 @@ exports.getUserBookings = async (req, res) => {
         timeUntilBooking,
         // Priority: ongoing/today first, then upcoming, then completed
         status: isRefunded ? 'refunded' : isCancelled ? 'cancelled' : isOngoing ? 'ongoing' : isToday ? 'today' : isUpcoming ? 'upcoming' : 'completed',
-        PromoCode: promoCode
+        PromoCode: promoCode,
+        paymentMethod: paymentMethod
       };
     });
 
