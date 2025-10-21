@@ -354,6 +354,15 @@ try {
                     .text(`SGD ${paymentDetails.cardFee.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
             }
 
+            // PayNow transaction fee (for amounts less than $10)
+            if (paymentDetails.isPayNowPayment && paymentDetails.payNowFee > 0) {
+                currentY += 20;
+                doc.font(bodyFont).fontSize(bodyFontSize)
+                    .text('Transaction Fee', summaryStartX, currentY, { width: summaryWidth - 20 })
+                    .font(bodyFont).fontSize(bodyFontSize)
+                    .text(`SGD ${paymentDetails.payNowFee.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
+            }
+
             // Only show payment method if it has a valid value
             if (paymentDetails.paymentMethod && 
                 paymentDetails.paymentMethod.toLowerCase() !== 'unknown' && 
@@ -556,13 +565,13 @@ const generateExtensionInvoicePDF = (userData, bookingData, extensionInfo) => {
             const totalsTop = roleTop + 80;
             const subtotal = extensionAmount;
             const creditAmount = extensionInfo.creditAmount || 0;
+            const paymentFee = extensionInfo.paymentFee || 0;
+            const finalTotal = extensionInfo.finalAmount || (Math.max(0, subtotal - creditAmount) + paymentFee);
             
-            // Check if payment method is card to calculate card fee
-            const paymentMethod = bookingData.paymentMethod || extensionInfo.paymentMethod || 'unknown';
+            // Get payment method for display
+            const paymentMethod = extensionInfo.paymentMethod || bookingData.paymentMethod || 'unknown';
             const isCardPayment = paymentMethod.toLowerCase().includes('card');
-            const cardFee = isCardPayment ? subtotal * 0.05 : 0;
-            const totalBeforeCardFee = Math.max(0, subtotal - creditAmount);
-            const finalTotal = totalBeforeCardFee + cardFee;
+            const isPayNowPayment = paymentMethod.toLowerCase().includes('paynow') || paymentMethod.toLowerCase().includes('pay_now');
 
             doc.fillColor('#000000')
                 .font(bodyFont).fontSize(bodyFontSize)
@@ -576,22 +585,26 @@ const generateExtensionInvoicePDF = (userData, bookingData, extensionInfo) => {
                     .text(`-SGD ${creditAmount.toFixed(2)}`, col5, totalsTop + 15);
             }
 
-            if (isCardPayment) {
+            // Display payment fee if applicable
+            if (paymentFee > 0) {
+                const feeLabel = isCardPayment ? 'Card Fee (5%):' : 'Transaction Fee:';
                 doc.fillColor('#000000')
                     .font(bodyFont).fontSize(bodyFontSize)
-                    .text('Card Fee (5%):', col4, totalsTop + (creditAmount > 0 ? 30 : 15))
-                    .text(`SGD ${cardFee.toFixed(2)}`, col5, totalsTop + (creditAmount > 0 ? 30 : 15));
+                    .text(feeLabel, col4, totalsTop + (creditAmount > 0 ? 30 : 15))
+                    .text(`SGD ${paymentFee.toFixed(2)}`, col5, totalsTop + (creditAmount > 0 ? 30 : 15));
             }
+
+            const hasFee = paymentFee > 0;
 
             doc.fillColor('#000000')
                 .font(headerFont).fontSize(bodyFontSize)
-                .text('Total:', col4, totalsTop + (creditAmount > 0 ? (isCardPayment ? 45 : 35) : (isCardPayment ? 30 : 15)))
-                .text(`SGD ${finalTotal.toFixed(2)}`, col5, totalsTop + (creditAmount > 0 ? (isCardPayment ? 45 : 35) : (isCardPayment ? 30 : 15)));
+                .text('Total:', col4, totalsTop + (creditAmount > 0 ? (hasFee ? 45 : 35) : (hasFee ? 30 : 15)))
+                .text(`SGD ${finalTotal.toFixed(2)}`, col5, totalsTop + (creditAmount > 0 ? (hasFee ? 45 : 35) : (hasFee ? 30 : 15)));
 
             doc.fillColor('#000000')
                 .font(bodyFont).fontSize(bodyFontSize)
-                .text('Paid:', col4, totalsTop + (creditAmount > 0 ? (isCardPayment ? 60 : 50) : (isCardPayment ? 45 : 30)))
-                .text(`SGD ${finalTotal.toFixed(2)}`, col5, totalsTop + (creditAmount > 0 ? (isCardPayment ? 60 : 50) : (isCardPayment ? 45 : 30)));
+                .text('Paid:', col4, totalsTop + (creditAmount > 0 ? (hasFee ? 60 : 50) : (hasFee ? 45 : 30)))
+                .text(`SGD ${finalTotal.toFixed(2)}`, col5, totalsTop + (creditAmount > 0 ? (hasFee ? 60 : 50) : (hasFee ? 45 : 30)));
 
             // Footer
          

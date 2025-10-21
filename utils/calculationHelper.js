@@ -18,16 +18,18 @@ function calculatePaymentAmounts(totalAmount, paymentMethod) {
   let subtotal, cardFee, payNowFee, finalTotal;
   
   if (isCardPayment) {
+    // Card payment: totalAmount includes 5% fee
     subtotal = totalAmount / 1.05;
     cardFee = subtotal * 0.05;
     payNowFee = 0;
     finalTotal = subtotal + cardFee;
   } else if (isPayNowPayment && totalAmount < 10) {
     // PayNow fee of $0.20 for amounts less than $10
-    subtotal = totalAmount;
+    // totalAmount already includes the $0.20 fee
+    subtotal = totalAmount - 0.20;
     cardFee = 0;
     payNowFee = 0.20;
-    finalTotal = subtotal + payNowFee;
+    finalTotal = totalAmount; // Already includes fee
   } else {
     subtotal = totalAmount;
     cardFee = 0;
@@ -130,16 +132,22 @@ function calculatePaymentDetails(bookingData) {
   let subtotal, cardFee, payNowFee, finalTotal;
   
   if (isCardPayment) {
+    // Card payment: totalAmount includes 5% fee
+    // So: totalAmount = subtotal * 1.05
+    // Therefore: subtotal = totalAmount / 1.05
     subtotal = totalAmount / 1.05;
     cardFee = subtotal * 0.05;
     payNowFee = 0;
     finalTotal = subtotal + cardFee;
   } else if (isPayNowPayment && totalAmount < 10) {
     // PayNow fee of $0.20 for amounts less than $10
-    subtotal = totalAmount;
+    // totalAmount already includes the $0.20 fee
+    // So: totalAmount = subtotal + 0.20
+    // Therefore: subtotal = totalAmount - 0.20
+    subtotal = totalAmount - 0.20;
     cardFee = 0;
     payNowFee = 0.20;
-    finalTotal = subtotal + payNowFee;
+    finalTotal = totalAmount; // totalAmount already has the fee included
   } else {
     subtotal = totalAmount;
     cardFee = 0;

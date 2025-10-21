@@ -2882,7 +2882,17 @@ exports.confirmExtensionPayment = async (req, res) => {
     
     console.log("Extension amounts array:", extensionAmounts)
 
-    // First, create a payment record for the extension
+    // Get payment method from actual payment record to calculate fees correctly
+    const { data: fetchedPayment, error: paymentFetchError } = await supabase
+      .from("Payment")
+      .select("*")
+      .eq("id", paymentId)
+      .single();
+    
+    const actualPaymentMethod = fetchedPayment?.paymentMethod || fetchedPayment?.method || fetchedPayment?.payment_type || fetchedPayment?.type || 'paynow_online';
+    console.log('💳 Retrieved payment method from payment record:', actualPaymentMethod);
+
+    // First, create a payment record for the extension if it doesn't exist
     const paymentData = {
       id: paymentId,
       bookingRef: existingBooking.bookingRef,
@@ -2890,7 +2900,7 @@ exports.confirmExtensionPayment = async (req, res) => {
       endAt: extensionData.newEndAt,
       cost: parseFloat(extensionData.extensionCost) || 0,
       totalAmount: parseFloat(extensionData.extensionCost) || 0,
-      paymentMethod: "EXTENSION",
+      paymentMethod: actualPaymentMethod, // Use actual payment method instead of "EXTENSION"
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -3021,6 +3031,26 @@ exports.confirmExtensionPayment = async (req, res) => {
       console.error("Error fetching user data:", userError);
     }
 
+    // Calculate payment fee for invoice
+    const baseAmount = parseFloat(extensionData.extensionCost) || 0;
+    const extensionCreditAmount = creditAmount || 0;
+    const subtotalAfterCredits = Math.max(0, baseAmount - extensionCreditAmount);
+    
+    // Calculate fee based on payment method
+    const isCreditCard = actualPaymentMethod === 'card' || actualPaymentMethod === 'credit_card' || actualPaymentMethod === 'creditcard' || actualPaymentMethod.toLowerCase().includes('card');
+    const paymentFee = isCreditCard ? subtotalAfterCredits * 0.05 : (subtotalAfterCredits < 10 ? 0.20 : 0);
+    const finalAmountPaid = subtotalAfterCredits + paymentFee;
+    
+    console.log('💰 Extension payment breakdown:', {
+      baseAmount,
+      creditAmount: extensionCreditAmount,
+      subtotalAfterCredits,
+      paymentMethod: actualPaymentMethod,
+      isCreditCard,
+      paymentFee,
+      finalAmountPaid
+    });
+
     // Send extension confirmation email with invoice PDF
     try {
       if (userData) {
@@ -3029,7 +3059,9 @@ exports.confirmExtensionPayment = async (req, res) => {
           extensionCost: extensionData.extensionCost,
           originalEndAt: extensionData.originalEndAt || formattedOriginalEndTime,
           creditAmount: creditAmount || 0, // Include credit amount used
-          paymentMethod: updatedBooking.paymentMethod || 'unknown' // Include payment method for card fee calculation
+          paymentMethod: actualPaymentMethod || updatedBooking.paymentMethod || 'paynow_online', // Use actual payment method from payment record
+          paymentFee: paymentFee, // Pass calculated fee to invoice
+          finalAmount: finalAmountPaid // Pass final amount to invoice
         });
         console.log("✅ Extension confirmation email sent successfully");
       }
