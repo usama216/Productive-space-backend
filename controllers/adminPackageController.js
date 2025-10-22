@@ -100,6 +100,21 @@ exports.createPackage = async (req, res) => {
       });
     }
 
+    // Check for duplicate package name
+    const { data: existingPackage, error: checkError } = await supabase
+      .from("Package")
+      .select("id, name")
+      .ilike("name", name.trim())
+      .single();
+
+    if (existingPackage) {
+      return res.status(409).json({
+        success: false,
+        error: "Duplicate package name",
+        message: `A package with the name "${name}" already exists. Please use a different name.`
+      });
+    }
+
             const packageData = {
               id: uuidv4(),
               name,
@@ -172,6 +187,22 @@ exports.updatePackage = async (req, res) => {
         success: false,
         error: "Missing required fields",
         message: "Name, packageType, targetRole, price, and passCount are required"
+      });
+    }
+
+    // Check for duplicate package name (excluding current package)
+    const { data: existingPackage, error: checkError } = await supabase
+      .from("Package")
+      .select("id, name")
+      .ilike("name", name.trim())
+      .neq("id", id)
+      .single();
+
+    if (existingPackage) {
+      return res.status(409).json({
+        success: false,
+        error: "Duplicate package name",
+        message: `A package with the name "${name}" already exists. Please use a different name.`
       });
     }
 
