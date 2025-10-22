@@ -220,8 +220,11 @@ const extensionConfirmationTemplate = (userData, bookingData, extensionInfo) => 
             <p><strong>Reference Number:</strong> <span class="highlight">${bookingData.bookingRef || 'N/A'}</span></p>
             <p><strong>Location:</strong> <span class="highlight">${bookingData.location || 'N/A'}</span></p>
             <p><strong>Extension Hours:</strong> <span class="highlight">${extensionInfo.extensionHours || 0} hours</span></p>
-            <p><strong>Additional Cost:</strong> <span class="highlight">SGD ${Number(extensionInfo.extensionCost || 0).toFixed(2)}</span></p>
-            <p><strong>New End Time:</strong> <span class="highlight">${formatSingaporeDateTime(extensionInfo.newEndAt)}</span></p>
+            <p><strong>Extension Cost:</strong> <span class="highlight">SGD ${Number(extensionInfo.extensionCost || 0).toFixed(2)}</span></p>
+            ${extensionInfo.creditAmount && extensionInfo.creditAmount > 0 ? `<p><strong>Credits Applied:</strong> <span class="highlight" style="color: #10b981;">-SGD ${Number(extensionInfo.creditAmount).toFixed(2)}</span></p>` : ''}
+            ${extensionInfo.paymentFee && extensionInfo.paymentFee > 0 ? `<p><strong>Payment Fee:</strong> <span class="highlight">SGD ${Number(extensionInfo.paymentFee).toFixed(2)}</span></p>` : ''}
+            ${extensionInfo.finalAmount !== undefined ? `<p><strong>Amount Paid:</strong> <span class="highlight">SGD ${Number(extensionInfo.finalAmount).toFixed(2)}</span></p>` : ''}
+            <p><strong>New End Time:</strong> <span class="highlight">${formatSingaporeDateTime(extensionInfo.newEndAt || bookingData.endAt)}</span></p>
           </div>
 
           <div class="section">

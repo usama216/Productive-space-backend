@@ -2882,15 +2882,20 @@ exports.confirmExtensionPayment = async (req, res) => {
     
     console.log("Extension amounts array:", extensionAmounts)
 
-    // Get payment method from actual payment record to calculate fees correctly
-    const { data: fetchedPayment, error: paymentFetchError } = await supabase
-      .from("Payment")
-      .select("*")
-      .eq("id", paymentId)
-      .single();
+    // Get payment method from extensionData (user's selection) instead of payment record
+    // Payment record is created BEFORE HitPay confirms, so it has wrong method
+    let actualPaymentMethod = extensionData.paymentMethod || 'paynow_online';
     
-    const actualPaymentMethod = fetchedPayment?.paymentMethod || fetchedPayment?.method || fetchedPayment?.payment_type || fetchedPayment?.type || 'paynow_online';
-    console.log('💳 Retrieved payment method from payment record:', actualPaymentMethod);
+    // If extension will be fully covered by credits, set method to "Credits"
+    const creditAmountApplied = parseFloat(extensionData.creditAmount) || 0;
+    const extensionBaseCost = parseFloat(extensionData.extensionCost) || 0;
+    const willBeFullyCovered = creditAmountApplied > 0 && creditAmountApplied >= extensionBaseCost;
+    if (willBeFullyCovered) {
+      actualPaymentMethod = 'Credits';
+      console.log('💳 Extension fully covered by credits, payment method set to "Credits"');
+    } else {
+      console.log('💳 Using payment method from frontend:', actualPaymentMethod);
+    }
 
     // First, create a payment record for the extension if it doesn't exist
     const paymentData = {
@@ -3020,57 +3025,7 @@ exports.confirmExtensionPayment = async (req, res) => {
       });
     }
 
-    // Get user data for email
-    const { data: userData, error: userError } = await supabase
-      .from("User")
-      .select("*")
-      .eq("id", updatedBooking.userId)
-      .single();
-
-    if (userError) {
-      console.error("Error fetching user data:", userError);
-    }
-
-    // Calculate payment fee for invoice
-    const baseAmount = parseFloat(extensionData.extensionCost) || 0;
-    const extensionCreditAmount = creditAmount || 0;
-    const subtotalAfterCredits = Math.max(0, baseAmount - extensionCreditAmount);
-    
-    // Calculate fee based on payment method
-    const isCreditCard = actualPaymentMethod === 'card' || actualPaymentMethod === 'credit_card' || actualPaymentMethod === 'creditcard' || actualPaymentMethod.toLowerCase().includes('card');
-    const paymentFee = isCreditCard ? subtotalAfterCredits * 0.05 : (subtotalAfterCredits < 10 ? 0.20 : 0);
-    const finalAmountPaid = subtotalAfterCredits + paymentFee;
-    
-    console.log('💰 Extension payment breakdown:', {
-      baseAmount,
-      creditAmount: extensionCreditAmount,
-      subtotalAfterCredits,
-      paymentMethod: actualPaymentMethod,
-      isCreditCard,
-      paymentFee,
-      finalAmountPaid
-    });
-
-    // Send extension confirmation email with invoice PDF
-    try {
-      if (userData) {
-        await sendExtensionConfirmation(userData, updatedBooking, {
-          extensionHours: extensionData.extensionHours,
-          extensionCost: extensionData.extensionCost,
-          originalEndAt: extensionData.originalEndAt || formattedOriginalEndTime,
-          creditAmount: creditAmount || 0, // Include credit amount used
-          paymentMethod: actualPaymentMethod || updatedBooking.paymentMethod || 'paynow_online', // Use actual payment method from payment record
-          paymentFee: paymentFee, // Pass calculated fee to invoice
-          finalAmount: finalAmountPaid // Pass final amount to invoice
-        });
-        console.log("✅ Extension confirmation email sent successfully");
-      }
-    } catch (emailError) {
-      console.error("❌ Error sending extension confirmation email:", emailError);
-      // Don't fail the request if email fails
-    }
-
-    // Ensure timestamps are in proper UTC format with 'Z' suffix
+    // Ensure timestamps are in proper UTC format with 'Z' suffix BEFORE sending email
     if (updatedBooking.startAt && !updatedBooking.startAt.endsWith('Z')) {
       updatedBooking.startAt = updatedBooking.startAt + 'Z';
     }
@@ -3091,6 +3046,58 @@ exports.confirmExtensionPayment = async (req, res) => {
     let formattedOriginalEndTime = extensionData.originalEndAt || existingBooking.endAt;
     if (formattedOriginalEndTime && !formattedOriginalEndTime.endsWith('Z')) {
       formattedOriginalEndTime = formattedOriginalEndTime + 'Z';
+    }
+
+    // Get user data for email
+    const { data: userData, error: userError } = await supabase
+      .from("User")
+      .select("*")
+      .eq("id", updatedBooking.userId)
+      .single();
+
+    if (userError) {
+      console.error("Error fetching user data:", userError);
+    }
+
+    // Calculate payment fee for invoice
+    const baseAmount = parseFloat(extensionData.extensionCost) || 0;
+    const extensionCreditAmount = creditAmount || 0;
+    const subtotalAfterCredits = Math.max(0, baseAmount - extensionCreditAmount);
+    
+    // Calculate fee based on payment method
+    // NO FEE if fully covered by credits (subtotal = 0)
+    const isCreditCard = actualPaymentMethod === 'card' || actualPaymentMethod === 'credit_card' || actualPaymentMethod === 'creditcard' || actualPaymentMethod.toLowerCase().includes('card');
+    const paymentFee = subtotalAfterCredits === 0 ? 0 : (isCreditCard ? subtotalAfterCredits * 0.05 : (subtotalAfterCredits < 10 ? 0.20 : 0));
+    const finalAmountPaid = subtotalAfterCredits + paymentFee;
+    
+    console.log('💰 Extension payment breakdown:', {
+      baseAmount,
+      creditAmount: extensionCreditAmount,
+      subtotalAfterCredits,
+      paymentMethod: actualPaymentMethod,
+      isCreditCard,
+      paymentFee,
+      finalAmountPaid
+    });
+
+    // Send extension confirmation email with invoice PDF (NOW with properly formatted timestamps)
+    try {
+      if (userData) {
+        await sendExtensionConfirmation(userData, updatedBooking, {
+          extensionHours: extensionData.extensionHours,
+          extensionCost: extensionData.extensionCost,
+          originalEndAt: formattedOriginalEndTime,
+          newEndAt: updatedBooking.endAt, // Use formatted endAt
+          creditAmount: extensionCreditAmount, // Use the calculated credit amount
+          paymentMethod: actualPaymentMethod || updatedBooking.paymentMethod || 'paynow_online',
+          paymentFee: paymentFee,
+          finalAmount: finalAmountPaid
+        });
+        console.log("✅ Extension confirmation email sent successfully");
+      }
+    } catch (emailError) {
+      console.error("❌ Error sending extension confirmation email:", emailError);
+      // Don't fail the request if email fails
     }
 
     res.status(200).json({
