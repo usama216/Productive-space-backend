@@ -182,8 +182,9 @@ const openDoor = async (req, res) => {
 
     // Check if token is expired
     const now = new Date();
-    const expiresAt = new Date(bookingData.endAt);
-    const enableAt = new Date(bookingData.startAt);
+    const GRACE_PERIOD_MS = 15 * 60 * 1000; // 15 minutes
+    const enableAt = new Date(new Date(bookingData.startAt).getTime() - GRACE_PERIOD_MS);
+    const expiresAt = new Date(new Date(bookingData.endAt).getTime() + GRACE_PERIOD_MS);
     if (now < enableAt) {
       console.error('Booking has not started yet');
       return res.status(400).send(openDoorFailTemplate('Your booking has not started yet. Please wait until your scheduled time.'));
