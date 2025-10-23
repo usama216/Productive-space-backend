@@ -87,13 +87,18 @@ const rescheduleBooking = async (req, res) => {
 
     // Check seat availability for new time
     console.log('🪑 Checking seat availability for new time...')
+    
+    // Ensure times are treated as UTC by adding 'Z' if not present
+    const startAtUTC = startAt.endsWith('Z') ? startAt : startAt + 'Z';
+    const endAtUTC = endAt.endsWith('Z') ? endAt : endAt + 'Z';
+    
     const { data: conflictingBookings, error: conflictError } = await supabase
       .from('Booking')
       .select('id, seatNumbers, startAt, endAt')
       .eq('location', currentBooking.location)
       .eq('confirmedPayment', true)
       .neq('id', bookingId) // Exclude current booking
-      .or(`and(startAt.lt.${endAt},endAt.gt.${startAt})`)
+      .or(`and(startAt.lt.${endAtUTC},endAt.gt.${startAtUTC})`)
 
     if (conflictError) {
       console.error('❌ Error checking seat conflicts:', conflictError)
@@ -333,13 +338,17 @@ const getAvailableSeatsForReschedule = async (req, res) => {
     }
 
     // Get conflicting bookings for the new time
+    // Ensure times are treated as UTC by adding 'Z' if not present
+    const startAtUTC = startAt.endsWith('Z') ? startAt : startAt + 'Z';
+    const endAtUTC = endAt.endsWith('Z') ? endAt : endAt + 'Z';
+    
     const { data: conflictingBookings, error: conflictError } = await supabase
       .from('Booking')
       .select('seatNumbers')
       .eq('location', currentBooking.location)
       .eq('confirmedPayment', true)
       .neq('id', bookingId) // Exclude current booking
-      .or(`and(startAt.lt.${endAt},endAt.gt.${startAt})`)
+      .or(`and(startAt.lt.${endAtUTC},endAt.gt.${startAtUTC})`)
 
     if (conflictError) {
       return res.status(500).json({
@@ -356,10 +365,10 @@ const getAvailableSeatsForReschedule = async (req, res) => {
       }
     })
 
-    // Define all available seats (you may want to make this dynamic)
+    // Define all available seats (S1-S15 only)
     const allSeats = [
       'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10',
-      'S11', 'S12', 'S13', 'S14', 'S15', 'S16', 'S17', 'S18', 'S19', 'S20'
+      'S11', 'S12', 'S13', 'S14', 'S15'
     ]
 
     const availableSeats = allSeats.filter(seat => !occupiedSeats.has(seat))

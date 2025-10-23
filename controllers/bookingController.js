@@ -967,33 +967,92 @@ exports.confirmBookingPayment = async (req, res) => {
 
 exports.getBookedSeats = async (req, res) => {
   try {
-    const { location, startAt, endAt } = req.body;
+    const { location, startAt, endAt, excludeBookingId } = req.body;
+
+    console.log('🔍 getBookedSeats request:', { location, startAt, endAt, excludeBookingId });
 
     if (!location || !startAt || !endAt) {
       return res.status(400).json({ error: "location, startAt and endAt are required" });
     }
 
-    const { data: bookings, error } = await supabase
+    // Ensure times are treated as UTC by adding 'Z' if not present
+    const startAtUTC = startAt.endsWith('Z') ? startAt : startAt + 'Z';
+    const endAtUTC = endAt.endsWith('Z') ? endAt : endAt + 'Z';
+
+    console.log('🔍 UTC times:', { startAtUTC, endAtUTC });
+
+    let query = supabase
       .from("Booking")
       .select("seatNumbers, startAt, endAt, bookingRef, confirmedPayment, createdAt")
       .eq("location", location)
       .in("confirmedPayment", [true, false])
-      .lt("startAt", endAt)  
-      .gt("endAt", startAt);
+      .lt("startAt", endAtUTC)  
+      .gt("endAt", startAtUTC);
+
+    // Exclude the specified booking ID if provided (for reschedule scenarios)
+    if (excludeBookingId) {
+      console.log('🔍 Excluding booking ID:', excludeBookingId);
+      query = query.neq("id", excludeBookingId);
+    }
+
+    const { data: bookings, error } = await query;
 
     if (error) {
       return res.status(400).json({ error: error.message });
     }
 
+    console.log('🔍 Found bookings:', bookings?.length || 0);
+    console.log('🔍 Bookings data:', bookings);
+
     const bookedSeats = bookings
       ?.flatMap(b => b.seatNumbers || [])
       .filter((seat, index, self) => self.indexOf(seat) === index) || [];
+
+    console.log('🔍 Booked seats:', bookedSeats);
+
+    // Get current booking details to check its seats
+    let currentBookingSeats = [];
+    if (excludeBookingId) {
+      const { data: currentBooking, error: currentBookingError } = await supabase
+        .from('Booking')
+        .select('seatNumbers')
+        .eq('id', excludeBookingId)
+        .single();
+      
+      if (!currentBookingError && currentBooking) {
+        currentBookingSeats = currentBooking.seatNumbers || [];
+        console.log('🔍 Current booking seats:', currentBookingSeats);
+      }
+    }
+
+    // Define all available seats (S1-S15 only)
+    const allSeats = [
+      'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10',
+      'S11', 'S12', 'S13', 'S14', 'S15'
+    ];
+
+    // Calculate available seats (all seats minus booked seats)
+    const availableSeats = allSeats.filter(seat => !bookedSeats.includes(seat));
+
+    console.log('🔍 Available seats:', availableSeats);
+    console.log('🔍 Current booking seats that should be available:', currentBookingSeats);
+    
+    // Check if current booking seats conflict with other bookings
+    // If current booking seat is in bookedSeats, it means it's conflicting with another booking
+    const conflictingCurrentSeats = currentBookingSeats.filter(seat => 
+      bookedSeats.includes(seat)
+    );
+    
+    console.log('🔍 Conflicting current seats:', conflictingCurrentSeats);
 
     const confirmedBookings = bookings?.filter(b => b.confirmedPayment) || [];
     const pendingBookings = bookings?.filter(b => !b.confirmedPayment) || [];
 
     res.status(200).json({ 
       bookedSeats,
+      availableSeats,
+      currentBookingSeats,
+      conflictingCurrentSeats,
       overlappingBookings: bookings?.map(b => ({
         bookingRef: b.bookingRef,
         startAt: b.startAt,
