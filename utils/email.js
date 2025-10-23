@@ -42,6 +42,28 @@ const sendEmail = async (to, templateFn, userData, bookingData) => {
   }
 };
 
+const sendRawEmail = async (emailData) => {
+  try {
+    console.log('📧 [DEBUG] Starting sendRawEmail...');
+    console.log('📧 [DEBUG] Email data:', emailData);
+    
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: emailData.to,
+      subject: emailData.subject,
+      html: emailData.html
+    };
+
+    console.log('📧 [DEBUG] Sending raw email...');
+    const info = await transporter.sendMail(mailOptions);
+    console.log('📧 [DEBUG] Raw email sent successfully:', info.messageId);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error('📧 [DEBUG] Raw email error:', error.message);
+    return { success: false, error: error.message };
+  }
+};
+
 const sendPaymentConfirmation = (userData, bookingData) => {
   return sendEmail(userData.email, paymentConfirmationTemplate, userData, bookingData);
 };
@@ -290,6 +312,7 @@ const sendRescheduleConfirmation = async (userData, bookingData, rescheduleInfo)
 
 module.exports = {
   sendEmail,
+  sendRawEmail,
   sendPaymentConfirmation,
   sendBookingConfirmation,
   sendPackageConfirmation,
