@@ -23,97 +23,171 @@ const requestRefund = async (req, res) => {
 
     console.log('📊 Retrieved booking data:', booking);
 
-    // Fetch the actual paid amount from Payment table (excludes packages, promo codes, credits)
-    console.log('🔍 Fetching actual paid amount from Payment table...');
+    // Fetch the actual paid amount from Payment table (includes ALL payments: original + reschedule)
+    console.log('🔍 Fetching ALL payments for booking to calculate total refund amount...');
     let actualPaidAmount = 0;
+    let allPayments = [];
     
-    if (booking.paymentId) {
-      // Try to get payment by paymentId first
-      const { data: payment, error: paymentError } = await supabase
-        .from('Payment')
-        .select('totalAmount, cost')
-        .eq('id', booking.paymentId)
-        .single();
+    console.log('🔍 Finding all payments for booking:', {
+      bookingId: booking.id,
+      bookingRef: booking.bookingRef,
+      paymentId: booking.paymentId
+    });
 
-      if (payment && !paymentError) {
-        actualPaidAmount = parseFloat(payment.totalAmount) || parseFloat(payment.cost) || 0;
-        console.log('📊 Actual paid amount from Payment table (by paymentId):', actualPaidAmount);
-      } else {
-        console.log('⚠️ Payment not found by paymentId, trying by bookingRef...');
-        
-        // Fallback: try to get payment by bookingRef
-        const { data: paymentByRef, error: paymentByRefError } = await supabase
+    // Find ALL payments related to this booking (original + reschedule)
+    // Try multiple query patterns to find all related payments
+    const { data: payments, error: paymentsError } = await supabase
+      .from('Payment')
+      .select('id, totalAmount, cost, paymentMethod, bookingRef, createdAt')
+      .or(`bookingRef.eq.${booking.bookingRef},bookingRef.eq.RESCHEDULE_${booking.id},bookingRef.eq.${booking.id}`)
+      .order('createdAt', { ascending: true }); // Order by creation time to see original first
+
+    console.log('🔍 Refund query used:', `bookingRef.eq.${booking.bookingRef},bookingRef.eq.RESCHEDULE_${booking.id},bookingRef.eq.${booking.id}`);
+
+    if (payments && !paymentsError) {
+      allPayments = payments;
+      console.log('📊 Found payments for booking:', payments.map(p => ({
+        id: p.id,
+        bookingRef: p.bookingRef,
+        amount: p.totalAmount || p.cost,
+        paymentMethod: p.paymentMethod,
+        createdAt: p.createdAt
+      })));
+
+      // If we only found one payment, try a broader search
+      if (payments.length === 1) {
+        console.log('⚠️ Only found 1 payment, trying broader search...');
+        const { data: broaderPayments, error: broaderError } = await supabase
           .from('Payment')
-          .select('totalAmount, cost')
-          .eq('bookingRef', booking.bookingRef)
-          .single();
+          .select('id, totalAmount, cost, paymentMethod, bookingRef, createdAt')
+          .ilike('bookingRef', `%${booking.bookingRef}%`)
+          .order('createdAt', { ascending: true });
 
-        if (paymentByRef && !paymentByRefError) {
-          actualPaidAmount = parseFloat(paymentByRef.totalAmount) || parseFloat(paymentByRef.cost) || 0;
-          console.log('📊 Actual paid amount from Payment table (by bookingRef):', actualPaidAmount);
-        } else {
-          console.log('⚠️ Payment not found by bookingRef either, using booking totalAmount as fallback');
-          actualPaidAmount = parseFloat(booking.totalAmount) || 0;
+        if (broaderPayments && broaderPayments.length > 1) {
+          console.log('📊 Broader search found more payments:', broaderPayments);
+          allPayments = broaderPayments;
         }
       }
+
+      // Sum up all payments
+      actualPaidAmount = allPayments.reduce((sum, payment) => {
+        const amount = parseFloat(payment.totalAmount) || parseFloat(payment.cost) || 0;
+        console.log(`💰 Adding payment ${payment.id} (${payment.bookingRef}): $${amount}`);
+        return sum + amount;
+      }, 0);
+
+      console.log('💰 Total amount paid across all payments:', actualPaidAmount);
     } else {
-      console.log('⚠️ No paymentId found, using booking totalAmount as fallback');
-      actualPaidAmount = parseFloat(booking.totalAmount) || 0;
+      console.log('⚠️ No payments found, trying fallback methods...');
+      
+      // Fallback: try to get payment by paymentId (single payment)
+      if (booking.paymentId) {
+        const { data: payment, error: paymentError } = await supabase
+          .from('Payment')
+          .select('totalAmount, cost, paymentMethod')
+          .eq('id', booking.paymentId)
+          .single();
+
+        if (payment && !paymentError) {
+          actualPaidAmount = parseFloat(payment.totalAmount) || parseFloat(payment.cost) || 0;
+          allPayments = [payment];
+          console.log('📊 Fallback: Found single payment by paymentId:', actualPaidAmount);
+        }
+      }
+      
+      // Final fallback: use booking totalAmount
+      if (actualPaidAmount === 0) {
+        actualPaidAmount = parseFloat(booking.totalAmount) || 0;
+        console.log('📊 Final fallback: Using booking totalAmount:', actualPaidAmount);
+      }
     }
 
-    console.log('💰 Final actual paid amount for refund:', actualPaidAmount);
+    console.log('💰 Final total amount to refund:', actualPaidAmount);
 
-    // Check if payment was made by card and deduct 5% fee from refund amount
-    let finalRefundAmount = actualPaidAmount;
+    // Calculate fee deductions for each payment method
+    let finalRefundAmount = 0;
     
-    if (booking.paymentId) {
-      // Get payment method to check if it was card payment
-      const { data: paymentMethod, error: paymentMethodError } = await supabase
-        .from('Payment')
-        .select('paymentMethod, totalAmount')
-        .eq('id', booking.paymentId)
-        .single();
-
-      if (paymentMethod && !paymentMethodError) {
-        const isCardPayment = paymentMethod.paymentMethod && 
-          (paymentMethod.paymentMethod.toLowerCase().includes('card') || 
-           paymentMethod.paymentMethod.toLowerCase().includes('credit'));
+    if (allPayments && allPayments.length > 0) {
+      console.log('💳 Processing fee deductions for each payment...');
+      
+      allPayments.forEach((payment, index) => {
+        const paymentAmount = parseFloat(payment.totalAmount) || parseFloat(payment.cost) || 0;
+        const paymentMethod = payment.paymentMethod || '';
         
-        const isPayNowPayment = paymentMethod.paymentMethod &&
-          (paymentMethod.paymentMethod.toLowerCase().includes('paynow') ||
-           paymentMethod.paymentMethod.toLowerCase().includes('pay_now'));
+        console.log(`💳 Processing payment ${index + 1}:`, {
+          id: payment.id,
+          amount: paymentAmount,
+          method: paymentMethod,
+          bookingRef: payment.bookingRef
+        });
+        
+        const isCardPayment = paymentMethod && 
+          (paymentMethod.toLowerCase().includes('card') || 
+           paymentMethod.toLowerCase().includes('credit'));
+        
+        const isPayNowPayment = paymentMethod &&
+          (paymentMethod.toLowerCase().includes('paynow') ||
+           paymentMethod.toLowerCase().includes('pay_now'));
+        
+        let refundAmountForThisPayment = paymentAmount;
         
         if (isCardPayment) {
           // Calculate original amount before 5% card fee
-          // If totalAmount includes 5% fee, then original amount = totalAmount / 1.05
-          const originalAmount = actualPaidAmount / 1.05;
-          finalRefundAmount = originalAmount;
+          const originalAmount = paymentAmount / 1.05;
+          refundAmountForThisPayment = originalAmount;
           
-          console.log('💳 Card payment detected - deducting 5% fee:', {
-            paidAmount: actualPaidAmount,
+          console.log(`💳 Card payment ${index + 1} - deducting 5% fee:`, {
+            paidAmount: paymentAmount,
             originalAmount: originalAmount,
-            cardFee: actualPaidAmount - originalAmount,
-            finalRefundAmount: finalRefundAmount
+            cardFee: paymentAmount - originalAmount,
+            refundAmount: refundAmountForThisPayment
           });
-        } else if (isPayNowPayment && actualPaidAmount < 10) {
+        } else if (isPayNowPayment && paymentAmount < 10) {
           // Calculate original amount before $0.20 PayNow fee
-          // If totalAmount includes $0.20 fee, then original amount = totalAmount - 0.20
-          const originalAmount = actualPaidAmount - 0.20;
-          finalRefundAmount = Math.max(0, originalAmount);
+          const originalAmount = paymentAmount - 0.20;
+          refundAmountForThisPayment = Math.max(0, originalAmount);
           
-          console.log('💳 PayNow payment detected - deducting $0.20 transaction fee:', {
-            paidAmount: actualPaidAmount,
+          console.log(`💳 PayNow payment ${index + 1} - deducting $0.20 transaction fee:`, {
+            paidAmount: paymentAmount,
             originalAmount: originalAmount,
             transactionFee: 0.20,
-            finalRefundAmount: finalRefundAmount
+            refundAmount: refundAmountForThisPayment
           });
         } else {
-          console.log('💳 Non-card/PayNow payment - no fee deduction needed');
+          console.log(`💳 Payment ${index + 1} - no fee deduction needed`);
         }
-      }
+        
+        finalRefundAmount += refundAmountForThisPayment;
+      });
+      
+      console.log('💳 Fee deduction summary:', {
+        totalPaid: actualPaidAmount,
+        totalRefundAfterFees: finalRefundAmount,
+        totalFeesDeducted: actualPaidAmount - finalRefundAmount
+      });
+    } else {
+      // Fallback: use original logic for single payment
+      finalRefundAmount = actualPaidAmount;
+      console.log('💳 No payment details found, using total amount without fee deduction');
     }
 
     console.log('💰 Final refund amount after fee deduction:', finalRefundAmount);
+    
+    // Additional logging for debugging
+    console.log('📋 Refund calculation summary:', {
+      bookingId: booking.id,
+      bookingRef: booking.bookingRef,
+      totalPaymentsFound: allPayments.length,
+      totalPaidAmount: actualPaidAmount,
+      finalRefundAmount: finalRefundAmount,
+      feesDeducted: actualPaidAmount - finalRefundAmount,
+      paymentBreakdown: allPayments.map(p => ({
+        id: p.id,
+        bookingRef: p.bookingRef,
+        amount: parseFloat(p.totalAmount) || parseFloat(p.cost) || 0,
+        method: p.paymentMethod
+      }))
+    });
 
     // Verify the booking belongs to the requesting user
     if (booking.userId !== userid) {

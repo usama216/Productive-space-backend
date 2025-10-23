@@ -1341,17 +1341,73 @@ exports.getBookingPaymentDetails = async (req, res) => {
     const promoDiscountAmount = parseFloat(booking.discountamount) || 0;
     const totalCost = parseFloat(booking.totalCost) || 0;
 
-    // Get payment details if paymentId exists
-    if (booking.paymentId) {
-      const { data: payment, error: paymentError } = await supabase
-        .from('Payment')
-        .select('totalAmount, cost, paymentMethod')
-        .eq('id', booking.paymentId)
-        .single();
+    // Get ALL payment details (original + reschedule) for accurate refund calculation
+    console.log('🔍 Finding all payments for booking payment details:', {
+      bookingId: booking.id,
+      bookingRef: booking.bookingRef,
+      paymentId: booking.paymentId
+    });
 
-      if (payment && !paymentError) {
-        paymentAmount = parseFloat(payment.totalAmount) || parseFloat(payment.cost) || 0;
-        paymentMethod = payment.paymentMethod || 'Unknown';
+    // First, let's check what payments exist for this booking
+    // Try multiple query patterns to find all related payments
+    const { data: allPaymentsCheck, error: checkError } = await supabase
+      .from('Payment')
+      .select('id, totalAmount, cost, paymentMethod, bookingRef, createdAt')
+      .or(`bookingRef.eq.${booking.bookingRef},bookingRef.eq.RESCHEDULE_${booking.id},bookingRef.eq.${booking.id}`)
+      .order('createdAt', { ascending: true });
+
+    console.log('🔍 All payments found for booking:', allPaymentsCheck);
+    console.log('🔍 Query used:', `bookingRef.eq.${booking.bookingRef},bookingRef.eq.RESCHEDULE_${booking.id},bookingRef.eq.${booking.id}`);
+
+    // Also try a broader search to see all payments
+    const { data: allPaymentsBroader, error: broaderError } = await supabase
+      .from('Payment')
+      .select('id, totalAmount, cost, paymentMethod, bookingRef, createdAt')
+      .ilike('bookingRef', `%${booking.bookingRef}%`)
+      .order('createdAt', { ascending: true });
+
+    console.log('🔍 Broader search results:', allPaymentsBroader);
+
+    // Use the broader search results if the specific query didn't find multiple payments
+    const allPayments = (allPaymentsCheck && allPaymentsCheck.length > 1) ? allPaymentsCheck : allPaymentsBroader;
+    const paymentsError = checkError;
+
+    if (allPayments && !paymentsError && allPayments.length > 0) {
+      console.log('📊 Found payments for booking payment details:', allPayments.map(p => ({
+        id: p.id,
+        bookingRef: p.bookingRef,
+        amount: p.totalAmount || p.cost,
+        paymentMethod: p.paymentMethod,
+        createdAt: p.createdAt
+      })));
+
+      // Sum up all payments
+      paymentAmount = allPayments.reduce((sum, payment) => {
+        const amount = parseFloat(payment.totalAmount) || parseFloat(payment.cost) || 0;
+        return sum + amount;
+      }, 0);
+
+      // Use the payment method from the most recent payment
+      const latestPayment = allPayments[allPayments.length - 1];
+      paymentMethod = latestPayment.paymentMethod || 'Unknown';
+
+      console.log('💰 Total payment amount for UI:', paymentAmount);
+    } else {
+      console.log('⚠️ No payments found, using fallback methods...');
+      
+      // Fallback: try to get payment by paymentId (single payment)
+      if (booking.paymentId) {
+        const { data: payment, error: paymentError } = await supabase
+          .from('Payment')
+          .select('totalAmount, cost, paymentMethod')
+          .eq('id', booking.paymentId)
+          .single();
+
+        if (payment && !paymentError) {
+          paymentAmount = parseFloat(payment.totalAmount) || parseFloat(payment.cost) || 0;
+          paymentMethod = payment.paymentMethod || 'Unknown';
+          console.log('📊 Fallback: Found single payment by paymentId:', paymentAmount);
+        }
       }
     }
     
@@ -1376,27 +1432,69 @@ exports.getBookingPaymentDetails = async (req, res) => {
     // For now, credit amount is not stored separately, it's included in the total calculation
     const creditAmount = 0;
 
-    // Calculate fees based on payment method
-    const isCardPayment = paymentMethod && 
-      (paymentMethod.toLowerCase().includes('card') || 
-       paymentMethod.toLowerCase().includes('credit'));
-    
-    const isPayNowPayment = paymentMethod && 
-      (paymentMethod.toLowerCase().includes('paynow') || 
-       paymentMethod.toLowerCase().includes('pay_now'));
-    
+    // Calculate fees based on payment methods (handle multiple payments)
     let cardFee = 0;
     let payNowFee = 0;
     
-    if (isCardPayment) {
-      // If card payment, the paymentAmount includes 5% fee
-      // So: paymentAmount = subtotal * 1.05
-      // Therefore: cardFee = paymentAmount - (paymentAmount / 1.05)
-      const subtotal = paymentAmount / 1.05;
-      cardFee = paymentAmount - subtotal;
-    } else if (isPayNowPayment && paymentAmount < 10) {
-      // PayNow fee of $0.20 for amounts less than $10
-      payNowFee = 0.20;
+    if (allPayments && allPayments.length > 0) {
+      console.log('💳 Calculating fees for each payment in UI...');
+      
+      allPayments.forEach((payment, index) => {
+        const paymentAmount = parseFloat(payment.totalAmount) || parseFloat(payment.cost) || 0;
+        const paymentMethod = payment.paymentMethod || '';
+        
+        const isCardPayment = paymentMethod && 
+          (paymentMethod.toLowerCase().includes('card') || 
+           paymentMethod.toLowerCase().includes('credit'));
+        
+        const isPayNowPayment = paymentMethod && 
+          (paymentMethod.toLowerCase().includes('paynow') || 
+           paymentMethod.toLowerCase().includes('pay_now'));
+        
+        if (isCardPayment) {
+          // Calculate 5% card fee for this payment
+          const subtotal = paymentAmount / 1.05;
+          const feeForThisPayment = paymentAmount - subtotal;
+          cardFee += feeForThisPayment;
+          
+          console.log(`💳 Card payment ${index + 1} fee:`, {
+            amount: paymentAmount,
+            fee: feeForThisPayment,
+            totalCardFee: cardFee
+          });
+        } else if (isPayNowPayment && paymentAmount < 10) {
+          // PayNow fee of $0.20 for amounts less than $10
+          payNowFee += 0.20;
+          
+          console.log(`💳 PayNow payment ${index + 1} fee:`, {
+            amount: paymentAmount,
+            fee: 0.20,
+            totalPayNowFee: payNowFee
+          });
+        }
+      });
+      
+      console.log('💳 Total fees calculated:', {
+        totalCardFee: cardFee,
+        totalPayNowFee: payNowFee,
+        totalPaymentAmount: paymentAmount
+      });
+    } else {
+      // Fallback: use original logic for single payment
+      const isCardPayment = paymentMethod && 
+        (paymentMethod.toLowerCase().includes('card') || 
+         paymentMethod.toLowerCase().includes('credit'));
+      
+      const isPayNowPayment = paymentMethod && 
+        (paymentMethod.toLowerCase().includes('paynow') || 
+         paymentMethod.toLowerCase().includes('pay_now'));
+      
+      if (isCardPayment) {
+        const subtotal = paymentAmount / 1.05;
+        cardFee = paymentAmount - subtotal;
+      } else if (isPayNowPayment && paymentAmount < 10) {
+        payNowFee = 0.20;
+      }
     }
 
     res.json({
