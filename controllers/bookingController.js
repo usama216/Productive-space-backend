@@ -1327,7 +1327,7 @@ exports.getBookingPaymentDetails = async (req, res) => {
     // Get booking details with all discount information
     const { data: booking, error: bookingError } = await supabase
       .from('Booking')
-      .select('id, totalAmount, totalCost, discountamount, packageId, packageUsed, paymentId, bookingRef')
+      .select('id, totalAmount, totalCost, discountamount, packageId, packageUsed, paymentId, bookingRef, promocodeid, promoCodeId')
       .eq('id', bookingId)
       .single();
 
@@ -1338,8 +1338,24 @@ exports.getBookingPaymentDetails = async (req, res) => {
 
     let paymentAmount = parseFloat(booking.totalAmount) || 0;
     let paymentMethod = 'Unknown';
-    const promoDiscountAmount = parseFloat(booking.discountamount) || 0;
     const totalCost = parseFloat(booking.totalCost) || 0;
+    
+    // Determine if discountamount is promo code or credit
+    let promoDiscountAmount = 0;
+    console.log('🔍 Checking promo code detection:', {
+      discountamount: booking.discountamount,
+      promocodeid: booking.promocodeid,
+      promoCodeId: booking.promoCodeId,
+      hasPromoCode: !!(booking.promoCodeId || booking.promocodeid)
+    });
+    
+    if (booking.discountamount && booking.discountamount > 0 && (booking.promoCodeId || booking.promocodeid)) {
+      // If there's a promo code, discountamount is promo discount
+      promoDiscountAmount = parseFloat(booking.discountamount) || 0;
+      console.log('💳 Promo code discount found:', promoDiscountAmount);
+    } else {
+      console.log('💳 No promo code discount (discountamount will be treated as credit if credits were used)');
+    }
 
     // Get ALL payment details (original + reschedule) for accurate refund calculation
     console.log('🔍 Finding all payments for booking payment details:', {
@@ -1429,8 +1445,23 @@ exports.getBookingPaymentDetails = async (req, res) => {
       packageDiscountAmount = Math.max(0, totalCost - amountBeforeCardFee);
     }
     
-    // For now, credit amount is not stored separately, it's included in the total calculation
-    const creditAmount = 0;
+    // Find credit usage for this booking to show accurate credit information
+    console.log('🔍 Finding credit usage for booking payment details...');
+    const { data: creditUsages, error: creditUsageError } = await supabase
+      .from('creditusage')
+      .select('id, amountused, creditid, usercredits(amount, status)')
+      .eq('bookingid', bookingId);
+
+    let creditAmount = 0;
+    if (creditUsages && !creditUsageError) {
+      creditAmount = creditUsages.reduce((sum, usage) => {
+        const amount = parseFloat(usage.amountused) || 0;
+        return sum + amount;
+      }, 0);
+      console.log('💳 Total credits used for this booking:', creditAmount);
+    } else {
+      console.log('💳 No credit usage found for this booking');
+    }
 
     // Calculate fees based on payment methods (handle multiple payments)
     let cardFee = 0;
@@ -1508,7 +1539,13 @@ exports.getBookingPaymentDetails = async (req, res) => {
       totalDiscountAmount: promoDiscountAmount + packageDiscountAmount + creditAmount,
       cardFee: Math.round(cardFee * 100) / 100, // Round to 2 decimal places
       payNowFee: Math.round(payNowFee * 100) / 100, // Round to 2 decimal places
-      totalCost: totalCost
+      totalCost: totalCost,
+      refundPolicy: {
+        creditsRefundable: false,
+        discountsRefundable: false,
+        promoCodeRefundable: false,
+        policy: 'Credits, discounts, and promo codes are non-refundable'
+      }
     });
 
   } catch (error) {

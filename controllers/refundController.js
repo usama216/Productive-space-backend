@@ -104,71 +104,84 @@ const requestRefund = async (req, res) => {
 
     console.log('💰 Final total amount to refund:', actualPaidAmount);
 
-    // Calculate fee deductions for each payment method
+    // Find credit usage for this booking to calculate actual cash paid
+    console.log('🔍 Finding credit usage for this booking...');
+    const { data: creditUsages, error: creditUsageError } = await supabase
+      .from('creditusage')
+      .select('id, amountused, creditid, usercredits(amount, status)')
+      .eq('bookingid', bookingid);
+
+    let totalCreditsUsed = 0;
+    if (creditUsages && !creditUsageError) {
+      totalCreditsUsed = creditUsages.reduce((sum, usage) => {
+        const amount = parseFloat(usage.amountused) || 0;
+        console.log(`💳 Credit usage found: $${amount}`);
+        return sum + amount;
+      }, 0);
+      console.log('💳 Total credits used for this booking:', totalCreditsUsed);
+    } else {
+      console.log('💳 No credit usage found for this booking');
+    }
+
+    // Calculate actual cash paid (total - credits used)
+    const actualCashPaid = actualPaidAmount - totalCreditsUsed;
+    console.log('💰 Actual cash paid calculation:', {
+      totalPaid: actualPaidAmount,
+      creditsUsed: totalCreditsUsed,
+      actualCashPaid: actualCashPaid
+    });
+
+    // Calculate fee deductions for each payment method (only on cash payments)
     let finalRefundAmount = 0;
     
-    if (allPayments && allPayments.length > 0) {
-      console.log('💳 Processing fee deductions for each payment...');
+    // Only calculate fees on the actual cash paid (not credits)
+    if (actualCashPaid > 0) {
+      console.log('💳 Processing fee deductions for cash payments only...');
       
-      allPayments.forEach((payment, index) => {
-        const paymentAmount = parseFloat(payment.totalAmount) || parseFloat(payment.cost) || 0;
-        const paymentMethod = payment.paymentMethod || '';
+      // For simplicity, apply fees proportionally to the cash amount
+      // This assumes the latest payment method applies to the cash portion
+      const latestPayment = allPayments && allPayments.length > 0 ? allPayments[allPayments.length - 1] : null;
+      const paymentMethod = latestPayment ? latestPayment.paymentMethod : 'Unknown';
+      
+      console.log('💳 Using payment method for fee calculation:', paymentMethod);
+      
+      const isCardPayment = paymentMethod && 
+        (paymentMethod.toLowerCase().includes('card') || 
+         paymentMethod.toLowerCase().includes('credit'));
+      
+      const isPayNowPayment = paymentMethod &&
+        (paymentMethod.toLowerCase().includes('paynow') ||
+         paymentMethod.toLowerCase().includes('pay_now'));
+      
+      if (isCardPayment) {
+        // Calculate original amount before 5% card fee
+        const originalAmount = actualCashPaid / 1.05;
+        finalRefundAmount = originalAmount;
         
-        console.log(`💳 Processing payment ${index + 1}:`, {
-          id: payment.id,
-          amount: paymentAmount,
-          method: paymentMethod,
-          bookingRef: payment.bookingRef
+        console.log('💳 Card payment - deducting 5% fee from cash amount:', {
+          cashPaid: actualCashPaid,
+          originalAmount: originalAmount,
+          cardFee: actualCashPaid - originalAmount,
+          refundAmount: finalRefundAmount
         });
+      } else if (isPayNowPayment && actualCashPaid < 10) {
+        // Calculate original amount before $0.20 PayNow fee
+        const originalAmount = actualCashPaid - 0.20;
+        finalRefundAmount = Math.max(0, originalAmount);
         
-        const isCardPayment = paymentMethod && 
-          (paymentMethod.toLowerCase().includes('card') || 
-           paymentMethod.toLowerCase().includes('credit'));
-        
-        const isPayNowPayment = paymentMethod &&
-          (paymentMethod.toLowerCase().includes('paynow') ||
-           paymentMethod.toLowerCase().includes('pay_now'));
-        
-        let refundAmountForThisPayment = paymentAmount;
-        
-        if (isCardPayment) {
-          // Calculate original amount before 5% card fee
-          const originalAmount = paymentAmount / 1.05;
-          refundAmountForThisPayment = originalAmount;
-          
-          console.log(`💳 Card payment ${index + 1} - deducting 5% fee:`, {
-            paidAmount: paymentAmount,
-            originalAmount: originalAmount,
-            cardFee: paymentAmount - originalAmount,
-            refundAmount: refundAmountForThisPayment
-          });
-        } else if (isPayNowPayment && paymentAmount < 10) {
-          // Calculate original amount before $0.20 PayNow fee
-          const originalAmount = paymentAmount - 0.20;
-          refundAmountForThisPayment = Math.max(0, originalAmount);
-          
-          console.log(`💳 PayNow payment ${index + 1} - deducting $0.20 transaction fee:`, {
-            paidAmount: paymentAmount,
-            originalAmount: originalAmount,
-            transactionFee: 0.20,
-            refundAmount: refundAmountForThisPayment
-          });
-        } else {
-          console.log(`💳 Payment ${index + 1} - no fee deduction needed`);
-        }
-        
-        finalRefundAmount += refundAmountForThisPayment;
-      });
-      
-      console.log('💳 Fee deduction summary:', {
-        totalPaid: actualPaidAmount,
-        totalRefundAfterFees: finalRefundAmount,
-        totalFeesDeducted: actualPaidAmount - finalRefundAmount
-      });
+        console.log('💳 PayNow payment - deducting $0.20 transaction fee from cash amount:', {
+          cashPaid: actualCashPaid,
+          originalAmount: originalAmount,
+          transactionFee: 0.20,
+          refundAmount: finalRefundAmount
+        });
+      } else {
+        finalRefundAmount = actualCashPaid;
+        console.log('💳 No fee deduction needed for cash amount:', actualCashPaid);
+      }
     } else {
-      // Fallback: use original logic for single payment
-      finalRefundAmount = actualPaidAmount;
-      console.log('💳 No payment details found, using total amount without fee deduction');
+      finalRefundAmount = 0;
+      console.log('💳 No cash paid, only credits used - no refund needed');
     }
 
     console.log('💰 Final refund amount after fee deduction:', finalRefundAmount);
@@ -257,28 +270,38 @@ const requestRefund = async (req, res) => {
     const expiresat = new Date();
     expiresat.setDate(expiresat.getDate() + 30);
 
-    // Create user credit
-    console.log('🔄 Creating user credit:', {
-      userid: userid,
-      amount: finalRefundAmount,
-      refundedfrombookingid: bookingid,
-      expiresat: expiresat.toISOString()
-    });
-    
-    const { data: credit, error: creditError } = await supabase
-      .from('usercredits')
-      .insert({
+    // POLICY: No refund for credits, discounts, or promo codes
+    if (totalCreditsUsed > 0) {
+      console.log('🚫 POLICY: Credits used are non-refundable:', {
+        creditsUsed: totalCreditsUsed,
+        policy: 'No refund for credits, discounts, or promo codes'
+      });
+    }
+
+    // Create user credit for cash refund (if any)
+    if (finalRefundAmount > 0) {
+      console.log('🔄 Creating user credit for cash refund:', {
         userid: userid,
         amount: finalRefundAmount,
         refundedfrombookingid: bookingid,
         expiresat: expiresat.toISOString()
-      })
-      .select()
-      .single();
+      });
+      
+      const { data: credit, error: creditError } = await supabase
+        .from('usercredits')
+        .insert({
+          userid: userid,
+          amount: finalRefundAmount,
+          refundedfrombookingid: bookingid,
+          expiresat: expiresat.toISOString()
+        })
+        .select()
+        .single();
 
-    if (creditError) {
-      console.error('❌ Error creating user credit:', creditError);
-      return res.status(500).json({ error: 'Failed to create user credit' });
+      if (creditError) {
+        console.error('❌ Error creating user credit:', creditError);
+        return res.status(500).json({ error: 'Failed to create user credit' });
+      }
     }
 
     // Update refund transaction status to APPROVED
@@ -330,13 +353,28 @@ const requestRefund = async (req, res) => {
     }
 
     console.log('✅ Refund auto-approved successfully');
-    res.json({ 
-      message: 'Refund approved successfully', 
+    
+    // Prepare response with refund details and policy information
+    const response = {
+      message: 'Refund approved successfully',
       bookingid,
-      creditid: credit.id,
-      creditamount: finalRefundAmount,
+      refundDetails: {
+        totalPaid: actualPaidAmount,
+        creditsUsed: totalCreditsUsed,
+        cashPaid: actualCashPaid,
+        cashRefunded: finalRefundAmount,
+        creditsRefunded: 0, // POLICY: Credits are non-refundable
+        policy: 'Credits, discounts, and promo codes are non-refundable'
+      },
       expiresat: expiresat.toISOString()
-    });
+    };
+
+    // Add credit ID if cash refund exists
+    if (finalRefundAmount > 0) {
+      response.cashCreditId = credit.id;
+    }
+
+    res.json(response);
   } catch (error) {
     console.error('❌ Error in requestRefund:', error);
     res.status(500).json({ error: 'Internal server error' });
