@@ -3,9 +3,12 @@ const router = express.Router();
 
 const {
   generateOpenLink,
-  openDoor,
-  sendDoorAccessLink
+  openDoor
 } = require("../controllers/doorController");
+
+const {
+  sendDoorAccessLink
+} = require("../controllers/doorEmailController");
 
 // Generate a secure access link to open the door
 router.post("/generate-open-link", generateOpenLink);
