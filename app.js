@@ -58,7 +58,7 @@ const adminRefundRoutes = require("./routes/adminRefund");
 const creditRoutes = require("./routes/credit");
 const pricingRoutes = require("./routes/pricing");
 const rescheduleRoutes = require("./routes/reschedule");
-
+const doorRoutes = require("./routes/door");
 const { swaggerUi, specs } = require('./swagger');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
@@ -112,7 +112,7 @@ app.get("/", (req, res) => {
         </html>
     `);
 });
-
+app.use("/api/door", doorRoutes);
 app.use("/api/hitpay", paymentRoutes);
 app.use("/api/booking", bookingRoutes);
 app.use("/api/promocode", promoCodeRoutes);
