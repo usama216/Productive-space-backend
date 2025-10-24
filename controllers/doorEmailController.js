@@ -117,25 +117,44 @@ const sendDoorAccessLink = async (req, res) => {
       });
     }
 
-    // Generate a secure token
-    const token = crypto.randomBytes(32).toString('hex');
-
-    // Store token in database with expiration and booking details
-    const { data: tokenData, error: tokenError } = await supabase
+    // Check if token already exists for this booking reference
+    const { data: existingToken, error: checkError } = await supabase
       .from('DoorAccessToken')
-      .upsert([
-        {
-          token,
-          booking_ref: bookingRef,
-          created_at: new Date().toISOString(),
-          used: false,
-          access_count: 0
-        }
-      ],
-        {
-          onConflict: 'booking_ref',
-        }
-      ).select('*').single();
+      .select('*')
+      .eq('booking_ref', bookingRef)
+      .single();
+
+    let token, tokenData, tokenError;
+
+    if (existingToken && !checkError) {
+      // Token already exists, return the existing one
+      token = existingToken.token;
+      tokenData = existingToken;
+      tokenError = null;
+    } else {
+      // Generate a new secure token
+      token = crypto.randomBytes(32).toString('hex');
+
+      // Store token in database with expiration and booking details
+      const result = await supabase
+        .from('DoorAccessToken')
+        .upsert([
+          {
+            token,
+            booking_ref: bookingRef,
+            created_at: new Date().toISOString(),
+            used: false,
+            access_count: 0
+          }
+        ],
+          {
+            onConflict: 'booking_ref',
+          }
+        ).select('*').single();
+      
+      tokenData = result.data;
+      tokenError = result.error;
+    }
 
     if (tokenError) {
       console.error('Error storing token:', tokenError);
