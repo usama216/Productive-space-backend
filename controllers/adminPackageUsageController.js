@@ -3,6 +3,19 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY
 
 exports.getPackageUsageAnalytics = async (req, res) => {
   try {
+    // Get pagination and filter parameters
+    const {
+      page = 1,
+      limit = 20,
+      search,
+      filterType,
+      sortBy = 'usagePercentage',
+      sortOrder = 'desc'
+    } = req.query;
+
+    console.log('🔍 Package Usage Analytics called with params:', {
+      page, limit, search, filterType, sortBy, sortOrder
+    });
    
     const { data: testData, error: testError } = await supabase
       .from('Package')
@@ -55,7 +68,8 @@ exports.getPackageUsageAnalytics = async (req, res) => {
       });
     }
 
-    const { data: allPurchases, error: purchasesError } = await supabase
+    // Build the query with filters
+    let query = supabase
       .from('PackagePurchase')
       .select(`
         id,
@@ -84,9 +98,41 @@ exports.getPackageUsageAnalytics = async (req, res) => {
           lastName,
           memberType
         )
-      `)
-      .eq('paymentStatus', 'COMPLETED')
-      .order('createdAt', { ascending: false });
+      `, { count: 'exact' })
+      .eq('paymentStatus', 'COMPLETED');
+
+    // Apply search filter
+    if (search) {
+      query = query.or(`Package.name.ilike.%${search}%,User.firstName.ilike.%${search}%,User.lastName.ilike.%${search}%,User.email.ilike.%${search}%`);
+    }
+
+    // Apply package type filter
+    if (filterType && filterType !== 'all') {
+      query = query.eq('Package.packageType', filterType);
+    }
+
+    // Apply sorting
+    if (sortBy === 'usagePercentage') {
+      // We'll sort by usage percentage after processing the data
+      query = query.order('createdAt', { ascending: sortOrder === 'asc' });
+    } else if (sortBy === 'revenue') {
+      query = query.order('totalAmount', { ascending: sortOrder === 'asc' });
+    } else if (sortBy === 'purchasedAt') {
+      query = query.order('createdAt', { ascending: sortOrder === 'asc' });
+    } else {
+      query = query.order('createdAt', { ascending: sortOrder === 'asc' });
+    }
+
+    // Apply pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const offset = (pageNum - 1) * limitNum;
+    
+    console.log('🔍 Pagination calculation:', { page: pageNum, limitNum, offset, range: `${offset} to ${offset + limitNum - 1}` });
+    
+    query = query.range(offset, offset + limitNum - 1);
+
+    const { data: allPurchases, error: purchasesError, count } = await query;
 
     if (purchasesError) {
       return res.status(500).json({
@@ -196,9 +242,23 @@ exports.getPackageUsageAnalytics = async (req, res) => {
       }
     }));
 
+    // Sort by usage percentage if requested
+    if (sortBy === 'usagePercentage') {
+      packageUsages.sort((a, b) => {
+        if (sortOrder === 'asc') {
+          return a.usagePercentage - b.usagePercentage;
+        } else {
+          return b.usagePercentage - a.usagePercentage;
+        }
+      });
+    }
+
+    const totalPurchases = count || packageUsages.length;
+    const totalPages = Math.ceil(totalPurchases / limitNum);
+
     const stats = {
       totalPackages: packages.length,
-      totalPurchases: packageUsages.length,
+      totalPurchases: totalPurchases,
       totalPasses: packageUsages.reduce((sum, pkg) => sum + pkg.totalPasses, 0),
       totalUsed: packageUsages.reduce((sum, pkg) => sum + pkg.usedPasses, 0),
       totalRevenue: packageUsages.reduce((sum, pkg) => sum + pkg.revenue, 0),
@@ -207,10 +267,27 @@ exports.getPackageUsageAnalytics = async (req, res) => {
         : 0
     };
 
+    console.log('🔍 Response data:', {
+      packagesCount: packageUsages.length,
+      totalPurchases,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: totalPurchases,
+        totalPages: totalPages
+      }
+    });
+
     res.json({
       success: true,
       packages: packageUsages,
-      stats
+      stats,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: totalPurchases,
+        totalPages: totalPages
+      }
     });
 
   } catch (error) {

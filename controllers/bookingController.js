@@ -291,34 +291,6 @@ exports.createBooking = async (req, res) => {
   }
 };
 
-exports.getAllBookings = async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from("Booking")
-      .select("*")
-      .order("createdAt", { ascending: false });
-
-    if (error) {
-      return res.status(400).json({ error: error.message });
-    }
-
-    // Map database fields to camelCase for consistency
-    if (data && Array.isArray(data)) {
-      data.forEach(booking => {
-        if (booking.promocodeid && !booking.promoCodeId) {
-          booking.promoCodeId = booking.promocodeid;
-        }
-        if (booking.discountamount !== undefined && booking.discountAmount === undefined) {
-          booking.discountAmount = booking.discountamount;
-        }
-      });
-    }
-
-    res.status(200).json({ bookings: data });
-  } catch (err) {
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-};
 
 exports.getBookingById = async (req, res) => {
   try {
@@ -1844,6 +1816,10 @@ exports.getAllBookings = async (req, res) => {
       sortOrder = 'desc'
     } = req.query;
 
+    console.log('🔍 getAllBookings called with params:', {
+      page, limit, search, status, location, dateFrom, dateTo, memberType, paymentStatus, sortBy, sortOrder
+    });
+
     let query = supabase
       .from('Booking')
       .select('*', { count: 'exact' });
@@ -1894,8 +1870,11 @@ exports.getAllBookings = async (req, res) => {
 
     query = query.order(sortBy, { ascending: sortOrder === 'asc' });
 
-    const offset = (page - 1) * limit;
-    query = query.range(offset, offset + limit - 1);
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const offset = (pageNum - 1) * limitNum;
+    console.log('🔍 Pagination calculation:', { page: pageNum, limitNum, offset, range: `${offset} to ${offset + limitNum - 1}` });
+    query = query.range(offset, offset + limitNum - 1);
 
     const { data: bookings, error, count } = await query;
 
@@ -2004,6 +1983,17 @@ exports.getAllBookings = async (req, res) => {
     const pendingPayments = bookingsWithStatus
       .filter(b => !b.confirmedPayment)
       .reduce((sum, b) => sum + parseFloat(b.totalAmount || 0), 0);
+
+    console.log('🔍 Response data:', {
+      bookingsCount: bookingsWithStatus.length,
+      totalBookings,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: totalBookings,
+        totalPages: Math.ceil(totalBookings / limit)
+      }
+    });
 
     res.json({
       bookings: bookingsWithStatus,
@@ -2313,6 +2303,7 @@ exports.getAllUsers = async (req, res) => {
       limit = 20,
       search,
       memberType,
+      studentVerificationStatus,
       sortBy = 'createdAt',
       sortOrder = 'desc',
       includeStats = 'false'
@@ -2323,11 +2314,15 @@ exports.getAllUsers = async (req, res) => {
       .select('*', { count: 'exact' });
 
     if (search) {
-      query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%`);
+      query = query.or(`firstName.ilike.%${search}%,lastName.ilike.%${search}%,email.ilike.%${search}%`);
     }
 
     if (memberType) {
       query = query.eq('memberType', memberType);
+    }
+
+    if (studentVerificationStatus) {
+      query = query.eq('studentVerificationStatus', studentVerificationStatus);
     }
 
     query = query.order(sortBy, { ascending: sortOrder === 'asc' });
