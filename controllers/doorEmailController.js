@@ -246,6 +246,106 @@ const sendDoorAccessLink = async (req, res) => {
   }
 };
 
+/**
+ * Send door access link for admin manual tokens via email
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const sendAdminDoorAccessLink = async (req, res) => {
+  try {
+    const { token, recipientEmail, userName, seatNumber, startTime, endTime } = req.body;
+
+    // Validate required parameters
+    if (!token || !recipientEmail || !seatNumber || !startTime || !endTime) {
+      return res.status(400).json({
+        success: false,
+        message: 'token, recipientEmail, seatNumber, startTime, and endTime are required'
+      });
+    }
+
+    // Format dates for email
+    const startTimeFormatted = new Date(startTime).toLocaleString('en-SG', {
+      timeZone: 'Asia/Singapore',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const endTimeFormatted = new Date(endTime).toLocaleString('en-SG', {
+      timeZone: 'Asia/Singapore',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const expiresAtFormatted = new Date(endTime).toLocaleString('en-SG', {
+      timeZone: 'Asia/Singapore',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    // Generate the access link
+    const accessLink = `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://productive-space-backend.vercel.app/api'}/door/open-door?token=${token}`;
+    const bookingRef = `Manual-${seatNumber}-${Date.now()}`;
+
+    // Prepare email data
+    const emailData = {
+      accessLink,
+      bookingRef,
+      userName: userName || 'Guest',
+      userEmail: recipientEmail,
+      startTime: startTimeFormatted,
+      endTime: endTimeFormatted,
+      location: 'Kovan',
+      expiresAt: expiresAtFormatted
+    };
+
+    // Generate email HTML
+    const emailHTML = doorAccessLinkTemplate(emailData);
+
+    // Send email
+    const emailResult = await sendRawEmail({
+      to: recipientEmail,
+      subject: `🔑 Admin Door Access Link - ${seatNumber} | My Productive Space`,
+      html: emailHTML
+    });
+
+    if (!emailResult.success) {
+      console.error('Error sending email:', emailResult.error);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send access link email'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Door access link sent successfully to email',
+      data: {
+        emailSent: true,
+        recipientEmail,
+        accessLink,
+        expiresAt: expiresAtFormatted
+      }
+    });
+
+  } catch (error) {
+    console.error('Error sending admin door access link:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+};
+
 module.exports = {
-  sendDoorAccessLink
+  sendDoorAccessLink,
+  sendAdminDoorAccessLink
 };
