@@ -20,7 +20,7 @@ router.post("/generate-open-link", generateOpenLink);
 router.post("/admin-generate-open-link", adminGenerateOpenLink);
 
 // Open door using token (GET request for easy link clicking)
-router.get("/open-door", openDoor);
+// router.get("/open-door", openDoor);
 
 // Send door access link via email
 router.post("/send-access-link", sendDoorAccessLink);

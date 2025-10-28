@@ -142,7 +142,7 @@ const generateOpenLink = async (req, res) => {
       message: 'Access link generated successfully',
       data: {
         ...data,
-        accessPath: `/door/open-door?token=${token}`,
+        accessPath: `/open?token=${token}`,
         enableAt: enableAt.toISOString(),
         expiresAt: expiresAt.toISOString(),
         maxAccessCount,
@@ -414,7 +414,7 @@ const adminGenerateOpenLink = async (req, res) => {
       message: 'Admin access link generated successfully',
       data: {
         ...data,
-        accessPath: `/door/open-door?token=${token}`,
+        accessPath: `/open?token=${token}`,
         enableAt: enableAt.toISOString(),
         expiresAt: expiresAt.toISOString(),
         maxAccessCount,

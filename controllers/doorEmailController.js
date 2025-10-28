@@ -164,8 +164,9 @@ const sendDoorAccessLink = async (req, res) => {
       });
     }
 
-    // Generate the access link
-    const accessLink = `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://productive-space-backend.vercel.app/api'}/door/open-door?token=${token}`;
+    // Generate the access link - remove /api from base URL since /open is a public route
+    const baseUrl = (process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://productive-space-backend.vercel.app').replace(/\/api\/?$/, '');
+    const accessLink = `${baseUrl}/open?token=${token}`;
 
     // Format dates for email
     const startTime = new Date(bookingData.startAt).toLocaleString('en-SG', {
@@ -291,8 +292,9 @@ const sendAdminDoorAccessLink = async (req, res) => {
       minute: '2-digit'
     });
 
-    // Generate the access link
-    const accessLink = `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://productive-space-backend.vercel.app/api'}/door/open-door?token=${token}`;
+    // Generate the access link - remove /api from base URL since /open is a public route
+    const baseUrl = (process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://productive-space-backend.vercel.app').replace(/\/api\/?$/, '');
+    const accessLink = `${baseUrl}/open?token=${token}`;
     const bookingRef = `Manual-${seatNumber}-${Date.now()}`;
 
     // Prepare email data

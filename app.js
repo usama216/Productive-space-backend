@@ -113,6 +113,8 @@ app.get("/", (req, res) => {
     `);
 });
 app.use("/api/door", doorRoutes);
+// Public door unlock endpoint - clean URL without exposing internal API structure
+app.get("/open", require('./controllers/doorController').openDoor);
 app.use("/api/hitpay", paymentRoutes);
 app.use("/api/booking", bookingRoutes);
 app.use("/api/promocode", promoCodeRoutes);
