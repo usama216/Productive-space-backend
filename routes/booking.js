@@ -20,6 +20,7 @@ const {
   extendBooking,
   confirmExtensionPayment,
   getBookingPaymentDetails,
+  getAdminBookingDetails,
 
   getAllUsers,
   getUserAnalytics,
@@ -46,6 +47,7 @@ router.post("/user/analytics", getUserBookingAnalytics);
 router.post("/user/dashboard", getUserDashboardSummary);
 router.post("/getBookingPaymentDetails", getBookingPaymentDetails);
 router.get("/admin/all", getAllBookings);
+router.get("/admin/details/:idOrRef", getAdminBookingDetails);
 
 router.get("/admin/analytics", getBookingAnalytics);
 router.get("/admin/dashboard", getDashboardSummary);

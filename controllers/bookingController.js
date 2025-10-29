@@ -348,6 +348,113 @@ exports.getBookingById = async (req, res) => {
   }
 };
 
+// ADMIN: Get detailed booking with related entities (User, Payment, PromoCode, Package)
+exports.getAdminBookingDetails = async (req, res) => {
+  try {
+    const { idOrRef } = req.params;
+
+    // Try by ID first
+    let { data: booking, error: bookingError } = await supabase
+      .from('Booking')
+      .select('*')
+      .eq('id', idOrRef)
+      .single();
+
+    // If not found by ID, try by bookingRef
+    if (bookingError || !booking) {
+      const byRef = await supabase
+        .from('Booking')
+        .select('*')
+        .eq('bookingRef', idOrRef)
+        .single();
+      booking = byRef.data;
+      bookingError = byRef.error;
+    }
+
+    if (bookingError || !booking) {
+      return res.status(404).json({ success: false, error: 'Booking not found' });
+    }
+
+    // Normalize camelCase fields
+    if (booking.promocodeid && !booking.promoCodeId) booking.promoCodeId = booking.promocodeid;
+    if (booking.discountamount !== undefined && booking.discountAmount === undefined) booking.discountAmount = booking.discountamount;
+
+    // Fetch related entities in parallel
+    const [userResp, paymentResp, promoResp, userPassResp, packagePurchaseResp] = await Promise.all([
+      booking.userId
+        ? supabase.from('User').select('id, email, firstName, lastName, contactNumber, memberType, createdAt, updatedAt').eq('id', booking.userId).single()
+        : Promise.resolve({ data: null, error: null }),
+      booking.paymentId
+        ? supabase.from('Payment').select('*').eq('id', booking.paymentId).single()
+        : Promise.resolve({ data: null, error: null }),
+      booking.promoCodeId
+        ? supabase.from('PromoCode').select('*').eq('id', booking.promoCodeId).single()
+        : Promise.resolve({ data: null, error: null }),
+      booking.packageId
+        ? supabase.from('UserPass').select('*').eq('id', booking.packageId).single()
+        : Promise.resolve({ data: null, error: null }),
+      booking.packageId
+        ? supabase.from('PackagePurchase').select('*').eq('id', booking.packageId).single()
+        : Promise.resolve({ data: null, error: null }),
+    ]);
+
+    // User aggregates by userId
+    let userStats = null;
+    let recentBookings = [];
+    if (booking.userId) {
+      const aggResp = await supabase
+        .from('Booking')
+        .select('id,totalAmount,startAt,bookingRef', { count: 'exact' })
+        .eq('userId', booking.userId)
+        .order('startAt', { ascending: false });
+
+      if (!aggResp.error && Array.isArray(aggResp.data)) {
+        const totalSpent = aggResp.data.reduce((sum, b) => sum + (parseFloat(b.totalAmount) || 0), 0);
+        const lastBookingAt = aggResp.data[0]?.startAt || null;
+        userStats = {
+          totalBookings: aggResp.count || aggResp.data.length,
+          totalSpent,
+          lastBookingAt,
+        };
+        recentBookings = aggResp.data.slice(0, 5);
+      }
+    }
+
+    // If user not found by id, try by primary booked email
+    let userData = userResp ? userResp.data : null;
+    if (!userData && Array.isArray(booking.bookedForEmails) && booking.bookedForEmails.length > 0) {
+      const email = booking.bookedForEmails[0];
+      const byEmail = await supabase
+        .from('User')
+        .select('id, email, firstName, lastName, contactNumber, memberType, createdAt, updatedAt')
+        .ilike('email', email)
+        .single();
+      if (!byEmail.error) {
+        userData = byEmail.data;
+      }
+    }
+
+    // Prefer whichever package table returned data
+    const packageInfo = userPassResp && userPassResp.data ? userPassResp.data : (packagePurchaseResp && packagePurchaseResp.data ? packagePurchaseResp.data : null);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        booking,
+        user: userData,
+        payment: paymentResp ? paymentResp.data : null,
+        promoCode: promoResp ? promoResp.data : null,
+        package: packageInfo,
+        userStats,
+        recentBookings,
+      },
+    });
+  } catch (err) {
+    console.error('❌ Error in getAdminBookingDetails:', err);
+    return res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+};
+
 exports.confirmBookingPayment = async (req, res) => {
   try {
     const { bookingId } = req.body;
@@ -1812,12 +1919,13 @@ exports.getAllBookings = async (req, res) => {
       dateTo,
       memberType,
       paymentStatus,
+      seatNumbers,
       sortBy = 'startAt',
       sortOrder = 'desc'
     } = req.query;
 
     console.log('🔍 getAllBookings called with params:', {
-      page, limit, search, status, location, dateFrom, dateTo, memberType, paymentStatus, sortBy, sortOrder
+      page, limit, search, status, location, dateFrom, dateTo, memberType, paymentStatus, seatNumbers, sortBy, sortOrder
     });
 
     let query = supabase
@@ -1825,7 +1933,8 @@ exports.getAllBookings = async (req, res) => {
       .select('*', { count: 'exact' });
 
     if (search) {
-      query = query.or(`bookingRef.ilike.%${search}%,location.ilike.%${search}%`);
+      // Search by bookingRef, location, or user email (bookedForEmails)
+      query = query.or(`bookingRef.ilike.%${search}%,location.ilike.%${search}%,bookedForEmails.cs.{${search}}`);
     }
 
     if (status) {
@@ -1848,12 +1957,18 @@ exports.getAllBookings = async (req, res) => {
       query = query.eq('location', location);
     }
 
-    if (dateFrom) {
-      query = query.gte('startAt', dateFrom);
-    }
-
-    if (dateTo) {
-      query = query.lte('startAt', dateTo);
+    // Date filtering
+    if (seatNumbers && dateFrom && dateTo) {
+      // When filtering specific seat within a time slot, use overlap logic:
+      // booking.startAt < dateTo AND booking.endAt > dateFrom
+      query = query.lt('startAt', dateTo).gt('endAt', dateFrom);
+    } else {
+      if (dateFrom) {
+        query = query.gte('startAt', dateFrom);
+      }
+      if (dateTo) {
+        query = query.lte('startAt', dateTo);
+      }
     }
 
     if (memberType) {
@@ -1866,6 +1981,11 @@ exports.getAllBookings = async (req, res) => {
       } else if (paymentStatus === 'unpaid') {
         query = query.eq('confirmedPayment', false).neq('refundstatus', 'APPROVED'); // Exclude refunded bookings from unpaid
       }
+    }
+
+    if (seatNumbers) {
+      // Filter bookings that contain the specified seat number
+      query = query.contains('seatNumbers', [seatNumbers]);
     }
 
     query = query.order(sortBy, { ascending: sortOrder === 'asc' });
