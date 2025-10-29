@@ -2,9 +2,11 @@ const { formatSingaporeDateTime, formatSingaporeDate, formatSingaporeTime, getCu
 
 /**
  * Generate HTML template for successful door opening
+ * @param {string} startTime - Booking start time
+ * @param {string} endTime - Booking end time
  * @returns {string} HTML template
  */
-const openDoorSuccessTemplate = () => {
+const openDoorSuccessTemplate = (startTime, endTime) => {
   
   return `
     <!DOCTYPE html>
@@ -151,6 +153,14 @@ const openDoorSuccessTemplate = () => {
               <span class="detail-value">Default Channel</span>
             </div>
             <div class="detail-row">
+              <span class="detail-label">Access Start:</span>
+              <span class="detail-value">${startTime ? formatSingaporeDateTime(new Date(startTime)) : 'N/A'}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Access End:</span>
+              <span class="detail-value">${endTime ? formatSingaporeDateTime(new Date(endTime)) : 'N/A'}</span>
+            </div>
+            <div class="detail-row">
               <span class="detail-label">Status:</span>
               <span class="detail-value" style="color: #28a745; font-weight: 600;">✅ Success</span>
             </div>
@@ -176,9 +186,11 @@ const openDoorSuccessTemplate = () => {
 /**
  * Generate HTML template for failed door opening
  * @param {string} error_message - Optional error message to display
+ * @param {string} startTime - Booking start time
+ * @param {string} endTime - Booking end time
  * @returns {string} HTML template
  */
-const openDoorFailTemplate = (error_message = 'Unable to unlock the door. Please check your access permissions or try again.') => {
+const openDoorFailTemplate = (error_message = 'Unable to unlock the door. Please check your access permissions or try again.', startTime, endTime) => {
   
   return `
     <!DOCTYPE html>
@@ -367,6 +379,14 @@ const openDoorFailTemplate = (error_message = 'Unable to unlock the door. Please
             <div class="detail-row">
               <span class="detail-label">Channel ID:</span>
               <span class="detail-value">Default Channel</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Access Start:</span>
+              <span class="detail-value">${startTime ? formatSingaporeDateTime(new Date(startTime)) : 'N/A'}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Access End:</span>
+              <span class="detail-value">${endTime ? formatSingaporeDateTime(new Date(endTime)) : 'N/A'}</span>
             </div>
             <div class="detail-row">
               <span class="detail-label">Status:</span>

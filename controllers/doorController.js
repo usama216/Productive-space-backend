@@ -169,7 +169,7 @@ const openDoor = async (req, res) => {
     const { token } = req.query;
 
     if (!token) {
-      return res.status(400).send(openDoorFailTemplate('No access token provided. Please use a valid access link.'));
+      return res.status(400).send(openDoorFailTemplate('No access token provided. Please use a valid access link.', undefined, undefined));
     }
 
     // Verify token in database
@@ -181,7 +181,7 @@ const openDoor = async (req, res) => {
 
     if (tokenError || !tokenData) {
       console.error('Invalid or expired token:', tokenError);
-      return res.status(400).send(openDoorFailTemplate('Invalid or expired access token. Please request a new access link.'));
+      return res.status(400).send(openDoorFailTemplate('Invalid or expired access token. Please request a new access link.', undefined, undefined));
     }
 
     let startTime, endTime, bookingRef;
@@ -202,7 +202,7 @@ const openDoor = async (req, res) => {
 
       if (bookingError || !bookingData) {
         console.error('Booking not found:', bookingError);
-        return res.status(400).send(openDoorFailTemplate('Booking not found. Please contact support.'));
+        return res.status(400).send(openDoorFailTemplate('Booking not found. Please contact support.', undefined, undefined));
       }
 
       // Calculate booking status for regular tokens
@@ -218,7 +218,10 @@ const openDoor = async (req, res) => {
       // Only allow access for 'ongoing', 'today' or 'upcoming' bookings
       if (bookingStatus !== 'ongoing' && bookingStatus !== 'today' && bookingStatus !== 'upcoming') {
         console.error(`Access denied. Booking status is '${bookingStatus}'`);
-        return res.status(400).send(openDoorFailTemplate(`Access denied. Booking status is '${bookingStatus}'. Only 'ongoing', 'today' or 'upcoming' bookings can access the door.`));
+        const GRACE_PERIOD_MS_ERROR = 15 * 60 * 1000; // 15 minutes
+        const enableAtError = new Date(new Date(bookingData.startAt).getTime() - GRACE_PERIOD_MS_ERROR);
+        const expiresAtError = new Date(new Date(bookingData.endAt).getTime() + GRACE_PERIOD_MS_ERROR);
+        return res.status(400).send(openDoorFailTemplate(`Access denied. Booking status is '${bookingStatus}'. Only 'ongoing', 'today' or 'upcoming' bookings can access the door.`, enableAtError, expiresAtError));
       }
 
       startTime = bookingData.startAt;
@@ -234,24 +237,24 @@ const openDoor = async (req, res) => {
     
     if (now < enableAt) {
       console.error('Access has not started yet');
-      return res.status(400).send(openDoorFailTemplate('Your access has not started yet. Please wait until your scheduled time.'));
+      return res.status(400).send(openDoorFailTemplate('Your access has not started yet. Please wait until your scheduled time.', enableAt, expiresAt));
     }
 
     if (now > expiresAt) {
       console.error('Token expired');
-      return res.status(400).send(openDoorFailTemplate('Your access token has expired. Please request a new access link.'));
+      return res.status(400).send(openDoorFailTemplate('Your access token has expired. Please request a new access link.', enableAt, expiresAt));
     }
 
     // Check if access count limit is reached (only if MAX_ACCESS_COUNT > 0)
     if (MAX_ACCESS_COUNT > 0 && tokenData.access_count >= MAX_ACCESS_COUNT) {
       console.error(`Maximum access count reached (${MAX_ACCESS_COUNT} attempts)`);
-      return res.status(400).send(openDoorFailTemplate(`Maximum access attempts reached (${MAX_ACCESS_COUNT}). Please contact support for assistance.`));
+      return res.status(400).send(openDoorFailTemplate(`Maximum access attempts reached (${MAX_ACCESS_COUNT}). Please contact support for assistance.`, enableAt, expiresAt));
     }
 
     // Check if TUYA_SMART_LOCK_ID is configured
     if (!TUYA_SMART_LOCK_ID) {
       console.error('TUYA_SMART_LOCK_ID is not configured');
-      return res.status(500).send(openDoorFailTemplate('Smart lock system is not properly configured. Please contact support.'));
+      return res.status(500).send(openDoorFailTemplate('Smart lock system is not properly configured. Please contact support.', enableAt, expiresAt));
     }
 
     // Initialize Tuya Smart Lock
@@ -283,7 +286,7 @@ const openDoor = async (req, res) => {
           }
         ]);
 
-      return res.send(openDoorSuccessTemplate());
+      return res.send(openDoorSuccessTemplate(enableAt, expiresAt));
     } else {
       // Log failed door opening
       await supabase
@@ -298,12 +301,12 @@ const openDoor = async (req, res) => {
           }
         ]);
 
-      return res.send(openDoorFailTemplate(unlockResult.error || 'Failed to unlock the door. Please try again or contact support.'));
+      return res.send(openDoorFailTemplate(unlockResult.error || 'Failed to unlock the door. Please try again or contact support.', enableAt, expiresAt));
     }
 
   } catch (error) {
     console.error('Error opening door:', error);
-    res.status(500).send(openDoorFailTemplate('An unexpected error occurred while trying to open the door. Please try again or contact support.'));
+    res.status(500).send(openDoorFailTemplate('An unexpected error occurred while trying to open the door. Please try again or contact support.', undefined, undefined));
   }
 };
 
