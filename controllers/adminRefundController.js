@@ -257,7 +257,39 @@ const getAllRefundRequests = async (req, res) => {
 // Get all user credits for admin
 const getAllUserCredits = async (req, res) => {
   try {
-    const { data: credits, error } = await supabase
+    const { page = 1, limit = 20, search = '' } = req.query;
+    const pageNum = Math.max(1, parseInt(page));
+    const pageSize = Math.max(1, Math.min(100, parseInt(limit)));
+    const from = (pageNum - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    // If search is provided, first find user IDs by email
+    let userIdsToFilter = null;
+    if (search && typeof search === 'string' && search.trim() !== '') {
+      const { data: users, error: userError } = await supabase
+        .from('User')
+        .select('id')
+        .ilike('email', `%${search.trim()}%`);
+      
+      if (userError) {
+        console.error('❌ Error searching users:', userError);
+      } else if (users && users.length > 0) {
+        userIdsToFilter = users.map(u => u.id);
+      } else {
+        // No users found, return empty result
+        return res.json({
+          items: [],
+          pagination: {
+            page: pageNum,
+            limit: pageSize,
+            total: 0,
+            totalPages: 0
+          }
+        });
+      }
+    }
+
+    let baseQuery = supabase
       .from('usercredits')
       .select(`
         *,
@@ -272,15 +304,75 @@ const getAllUserCredits = async (req, res) => {
           endAt,
           location
         )
-      `)
+      `, { count: 'exact' })
       .order('createdat', { ascending: false });
+
+    if (userIdsToFilter && userIdsToFilter.length > 0) {
+      baseQuery = baseQuery.in('userid', userIdsToFilter);
+    }
+
+    const { data: credits, error, count } = await baseQuery.range(from, to);
 
     if (error) {
       console.error('❌ Error fetching user credits:', error);
       return res.status(500).json({ error: 'Failed to fetch user credits' });
     }
 
-    res.json(credits);
+    // Build a list of credit IDs and user IDs
+    const creditIds = credits.map(c => c.id);
+    const uniqueUserIds = [...new Set(credits.map(c => c.userid))];
+
+    // Fetch all usages for these credits in one go
+    const { data: usagesAll } = await supabase
+      .from('creditusage')
+      .select('creditid, userid, amountused')
+      .in('creditid', creditIds);
+
+    // Index usage by creditId
+    const usageByCreditId = {};
+    (usagesAll || []).forEach(u => {
+      const used = parseFloat(u.amountused || 0);
+      usageByCreditId[u.creditid] = (usageByCreditId[u.creditid] || 0) + used;
+    });
+
+    // Build totals per user by fetching all their credits and usages (accurate even with pagination)
+    const userTotalsMap = {};
+    await Promise.all(uniqueUserIds.map(async (uid) => {
+      const { data: userAllCredits } = await supabase
+        .from('usercredits')
+        .select('id, amount, status')
+        .eq('userid', uid);
+      const { data: userAllUsages } = await supabase
+        .from('creditusage')
+        .select('amountused')
+        .eq('userid', uid);
+      const remainingCredit = (userAllCredits || [])
+        .filter(c => c.status === 'ACTIVE')
+        .reduce((sum, c) => sum + parseFloat(c.amount || 0), 0);
+      const usedCredit = (userAllUsages || [])
+        .reduce((sum, u) => sum + parseFloat(u.amountused || 0), 0);
+      const totalCredit = remainingCredit + usedCredit;
+      userTotalsMap[uid] = { totalCredit, usedCredit, remainingCredit };
+    }));
+
+    // Enrich each credit with per-credit usage and user totals
+    const enrichedCredits = credits.map(credit => ({
+      ...credit,
+      ...userTotalsMap[credit.userid],
+      creditUsed: usageByCreditId[credit.id] || 0,
+      creditRemaining: credit.status === 'ACTIVE' ? parseFloat(credit.amount || 0) : 0,
+      creditOriginal: (usageByCreditId[credit.id] || 0) + (credit.status === 'ACTIVE' ? parseFloat(credit.amount || 0) : 0)
+    }));
+
+    res.json({
+      items: enrichedCredits,
+      pagination: {
+        page: pageNum,
+        limit: pageSize,
+        total: count || enrichedCredits.length,
+        totalPages: count ? Math.ceil(count / pageSize) : 1
+      }
+    });
   } catch (error) {
     console.error('❌ Error in getAllUserCredits:', error);
     res.status(500).json({ error: 'Internal server error' });
