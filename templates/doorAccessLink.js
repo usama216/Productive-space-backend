@@ -233,10 +233,7 @@ const doorAccessLinkTemplate = (data) => {
               <span class="detail-label">End Time:</span>
               <span class="detail-value">${endTime}</span>
             </div>
-            <div class="detail-row">
-              <span class="detail-label">Link Expires:</span>
-              <span class="detail-value">${expiresAt}</span>
-            </div>
+          
           </div>
 
           <div class="important-notice">

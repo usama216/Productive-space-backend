@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const supabase = require('../config/database');
 const { doorAccessLinkTemplate } = require('../templates/doorAccessLink');
 const { sendRawEmail } = require('../utils/email');
+const { formatSingaporeDateTime } = require('../utils/timezoneUtils');
 
 /**
  * Calculate booking status based on current time and booking times
@@ -168,33 +169,10 @@ const sendDoorAccessLink = async (req, res) => {
     const baseUrl = (process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://productive-space-backend.vercel.app').replace(/\/api\/?$/, '');
     const accessLink = `${baseUrl}/open?token=${token}`;
 
-    // Format dates for email
-    const startTime = new Date(bookingData.startAt).toLocaleString('en-SG', {
-      timeZone: 'Asia/Singapore',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-
-    const endTime = new Date(bookingData.endAt).toLocaleString('en-SG', {
-      timeZone: 'Asia/Singapore',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-
-    const expiresAt = new Date(bookingData.endAt).toLocaleString('en-SG', {
-      timeZone: 'Asia/Singapore',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    // Format dates for email using timezone utils (without weekday)
+    const startTime = formatSingaporeDateTime(bookingData.startAt, { weekday: undefined });
+    const endTime = formatSingaporeDateTime(bookingData.endAt, { weekday: undefined });
+    const expiresAt = formatSingaporeDateTime(bookingData.endAt, { weekday: undefined });
 
     // Prepare email data
     const userName = `${bookingData.user.firstName || ''} ${bookingData.user.lastName || ''}`.trim() || 'Guest';
@@ -264,34 +242,15 @@ const sendAdminDoorAccessLink = async (req, res) => {
       });
     }
 
-    // Format dates for email
-    const startTimeFormatted = new Date(startTime).toLocaleString('en-SG', {
-      timeZone: 'Asia/Singapore',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-
-    const endTimeFormatted = new Date(endTime).toLocaleString('en-SG', {
-      timeZone: 'Asia/Singapore',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-
-    const expiresAtFormatted = new Date(endTime).toLocaleString('en-SG', {
-      timeZone: 'Asia/Singapore',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-
+    // Format dates for email using timezone utils (without weekday)
+    const startTimeFormatted = formatSingaporeDateTime(startTime, { weekday: undefined });
+    const endTimeFormatted = formatSingaporeDateTime(endTime, { weekday: undefined });
+  
+    const expiresAtFormatted = formatSingaporeDateTime(
+      new Date(endTime.getTime() + 15 * 60 * 1000),
+      { weekday: undefined }
+    );
+    
     // Generate the access link - remove /api from base URL since /open is a public route
     const baseUrl = (process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://productive-space-backend.vercel.app').replace(/\/api\/?$/, '');
     const accessLink = `${baseUrl}/open?token=${token}`;
