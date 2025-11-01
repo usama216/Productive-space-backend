@@ -101,12 +101,10 @@ exports.getPackageUsageAnalytics = async (req, res) => {
       `, { count: 'exact' })
       .eq('paymentStatus', 'COMPLETED');
 
-    // Apply search filter
-    if (search) {
-      query = query.or(`Package.name.ilike.%${search}%,User.firstName.ilike.%${search}%,User.lastName.ilike.%${search}%,User.email.ilike.%${search}%`);
-    }
+    // Note: Search filter will be applied in-memory after fetching data
+    // Supabase doesn't support filtering on joined tables directly
 
-    // Apply package type filter
+    // Apply package type filter (on main table only)
     if (filterType && filterType !== 'all') {
       query = query.eq('Package.packageType', filterType);
     }
@@ -123,16 +121,8 @@ exports.getPackageUsageAnalytics = async (req, res) => {
       query = query.order('createdAt', { ascending: sortOrder === 'asc' });
     }
 
-    // Apply pagination
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
-    const offset = (pageNum - 1) * limitNum;
-    
-    console.log('🔍 Pagination calculation:', { page: pageNum, limitNum, offset, range: `${offset} to ${offset + limitNum - 1}` });
-    
-    query = query.range(offset, offset + limitNum - 1);
-
-    const { data: allPurchases, error: purchasesError, count } = await query;
+    // Fetch all data first (we'll apply search filter and pagination in memory)
+    const { data: allPurchases, error: purchasesError } = await query;
 
     if (purchasesError) {
       return res.status(500).json({
@@ -242,9 +232,20 @@ exports.getPackageUsageAnalytics = async (req, res) => {
       }
     }));
 
+    // Apply in-memory search filter
+    let filteredPackageUsages = packageUsages;
+    if (search) {
+      const searchLower = search.toLowerCase();
+      filteredPackageUsages = packageUsages.filter(pkg => 
+        pkg.packageName.toLowerCase().includes(searchLower) ||
+        pkg.userName.toLowerCase().includes(searchLower) ||
+        pkg.userEmail.toLowerCase().includes(searchLower)
+      );
+    }
+
     // Sort by usage percentage if requested
     if (sortBy === 'usagePercentage') {
-      packageUsages.sort((a, b) => {
+      filteredPackageUsages.sort((a, b) => {
         if (sortOrder === 'asc') {
           return a.usagePercentage - b.usagePercentage;
         } else {
@@ -253,22 +254,28 @@ exports.getPackageUsageAnalytics = async (req, res) => {
       });
     }
 
-    const totalPurchases = count || packageUsages.length;
+    // Apply pagination on filtered results
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const totalPurchases = filteredPackageUsages.length;
     const totalPages = Math.ceil(totalPurchases / limitNum);
+    const offset = (pageNum - 1) * limitNum;
+    
+    const paginatedResults = filteredPackageUsages.slice(offset, offset + limitNum);
 
     const stats = {
       totalPackages: packages.length,
       totalPurchases: totalPurchases,
-      totalPasses: packageUsages.reduce((sum, pkg) => sum + pkg.totalPasses, 0),
-      totalUsed: packageUsages.reduce((sum, pkg) => sum + pkg.usedPasses, 0),
-      totalRevenue: packageUsages.reduce((sum, pkg) => sum + pkg.revenue, 0),
-      averageUsage: packageUsages.length > 0 
-        ? packageUsages.reduce((sum, pkg) => sum + pkg.usagePercentage, 0) / packageUsages.length 
+      totalPasses: filteredPackageUsages.reduce((sum, pkg) => sum + pkg.totalPasses, 0),
+      totalUsed: filteredPackageUsages.reduce((sum, pkg) => sum + pkg.usedPasses, 0),
+      totalRevenue: filteredPackageUsages.reduce((sum, pkg) => sum + pkg.revenue, 0),
+      averageUsage: filteredPackageUsages.length > 0 
+        ? filteredPackageUsages.reduce((sum, pkg) => sum + pkg.usagePercentage, 0) / filteredPackageUsages.length 
         : 0
     };
 
     console.log('🔍 Response data:', {
-      packagesCount: packageUsages.length,
+      packagesCount: paginatedResults.length,
       totalPurchases,
       pagination: {
         page: pageNum,
@@ -280,7 +287,7 @@ exports.getPackageUsageAnalytics = async (req, res) => {
 
     res.json({
       success: true,
-      packages: packageUsages,
+      packages: paginatedResults,
       stats,
       pagination: {
         page: pageNum,

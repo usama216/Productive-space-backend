@@ -7,8 +7,10 @@ const supabase = createClient(
 
 exports.getPackageUsageData = async (req, res) => {
   try {
+    const { search } = req.query;
    
-    const { data: purchases, error: purchasesError } = await supabase
+    // Build query
+    let query = supabase
       .from('PackagePurchase')
       .select(`
         id,
@@ -43,8 +45,14 @@ exports.getPackageUsageData = async (req, res) => {
         )
       `)
       .eq('paymentStatus', 'COMPLETED')
-      .eq('isActive', true)
-      .order('createdAt', { ascending: false });
+      .eq('isActive', true);
+
+    // Apply search filter if provided
+    // Note: Supabase doesn't support direct filtering on joined tables
+    // We'll fetch all and filter in memory for now
+    query = query.order('createdAt', { ascending: false });
+
+    const { data: purchases, error: purchasesError } = await query;
 
     if (purchasesError) {
       return res.status(500).json({
@@ -99,21 +107,31 @@ exports.getPackageUsageData = async (req, res) => {
       };
     });
 
+    // Apply search filter if provided
+    let filteredUsageData = usageData;
+    if (search) {
+      const searchLower = search.toLowerCase();
+      filteredUsageData = usageData.filter(item => 
+        item.userName.toLowerCase().includes(searchLower) ||
+        item.userEmail.toLowerCase().includes(searchLower) ||
+        item.packageName.toLowerCase().includes(searchLower)
+      );
+    }
  
     const stats = {
-      totalPurchases: usageData.length,
-      totalRevenue: usageData.reduce((sum, item) => sum + item.totalAmount, 0),
-      totalActivePasses: usageData.reduce((sum, item) => sum + item.activePasses, 0),
-      totalUsedPasses: usageData.reduce((sum, item) => sum + item.usedPasses, 0),
-      averageUsageRate: usageData.length > 0 
-        ? usageData.reduce((sum, item) => sum + item.usagePercentage, 0) / usageData.length 
+      totalPurchases: filteredUsageData.length,
+      totalRevenue: filteredUsageData.reduce((sum, item) => sum + item.totalAmount, 0),
+      totalActivePasses: filteredUsageData.reduce((sum, item) => sum + item.activePasses, 0),
+      totalUsedPasses: filteredUsageData.reduce((sum, item) => sum + item.usedPasses, 0),
+      averageUsageRate: filteredUsageData.length > 0 
+        ? filteredUsageData.reduce((sum, item) => sum + item.usagePercentage, 0) / filteredUsageData.length 
         : 0
     };
 
 
     res.json({
       success: true,
-      usage: usageData,
+      usage: filteredUsageData,
       stats: {
         ...stats,
         averageUsageRate: Math.round(stats.averageUsageRate * 10) / 10

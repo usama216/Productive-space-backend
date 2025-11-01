@@ -3,10 +3,35 @@ const supabase = require("../config/database");
 
 exports.getPackages = async (req, res) => {
   try {
-    const { data: packages, error } = await supabase
+    const { search, packageType, targetRole, status } = req.query;
+
+    // Build query
+    let query = supabase
       .from("Package")
-      .select("*")
-      .order("createdAt", { ascending: false });
+      .select("*");
+
+    // Apply filters
+    if (search) {
+      query = query.ilike("name", `%${search}%`);
+    }
+
+    if (packageType) {
+      query = query.eq("packageType", packageType);
+    }
+
+    if (targetRole) {
+      query = query.eq("targetRole", targetRole);
+    }
+
+    if (status) {
+      const isActive = status === 'active';
+      query = query.eq("isActive", isActive);
+    }
+
+    // Order by creation date
+    query = query.order("createdAt", { ascending: false });
+
+    const { data: packages, error } = await query;
 
     if (error) {
       console.error("Error fetching packages:", error);
