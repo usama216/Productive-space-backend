@@ -9,6 +9,9 @@ const { createClient } = require("@supabase/supabase-js");
 const { cleanupUnpaidBookings } = require('./scheduledCleanup');
 const { startCreditCleanup } = require('./scheduledCreditCleanup');
 
+// Import automatic student expiry check (this will start the cron job)
+const { cronJob: studentExpiryCronJob } = require('./automaticExpiryCheck');
+
 // Start cleanup schedulers
 startCreditCleanup();
 

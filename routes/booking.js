@@ -26,6 +26,7 @@ const {
   getUserAnalytics,
   getUserManagementSummary,
   verifyStudentAccount,
+  getVerificationExpiry,
   deleteUser
 } = require("../controllers/bookingController");
 
@@ -61,6 +62,7 @@ router.get("/admin/users", getAllUsers);
 router.get("/admin/users/analytics", getUserAnalytics);
 router.get("/admin/users/dashboard", getUserManagementSummary);
 router.put("/admin/users/:userId/verify", verifyStudentAccount);
+router.get("/admin/users/:userId/verification-expiry", getVerificationExpiry);
 
 router.delete("/admin/users/:userId", deleteUser);
 module.exports = router;

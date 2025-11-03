@@ -2746,6 +2746,9 @@ exports.verifyStudentAccount = async (req, res) => {
       updateData.studentVerificationStatus = 'REJECTED';
     } else {
       updateData.studentRejectionReason = null;
+      // Set verification date to current time when verified
+      // This will be used to calculate 6-month expiration
+      updateData.studentVerifiedAt = new Date().toISOString();
     }
 
     // Record verification history before updating
@@ -2811,6 +2814,27 @@ exports.verifyStudentAccount = async (req, res) => {
 
   } catch (err) {
     res.status(500).json({ error: 'Failed to verify student account', details: err.message });
+  }
+};
+
+exports.getVerificationExpiry = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { getUserVerificationExpiry } = require('../utils/studentVerificationExpiry');
+    
+    const expiryInfo = await getUserVerificationExpiry(userId);
+    
+    if (expiryInfo.error) {
+      return res.status(404).json({ error: expiryInfo.error });
+    }
+    
+    res.json({
+      success: true,
+      ...expiryInfo
+    });
+    
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to get verification expiry', details: err.message });
   }
 };
 
