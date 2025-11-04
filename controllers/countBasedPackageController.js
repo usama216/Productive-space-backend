@@ -1,5 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const { v4: uuidv4 } = require('uuid');
+const { logPassUsage } = require('../utils/discountTracker');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -138,7 +139,7 @@ exports.validatePassUsage = async (userId, passType, startTime, endTime, pax) =>
 };
 
 
-exports.applyPassToBooking = async (userId, passId, bookingId, location, startTime, endTime, pax) => {
+exports.applyPassToBooking = async (userId, passId, bookingId, location, startTime, endTime, pax, actionType = 'ORIGINAL_BOOKING', passValue = 0) => {
   try {
    
     const { data: pass, error: passError } = await supabase
@@ -206,6 +207,23 @@ exports.applyPassToBooking = async (userId, passId, bookingId, location, startTi
         error: 'Database error',
         message: 'Failed to record pass usage'
       };
+    }
+
+    // Log pass usage to BookingDiscountHistory for unified tracking
+    try {
+      if (passValue > 0) {
+        await logPassUsage(
+          bookingId,
+          userId,
+          actionType,
+          passValue,
+          passId,
+          `Pass applied: ${pass.passtype || 'Pass'} (${actionType})`
+        );
+      }
+    } catch (logError) {
+      console.error('⚠️ Warning: Failed to log pass usage to BookingDiscountHistory:', logError);
+      // Don't fail the entire operation if logging fails
     }
 
     return {

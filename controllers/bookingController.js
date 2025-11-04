@@ -267,7 +267,8 @@ exports.createBooking = async (req, res) => {
           creditAmount: req.body.creditAmount
         });
         
-        creditUsageResult = await useCreditsForBooking(userId, data.id, req.body.creditAmount);
+        // Use credits with ORIGINAL_BOOKING action type for discount tracking
+        creditUsageResult = await useCreditsForBooking(userId, data.id, req.body.creditAmount, 'ORIGINAL_BOOKING');
         console.log('✅ Credit usage processed:', creditUsageResult);
         
         // Add credit amount to booking data for email/PDF
@@ -333,6 +334,32 @@ exports.getBookingById = async (req, res) => {
       }
       if (data.updatedAt && !data.updatedAt.endsWith('Z')) {
         data.updatedAt = data.updatedAt + 'Z';
+      }
+      
+      // Fetch discount history for this booking
+      const { data: discountHistory, error: discountError } = await supabase
+        .from('BookingDiscountHistory')
+        .select('*')
+        .eq('bookingId', id)
+        .order('appliedAt', { ascending: true });
+      
+      if (!discountError && discountHistory) {
+        // Calculate discount summary
+        const discountSummary = {
+          totalDiscount: 0,
+          byType: { CREDIT: 0, PASS: 0, PROMO_CODE: 0 },
+          byAction: { ORIGINAL_BOOKING: 0, RESCHEDULE: 0, EXTENSION: 0, MODIFICATION: 0 }
+        };
+        
+        discountHistory.forEach(discount => {
+          const amount = parseFloat(discount.discountAmount || 0);
+          discountSummary.totalDiscount += amount;
+          discountSummary.byType[discount.discountType] = (discountSummary.byType[discount.discountType] || 0) + amount;
+          discountSummary.byAction[discount.actionType] = (discountSummary.byAction[discount.actionType] || 0) + amount;
+        });
+        
+        data.discountHistory = discountHistory;
+        data.discountSummary = discountSummary;
       }
     }
 
@@ -1371,6 +1398,28 @@ exports.getUserBookings = async (req, res) => {
       }
     }
 
+    // Fetch discount history for all bookings
+    const bookingIds = bookings.map(b => b.id);
+    let discountHistoryData = {};
+    
+    if (bookingIds.length > 0) {
+      const { data: discountHistory, error: discountError } = await supabase
+        .from('BookingDiscountHistory')
+        .select('*')
+        .in('bookingId', bookingIds)
+        .order('appliedAt', { ascending: true });
+      
+      if (!discountError && discountHistory) {
+        // Group by bookingId
+        discountHistory.forEach(discount => {
+          if (!discountHistoryData[discount.bookingId]) {
+            discountHistoryData[discount.bookingId] = [];
+          }
+          discountHistoryData[discount.bookingId].push(discount);
+        });
+      }
+    }
+
     const now = new Date();
     const bookingsWithStatus = bookings.map(booking => {
       // Ensure UTC timestamps have 'Z' suffix for proper timezone handling
@@ -1400,6 +1449,21 @@ exports.getUserBookings = async (req, res) => {
 
       const promoCode = booking.promoCodeId ? promoCodeData[booking.promoCodeId] : null;
       const paymentMethod = booking.paymentId ? paymentMethodData[booking.paymentId] : null;
+      const discountHistory = discountHistoryData[booking.id] || [];
+      
+      // Calculate total discounts by type and action from discount history
+      const discountSummary = {
+        totalDiscount: 0,
+        byType: { CREDIT: 0, PASS: 0, PROMO_CODE: 0 },
+        byAction: { ORIGINAL_BOOKING: 0, RESCHEDULE: 0, EXTENSION: 0, MODIFICATION: 0 }
+      };
+      
+      discountHistory.forEach(discount => {
+        const amount = parseFloat(discount.discountAmount || 0);
+        discountSummary.totalDiscount += amount;
+        discountSummary.byType[discount.discountType] = (discountSummary.byType[discount.discountType] || 0) + amount;
+        discountSummary.byAction[discount.actionType] = (discountSummary.byAction[discount.actionType] || 0) + amount;
+      });
 
       return {
         ...booking,
@@ -1414,7 +1478,10 @@ exports.getUserBookings = async (req, res) => {
         // Priority: ongoing/today first, then upcoming, then completed
         status: isRefunded ? 'refunded' : isCancelled ? 'cancelled' : isOngoing ? 'ongoing' : isToday ? 'today' : isUpcoming ? 'upcoming' : 'completed',
         PromoCode: promoCode,
-        paymentMethod: paymentMethod
+        paymentMethod: paymentMethod,
+        // Add discount tracking data
+        discountHistory: discountHistory,
+        discountSummary: discountSummary
       };
     });
 

@@ -207,11 +207,12 @@ const rescheduleBooking = async (req, res) => {
       try {
         console.log('💳 Processing credit usage for reschedule:', req.body.creditAmount)
         
-        // Use the proper credit helper function
+        // Use the proper credit helper function with RESCHEDULE action type
         const creditResult = await useCreditsForBooking(
           currentBooking.userId,
           bookingId,
-          parseFloat(req.body.creditAmount)
+          parseFloat(req.body.creditAmount),
+          'RESCHEDULE'  // Track this as a RESCHEDULE action
         )
         
         console.log('✅ Credits used successfully for reschedule:', creditResult)
@@ -593,11 +594,12 @@ const confirmReschedulePayment = async (req, res) => {
       try {
         console.log('💳 Processing credit usage for reschedule payment confirmation:', rescheduleData.creditAmount)
         
-        // Use the proper credit helper function
+        // Use the proper credit helper function with RESCHEDULE action type
         const creditResult = await useCreditsForBooking(
           existingBooking.userId,
           bookingId,
-          parseFloat(rescheduleData.creditAmount)
+          parseFloat(rescheduleData.creditAmount),
+          'RESCHEDULE'  // Track this as a RESCHEDULE action
         )
         
         console.log('✅ Credits used successfully for reschedule payment confirmation:', creditResult)

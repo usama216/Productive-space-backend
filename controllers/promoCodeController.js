@@ -1,5 +1,6 @@
 const supabase = require("../config/database");
 const { v4: uuidv4 } = require('uuid');
+const { logPromoCodeUsage } = require('../utils/discountTracker');
 
 function checkMinimumHoursRequirement(promoCode, startAt, endAt) {
   if (!promoCode.minimum_hours) {
@@ -1173,7 +1174,7 @@ exports.getPromoCodeById = async (req, res) => {
 };
 
 
-exports.applyPromoCodeToBooking = async (promoCodeId, userId, bookingId, bookingAmount) => {
+exports.applyPromoCodeToBooking = async (promoCodeId, userId, bookingId, bookingAmount, actionType = 'ORIGINAL_BOOKING') => {
   try {
     const { data: promoData, error: promoError } = await supabase
       .from("PromoCode")
@@ -1202,6 +1203,23 @@ exports.applyPromoCodeToBooking = async (promoCodeId, userId, bookingId, booking
     const usageUpdated = await updatePromoCodeUsage(promoCodeId);
     if (!usageUpdated) {
       throw new Error("Failed to update promo code usage count");
+    }
+
+    // Log promo code usage to BookingDiscountHistory for unified tracking
+    try {
+      if (calculation.discountAmount > 0) {
+        await logPromoCodeUsage(
+          bookingId,
+          userId,
+          actionType,
+          calculation.discountAmount,
+          promoCodeId,
+          `Promo code applied: ${promoData.code} (${actionType})`
+        );
+      }
+    } catch (logError) {
+      console.error('⚠️ Warning: Failed to log promo code usage to BookingDiscountHistory:', logError);
+      // Don't fail the entire operation if logging fails
     }
 
     return {

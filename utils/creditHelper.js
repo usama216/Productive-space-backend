@@ -1,4 +1,5 @@
 const supabase = require('../config/database');
+const { logCreditUsage } = require('./discountTracker');
 
 // Get user's available credits (active and not expired)
 const getUserAvailableCredits = async (userid) => {
@@ -37,9 +38,9 @@ const getTotalAvailableCredit = async (userid) => {
 };
 
 // Use credits for a booking
-const useCreditsForBooking = async (userid, bookingid, amountToUse) => {
+const useCreditsForBooking = async (userid, bookingid, amountToUse, actionType = 'ORIGINAL_BOOKING') => {
   try {
-    console.log('💳 Using credits for booking:', { userid, bookingid, amountToUse });
+    console.log('💳 Using credits for booking:', { userid, bookingid, amountToUse, actionType });
 
     const credits = await getUserAvailableCredits(userid);
     let remainingAmount = amountToUse;
@@ -100,6 +101,23 @@ const useCreditsForBooking = async (userid, bookingid, amountToUse) => {
 
     const totalUsed = amountToUse - remainingAmount;
     console.log('✅ Credits used successfully:', { totalUsed, remainingAmount });
+
+    // Log to unified BookingDiscountHistory
+    if (totalUsed > 0) {
+      try {
+        await logCreditUsage(
+          bookingid,
+          userid,
+          actionType,
+          totalUsed,
+          creditUsages.length > 0 ? creditUsages[0].creditid : null,
+          `Credits applied: $${totalUsed.toFixed(2)} (${actionType})`
+        );
+      } catch (logError) {
+        console.error('⚠️ Warning: Failed to log credit usage to BookingDiscountHistory:', logError);
+        // Don't fail the entire operation if logging fails
+      }
+    }
 
     return {
       totalUsed,
