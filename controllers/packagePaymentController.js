@@ -291,14 +291,19 @@ async function createUserPasses(packagePurchase) {
           const baseAmount = parseFloat(packagePurchase.totalAmount) || 0;
           const paymentMethod = packagePurchase.paymentMethod || "Online Payment";
           const isCardPayment = paymentMethod.toLowerCase().includes('card');
+          const isPayNow = paymentMethod.toLowerCase().includes('paynow');
+          
           const cardFee = isCardPayment ? baseAmount * 0.05 : 0; // 5% card fee
-          const finalAmount = baseAmount + cardFee;
+          const payNowFee = (isPayNow && baseAmount < 10) ? 0.20 : 0; // 0.20 flat fee for PayNow when amount < 10
+          const finalAmount = baseAmount + cardFee + payNowFee;
 
           console.log("💰 Payment calculation:", {
             baseAmount: baseAmount,
             paymentMethod: paymentMethod,
             isCardPayment: isCardPayment,
+            isPayNow: isPayNow,
             cardFee: cardFee,
+            payNowFee: payNowFee,
             finalAmount: finalAmount
           });
 
@@ -314,6 +319,7 @@ async function createUserPasses(packagePurchase) {
             validityDays: packagePurchase.Package?.validityDays || 30,
             baseAmount: baseAmount,
             cardFee: cardFee,
+            payNowFee: payNowFee,
             totalAmount: finalAmount,
             paymentMethod: paymentMethod,
             activatedAt: packagePurchase.activatedAt || new Date().toISOString(),
@@ -470,6 +476,23 @@ exports.confirmPackagePayment = async (req, res) => {
     }
 
     if (packagePurchase.paymentStatus === "COMPLETED") {
+      // Calculate fee breakdown
+      const baseAmount = parseFloat(packagePurchase.totalAmount);
+      const paymentMethod = packagePurchase.paymentMethod || "Online Payment";
+      const isCardPayment = paymentMethod.toLowerCase().includes('card');
+      const isPayNow = paymentMethod.toLowerCase().includes('paynow');
+      
+      let cardFee = 0;
+      let payNowFee = 0;
+      
+      if (isCardPayment) {
+        cardFee = baseAmount * 0.05; // 5% card fee
+      } else if (isPayNow && baseAmount < 10) {
+        payNowFee = 0.20; // 0.20 flat fee for PayNow
+      }
+      
+      const finalTotal = baseAmount + cardFee + payNowFee;
+      
       return res.json({
         success: true,
         message: "Payment already confirmed",
@@ -481,8 +504,11 @@ exports.confirmPackagePayment = async (req, res) => {
           packageName: packagePurchase.Package.name,
           packageType: packagePurchase.Package.packageType,
           targetRole: packagePurchase.Package.targetRole,
-          totalAmount: parseFloat(packagePurchase.totalAmount),
-          paymentMethod: packagePurchase.paymentMethod,
+          baseAmount: baseAmount,
+          cardFee: cardFee,
+          payNowFee: payNowFee,
+          totalAmount: finalTotal,
+          paymentMethod: paymentMethod,
           activatedAt: packagePurchase.activatedAt || new Date().toISOString(),
           expiresAt: packagePurchase.expiresAt || new Date(Date.now() + (packagePurchase.Package.validityDays * 24 * 60 * 60 * 1000)).toISOString(),
           userInfo: {
@@ -530,6 +556,23 @@ exports.confirmPackagePayment = async (req, res) => {
       // If it failed, it will be created on first booking attempt
     }
 
+    // Calculate fee breakdown for response
+    const baseAmount = parseFloat(packagePurchase.totalAmount);
+    const paymentMethod = packagePurchase.paymentMethod || "Online Payment";
+    const isCardPayment = paymentMethod.toLowerCase().includes('card');
+    const isPayNow = paymentMethod.toLowerCase().includes('paynow');
+    
+    let cardFee = 0;
+    let payNowFee = 0;
+    
+    if (isCardPayment) {
+      cardFee = baseAmount * 0.05; // 5% card fee
+    } else if (isPayNow && baseAmount < 10) {
+      payNowFee = 0.20; // 0.20 flat fee for PayNow
+    }
+    
+    const finalTotal = baseAmount + cardFee + payNowFee;
+    
     const responseData = {
       userPackageId: packagePurchase.id,
       orderId: packagePurchase.orderId,
@@ -538,8 +581,11 @@ exports.confirmPackagePayment = async (req, res) => {
       packageName: packagePurchase.Package.name,
       packageType: packagePurchase.Package.packageType,
       targetRole: packagePurchase.Package.targetRole,
-      totalAmount: parseFloat(packagePurchase.totalAmount),
-      paymentMethod: packagePurchase.paymentMethod,
+      baseAmount: baseAmount,
+      cardFee: cardFee,
+      payNowFee: payNowFee,
+      totalAmount: finalTotal,
+      paymentMethod: paymentMethod,
       activatedAt: activatedAt,
       expiresAt: expiresAt,
       userInfo: {

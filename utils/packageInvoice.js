@@ -94,6 +94,7 @@ const generatePackageInvoicePDF = (userData, packageData) => {
             const quantity = packageData.quantity || 1;
             const baseAmount = parseFloat(packageData.baseAmount || packageData.totalAmount);
             const cardFee = parseFloat(packageData.cardFee || 0);
+            const payNowFee = parseFloat(packageData.payNowFee || 0);
             const totalAmount = parseFloat(packageData.totalAmount);
             const unitPrice = baseAmount / quantity;
 
@@ -125,6 +126,14 @@ const generatePackageInvoicePDF = (userData, packageData) => {
                     .text('Card Fee (5%)', summaryStartX, currentY)
                     .font(bodyFont).fontSize(bodyFontSize)
                     .text(`SGD ${cardFee.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
+            }
+
+            if (payNowFee > 0) {
+                currentY += 20;
+                doc.font(bodyFont).fontSize(bodyFontSize)
+                    .text('PayNow Fee', summaryStartX, currentY)
+                    .font(bodyFont).fontSize(bodyFontSize)
+                    .text(`SGD ${payNowFee.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
             }
 
             currentY += 20;
