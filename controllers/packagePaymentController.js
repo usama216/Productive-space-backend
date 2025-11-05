@@ -153,6 +153,11 @@ exports.handlePackageWebhook = async (req, res) => {
         return res.status(500).send("Failed to update package purchase");
       }
 
+      // Update the packagePurchase object with the new dates before passing to createUserPasses
+      packagePurchase.activatedAt = activatedAt;
+      packagePurchase.expiresAt = expiresAt;
+      packagePurchase.paymentMethod = event.payment_method || paymentDetails?.payment_methods?.[0] || "Online";
+      
       await createUserPasses(packagePurchase);
 
       console.log("Package purchase completed successfully:", packagePurchase.id);
@@ -513,6 +518,10 @@ exports.confirmPackagePayment = async (req, res) => {
       });
     }
 
+    // Update the packagePurchase object with the new dates before passing to createUserPasses
+    packagePurchase.activatedAt = activatedAt;
+    packagePurchase.expiresAt = expiresAt;
+
     try {
       await createUserPasses(packagePurchase);
     } catch (createPassesError) {
@@ -591,10 +600,16 @@ exports.manualCompletePayment = async (req, res) => {
       });
     }
 
+    const activatedAt = new Date().toISOString();
+    const validityDays = packagePurchase.Package.validityDays || 30;
+    const expiresAt = new Date(Date.now() + (validityDays * 24 * 60 * 60 * 1000)).toISOString();
+
     const { error: updateError } = await supabase
       .from("PackagePurchase")
       .update({
         paymentStatus: "COMPLETED",
+        activatedAt: activatedAt,
+        expiresAt: expiresAt,
         updatedAt: new Date().toISOString()
       })
       .eq("id", userPackageId);
@@ -606,6 +621,10 @@ exports.manualCompletePayment = async (req, res) => {
       });
     }
 
+    // Update the packagePurchase object with the new dates before passing to createUserPasses
+    packagePurchase.activatedAt = activatedAt;
+    packagePurchase.expiresAt = expiresAt;
+
     await createUserPasses(packagePurchase);
 
     res.json({
@@ -616,8 +635,8 @@ exports.manualCompletePayment = async (req, res) => {
         orderId: packagePurchase.orderId,
         paymentStatus: "COMPLETED",
         hitpayReference: hitpayReference,
-        activatedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + (packagePurchase.Package.validityDays * 24 * 60 * 60 * 1000)).toISOString()
+        activatedAt: activatedAt,
+        expiresAt: expiresAt
       }
     });
 
