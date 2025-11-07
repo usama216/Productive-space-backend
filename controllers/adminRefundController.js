@@ -406,10 +406,137 @@ const getRefundStats = async (req, res) => {
   }
 };
 
+// Update user's remaining credits (admin only)
+const updateUserCredits = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { newAmount } = req.body;
+
+    console.log('💰 Admin updating user credits:', { userId, newAmount });
+
+    // Validate input
+    if (typeof newAmount !== 'number' || newAmount < 0) {
+      return res.status(400).json({ error: 'Invalid credit amount' });
+    }
+
+    // Get user's current active credits
+    const { data: activeCredits, error: fetchError } = await supabase
+      .from('usercredits')
+      .select('id, amount, status')
+      .eq('userid', userId)
+      .eq('status', 'ACTIVE')
+      .order('createdat', { ascending: true });
+
+    if (fetchError) {
+      console.error('❌ Error fetching user credits:', fetchError);
+      return res.status(500).json({ error: 'Failed to fetch user credits' });
+    }
+
+    // Calculate current remaining credits
+    const { data: usages } = await supabase
+      .from('creditusage')
+      .select('amountused')
+      .eq('userid', userId);
+    
+    const totalUsed = (usages || []).reduce((sum, u) => sum + parseFloat(u.amountused || 0), 0);
+    const currentRemaining = (activeCredits || []).reduce((sum, c) => sum + parseFloat(c.amount || 0), 0);
+    const currentTotal = currentRemaining + totalUsed;
+
+    console.log('📊 Current credits:', { currentRemaining, totalUsed, currentTotal, newAmount });
+
+    // If new amount is 0, deactivate all credits
+    if (newAmount === 0) {
+      const { error: deactivateError } = await supabase
+        .from('usercredits')
+        .update({ status: 'USED', amount: 0 })
+        .eq('userid', userId)
+        .eq('status', 'ACTIVE');
+
+      if (deactivateError) {
+        console.error('❌ Error deactivating credits:', deactivateError);
+        return res.status(500).json({ error: 'Failed to update credits' });
+      }
+
+      console.log('✅ All credits deactivated');
+      return res.json({ 
+        message: 'Credits updated successfully', 
+        oldAmount: currentRemaining,
+        newAmount: 0 
+      });
+    }
+
+    // Calculate the difference
+    const difference = newAmount - currentRemaining;
+
+    if (difference > 0) {
+      // Admin is adding more credits - create a new credit entry
+      const expiresat = new Date();
+      expiresat.setDate(expiresat.getDate() + 30); // 30 days expiry
+
+      const { error: insertError } = await supabase
+        .from('usercredits')
+        .insert({
+          userid: userId,
+          amount: difference,
+          expiresat: expiresat.toISOString(),
+          refundedfrombookingid: null // Admin adjustment, no booking
+        });
+
+      if (insertError) {
+        console.error('❌ Error adding new credit:', insertError);
+        return res.status(500).json({ error: 'Failed to add credits' });
+      }
+
+      console.log('✅ Credits added:', difference);
+    } else if (difference < 0) {
+      // Admin is reducing credits - reduce or deactivate existing credits
+      let amountToRemove = Math.abs(difference);
+      
+      for (const credit of activeCredits) {
+        if (amountToRemove <= 0) break;
+
+        const creditAmount = parseFloat(credit.amount);
+        
+        if (creditAmount <= amountToRemove) {
+          // Fully remove this credit
+          await supabase
+            .from('usercredits')
+            .update({ status: 'USED', amount: 0 })
+            .eq('id', credit.id);
+          
+          amountToRemove -= creditAmount;
+        } else {
+          // Partially reduce this credit
+          await supabase
+            .from('usercredits')
+            .update({ amount: creditAmount - amountToRemove })
+            .eq('id', credit.id);
+          
+          amountToRemove = 0;
+        }
+      }
+
+      console.log('✅ Credits reduced by:', Math.abs(difference));
+    } else {
+      console.log('ℹ️ No change in credits');
+    }
+
+    res.json({ 
+      message: 'Credits updated successfully',
+      oldAmount: currentRemaining,
+      newAmount: newAmount
+    });
+  } catch (error) {
+    console.error('❌ Error in updateUserCredits:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 module.exports = {
   getAllRefundRequests,
   approveRefund,
   rejectRefund,
   getAllUserCredits,
-  getRefundStats
+  getRefundStats,
+  updateUserCredits
 };
