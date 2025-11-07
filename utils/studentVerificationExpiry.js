@@ -13,10 +13,8 @@ function isVerificationExpired(studentVerifiedAt) {
   
   const verifiedDate = new Date(studentVerifiedAt);
   const expiryTime = new Date(verifiedDate);
-  // CURRENT: 1 day expiry (24 hours)
-  expiryTime.setDate(expiryTime.getDate() + 1);
-  // PRODUCTION: Uncomment below and comment above for 6 months
-  // expiryTime.setMonth(expiryTime.getMonth() + 6);
+  // PRODUCTION: 6 months expiry
+  expiryTime.setMonth(expiryTime.getMonth() + 6);
   
   const now = new Date();
   return now >= expiryTime;
@@ -32,10 +30,8 @@ function getDaysUntilExpiry(studentVerifiedAt) {
   
   const verifiedDate = new Date(studentVerifiedAt);
   const expiryTime = new Date(verifiedDate);
-  // CURRENT: 1 day expiry (24 hours)
-  expiryTime.setDate(expiryTime.getDate() + 1);
-  // PRODUCTION: Uncomment below and comment above for 6 months
-  // expiryTime.setMonth(expiryTime.getMonth() + 6);
+  // PRODUCTION: 6 months expiry
+  expiryTime.setMonth(expiryTime.getMonth() + 6);
   
   const now = new Date();
   const diffTime = expiryTime.getTime() - now.getTime();
@@ -54,31 +50,29 @@ function getExpiryDate(studentVerifiedAt) {
   
   const verifiedDate = new Date(studentVerifiedAt);
   const expiryTime = new Date(verifiedDate);
-  // CURRENT: 1 day expiry (24 hours)
-  expiryTime.setDate(expiryTime.getDate() + 1);
-  // PRODUCTION: Uncomment below and comment above for 6 months
-  // expiryTime.setMonth(expiryTime.getMonth() + 6);
+  // PRODUCTION: 6 months expiry
+  expiryTime.setMonth(expiryTime.getMonth() + 6);
   
   return expiryTime;
 }
 
 /**
- * Check if verification is expiring soon (within 6 hours for 1-day expiry)
+ * Check if verification is expiring soon (within 2 weeks for 6-month expiry)
  * @param {string} studentVerifiedAt - ISO date string when student was verified
- * @returns {boolean} - true if expiring within 6 hours
+ * @returns {boolean} - true if expiring within 2 weeks
  */
 function isExpiringSoon(studentVerifiedAt) {
   if (!studentVerifiedAt) return false;
   
   const verifiedDate = new Date(studentVerifiedAt);
   const expiryTime = new Date(verifiedDate);
-  expiryTime.setDate(expiryTime.getDate() + 1); // 1 day expiry
+  expiryTime.setMonth(expiryTime.getMonth() + 6); // 6 months expiry
   
   const now = new Date();
-  const hoursRemaining = (expiryTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+  const daysRemaining = (expiryTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
   
-  // Show "expiring soon" if less than 6 hours remaining
-  return hoursRemaining > 0 && hoursRemaining <= 6;
+  // Show "expiring soon" if less than 2 weeks (14 days) remaining
+  return daysRemaining > 0 && daysRemaining <= 14;
 }
 
 /**
