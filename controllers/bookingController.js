@@ -12,6 +12,7 @@ const {
   calculatePaymentAfterCredits, 
   useCreditsForBooking 
 } = require("../utils/creditHelper");
+const { logBookingActivity, ACTIVITY_TYPES } = require("../utils/bookingActivityLogger");
 
 const supabase = require("../config/database");
 
@@ -257,6 +258,23 @@ exports.createBooking = async (req, res) => {
       data.discountAmount = data.discountamount;
     }
 
+    // Log booking creation activity
+    try {
+      await logBookingActivity({
+        bookingId: data.id,
+        bookingRef: data.bookingRef,
+        activityType: ACTIVITY_TYPES.BOOKING_CREATED,
+        activityTitle: 'Booking Created',
+        activityDescription: `New booking created for ${pax} ${pax > 1 ? 'people' : 'person'} at ${location}`,
+        userId: userId,
+        userEmail: bookedForEmails?.[0],
+        amount: totalCost
+      });
+    } catch (logError) {
+      console.error('Error logging booking creation:', logError);
+      // Don't fail booking creation if logging fails
+    }
+
     // Handle credit usage if credits were used
     let creditUsageResult = null;
     if (req.body.creditAmount && req.body.creditAmount > 0) {
@@ -273,6 +291,22 @@ exports.createBooking = async (req, res) => {
         
         // Add credit amount to booking data for email/PDF
         data.creditAmount = req.body.creditAmount;
+
+        // Log credit usage activity
+        try {
+          await logBookingActivity({
+            bookingId: data.id,
+            bookingRef: data.bookingRef,
+            activityType: ACTIVITY_TYPES.CREDIT_USED,
+            activityTitle: 'Credits Applied',
+            activityDescription: `Credits used for booking payment`,
+            userId: userId,
+            userEmail: bookedForEmails?.[0],
+            amount: req.body.creditAmount
+          });
+        } catch (logError) {
+          console.error('Error logging credit usage:', logError);
+        }
       } catch (creditError) {
         console.error('❌ Error processing credit usage:', creditError);
         // Don't fail the booking creation if credit usage fails
@@ -280,6 +314,40 @@ exports.createBooking = async (req, res) => {
       }
     }
 
+    // Log promo code application if used
+    if (promoCodeId && discountAmount > 0) {
+      try {
+        await logBookingActivity({
+          bookingId: data.id,
+          bookingRef: data.bookingRef,
+          activityType: ACTIVITY_TYPES.PROMO_APPLIED,
+          activityTitle: 'Promo Code Applied',
+          activityDescription: `Promo code discount applied`,
+          userId: userId,
+          userEmail: bookedForEmails?.[0],
+          amount: discountAmount
+        });
+      } catch (logError) {
+        console.error('Error logging promo code:', logError);
+      }
+    }
+
+    // Log package usage if used
+    if (packageId && packageUsed) {
+      try {
+        await logBookingActivity({
+          bookingId: data.id,
+          bookingRef: data.bookingRef,
+          activityType: ACTIVITY_TYPES.PACKAGE_USED,
+          activityTitle: 'Package/Pass Used',
+          activityDescription: `Booking made using package/pass`,
+          userId: userId,
+          userEmail: bookedForEmails?.[0]
+        });
+      } catch (logError) {
+        console.error('Error logging package usage:', logError);
+      }
+    }
    
     res.status(201).json({ 
       message: "Booking created successfully", 
@@ -3423,6 +3491,37 @@ exports.confirmExtensionPayment = async (req, res) => {
         message: "Failed to update booking with extension details",
         details: updateError.message
       });
+    }
+
+    // Log extension activity
+    try {
+      await logBookingActivity({
+        bookingId: updatedBooking.id,
+        bookingRef: updatedBooking.bookingRef,
+        activityType: ACTIVITY_TYPES.EXTEND_APPROVED,
+        activityTitle: 'Booking Extended',
+        activityDescription: `Booking extended by ${extensionData.hours} hours`,
+        userId: existingBooking.userId,
+        userEmail: existingBooking.bookedForEmails?.[0],
+        amount: extensionData.cost
+      });
+
+      // Log credit usage if credits were used for extension
+      if (creditAmount > 0) {
+        await logBookingActivity({
+          bookingId: updatedBooking.id,
+          bookingRef: updatedBooking.bookingRef,
+          activityType: ACTIVITY_TYPES.CREDIT_USED,
+          activityTitle: 'Credits Applied to Extension',
+          activityDescription: `Credits used for extension payment`,
+          userId: existingBooking.userId,
+          userEmail: existingBooking.bookedForEmails?.[0],
+          amount: creditAmount
+        });
+      }
+    } catch (logError) {
+      console.error('Error logging extension activity:', logError);
+      // Don't fail extension if logging fails
     }
 
     // Ensure timestamps are in proper UTC format with 'Z' suffix BEFORE sending email

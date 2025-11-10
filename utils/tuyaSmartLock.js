@@ -19,12 +19,57 @@ class TuyaSmartLock {
     
     this.token = '';
     this.tokenExpireTime = 0; // Timestamp when token expires
+    this.configLoaded = false; // Track if we've loaded config from DB
     
     // Create HTTP client
     this.httpClient = axios.create({
       baseURL: this.config.host,
       timeout: 5 * 1000,
     });
+  }
+
+  /**
+   * Load Tuya configuration from database
+   * Falls back to environment variables if database read fails
+   * @returns {Promise<void>}
+   */
+  async loadConfigFromDatabase() {
+    if (this.configLoaded) {
+      return; // Already loaded
+    }
+
+    try {
+      const supabase = require('../config/database');
+      
+      const { data: settings, error } = await supabase
+        .from('TuyaSettings')
+        .select('*')
+        .eq('isActive', true);
+
+      if (!error && settings && settings.length > 0) {
+        // Build config from database settings
+        const settingsMap = {};
+        settings.forEach(setting => {
+          settingsMap[setting.settingKey] = setting.settingValue;
+        });
+
+        // Update config with database values (fallback to env if not in DB)
+        this.config.host = settingsMap.TUYA_BASE_URL || process.env.TUYA_BASE_URL || 'https://openapi.tuyaus.com';
+        this.config.accessKey = settingsMap.TUYA_CLIENT_ID || process.env.TUYA_CLIENT_ID;
+        this.config.secretKey = settingsMap.TUYA_SECRET_KEY || process.env.TUYA_SECRET_KEY;
+
+        // Update HTTP client baseURL if changed
+        this.httpClient.defaults.baseURL = this.config.host;
+
+        console.log('✅ Tuya configuration loaded from database');
+      } else {
+        console.log('⚠️ No Tuya settings found in database, using environment variables');
+      }
+    } catch (error) {
+      console.error('⚠️ Error loading Tuya config from database, using environment variables:', error.message);
+    } finally {
+      this.configLoaded = true;
+    }
   }
 
   /**
@@ -57,6 +102,9 @@ class TuyaSmartLock {
    * @returns {Promise<void>}
    */
   async getToken() {
+    // Load config from database first
+    await this.loadConfigFromDatabase();
+
     const method = 'GET';
     const timestamp = Date.now().toString();
     const signUrl = '/v1.0/token?grant_type=1';
@@ -263,17 +311,31 @@ class TuyaSmartLock {
   /**
    * Complete unlock flow - gets temporary key and unlocks door
    * 
-   * @param {string} deviceId - The device ID (optional, uses env var if not provided)
+   * @param {string} deviceId - The device ID (optional, uses database/env var if not provided)
    * @param {number} channelId - The channel ID (optional, defaults to 1)
    * @returns {Promise<Object>} Response indicating success/failure
    */
   async unlockDoor(deviceId = null, channelId = 1) {
     try {
-      // Use device ID from parameter or environment variable
-      const targetDeviceId = deviceId || process.env.TUYA_SMART_LOCK_ID;
+      // Load config from database first
+      await this.loadConfigFromDatabase();
+
+      // Get device ID from database if available
+      let targetDeviceId = deviceId;
+      if (!targetDeviceId) {
+        const supabase = require('../config/database');
+        const { data: lockIdSetting } = await supabase
+          .from('TuyaSettings')
+          .select('settingValue')
+          .eq('settingKey', 'TUYA_SMART_LOCK_ID')
+          .eq('isActive', true)
+          .single();
+        
+        targetDeviceId = lockIdSetting?.settingValue || process.env.TUYA_SMART_LOCK_ID;
+      }
       
       if (!targetDeviceId) {
-        throw new Error('Device ID is required. Please provide deviceId parameter or set TUYA_SMART_LOCK_ID environment variable.');
+        throw new Error('Device ID is required. Please configure TUYA_SMART_LOCK_ID in admin settings or environment variable.');
       }
 
       // Step 1: Get temporary key

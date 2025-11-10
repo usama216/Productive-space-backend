@@ -31,9 +31,28 @@ const calculateBookingStatus = (startAt, endAt, isRefunded = false, isCancelled 
   return 'completed';
 };
 
-// Maximum number of door access attempts allowed per token
-const MAX_ACCESS_COUNT = process.env.MAX_ACCESS_COUNT || -1;
+// TUYA_SMART_LOCK_ID will be loaded from database or env
 const TUYA_SMART_LOCK_ID = process.env.TUYA_SMART_LOCK_ID;
+
+/**
+ * Get MAX_ACCESS_COUNT from database or fallback to env
+ * @returns {Promise<number>}
+ */
+const getMaxAccessCount = async () => {
+  try {
+    const { data: setting } = await supabase
+      .from('TuyaSettings')
+      .select('settingValue')
+      .eq('settingKey', 'MAX_ACCESS_COUNT')
+      .eq('isActive', true)
+      .single();
+    
+    return setting ? parseInt(setting.settingValue) : (process.env.MAX_ACCESS_COUNT || -1);
+  } catch (error) {
+    console.error('Error loading MAX_ACCESS_COUNT from database, using env:', error);
+    return process.env.MAX_ACCESS_COUNT || -1;
+  }
+};
 /**
  * Generate a secure access link to open the door
  * @param {Object} req - Express request object
@@ -134,6 +153,7 @@ const generateOpenLink = async (req, res) => {
     const GRACE_PERIOD_MS = 15 * 60 * 1000; // 15 minutes
     const enableAt = new Date(new Date(bookingData.startAt).getTime() - GRACE_PERIOD_MS);
     const expiresAt = new Date(new Date(bookingData.endAt).getTime() + GRACE_PERIOD_MS);
+    const MAX_ACCESS_COUNT = await getMaxAccessCount();
     const maxAccessCount = MAX_ACCESS_COUNT > 0 ? MAX_ACCESS_COUNT : null;
     const unlimitedAccess = MAX_ACCESS_COUNT <= 0;
 
@@ -246,6 +266,7 @@ const openDoor = async (req, res) => {
     }
 
     // Check if access count limit is reached (only if MAX_ACCESS_COUNT > 0)
+    const MAX_ACCESS_COUNT = await getMaxAccessCount();
     if (MAX_ACCESS_COUNT > 0 && tokenData.access_count >= MAX_ACCESS_COUNT) {
       console.error(`Maximum access count reached (${MAX_ACCESS_COUNT} attempts)`);
       return res.status(400).send(openDoorFailTemplate(`Maximum access attempts reached (${MAX_ACCESS_COUNT}). Please contact support for assistance.`, enableAt, expiresAt));
@@ -409,6 +430,7 @@ const adminGenerateOpenLink = async (req, res) => {
     const GRACE_PERIOD_MS = 15 * 60 * 1000; // 15 minutes
     const enableAt = new Date(new Date(startTime).getTime() - GRACE_PERIOD_MS);
     const expiresAt = new Date(new Date(endTime).getTime() + GRACE_PERIOD_MS);
+    const MAX_ACCESS_COUNT = await getMaxAccessCount();
     const maxAccessCount = MAX_ACCESS_COUNT > 0 ? MAX_ACCESS_COUNT : null;
     const unlimitedAccess = MAX_ACCESS_COUNT <= 0;
 
