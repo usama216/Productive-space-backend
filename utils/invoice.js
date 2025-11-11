@@ -62,6 +62,11 @@ const getPricingConfig = async (location, memberType) => {
 const generateInvoicePDF = (userData, bookingData) => {
     return new Promise(async (resolve, reject) => {
         try {
+            // Get dynamic payment fee settings
+            const { getPaymentSettings } = require('./paymentFeeHelper');
+            const feeSettings = await getPaymentSettings();
+            const cardFeePercentage = feeSettings.CREDIT_CARD_TRANSACTION_FEE_PERCENTAGE || 5.0;
+            
             const doc = new PDFDocument({ margin: 50, size: 'A4' });
 
             const fileName = `Invoice_${bookingData.bookingRef || bookingData.id || Date.now()}.pdf`;
@@ -160,7 +165,7 @@ try {
 
             // Calculate payment details to get the subtotal (before fees and discounts)
             const { calculatePaymentDetails } = require('./calculationHelper');
-            const paymentDetails = calculatePaymentDetails(bookingData);
+            const paymentDetails = await calculatePaymentDetails(bookingData);
             
             // Dynamic pricing: Use the correct formula with dynamic rates from pricing_configuration table
             const members = bookingData.members || 0;
@@ -349,7 +354,7 @@ try {
             if (paymentDetails.isCardPayment) {
                 currentY += 20;
                 doc.font(bodyFont).fontSize(bodyFontSize)
-                    .text('Card Fee (5%)', summaryStartX, currentY, { width: summaryWidth - 20 })
+                    .text(`Card Fee (${cardFeePercentage}%)`, summaryStartX, currentY, { width: summaryWidth - 20 })
                     .font(bodyFont).fontSize(bodyFontSize)
                     .text(`SGD ${paymentDetails.cardFee.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
             }
@@ -405,6 +410,11 @@ try {
 const generateExtensionInvoicePDF = (userData, bookingData, extensionInfo) => {
     return new Promise(async (resolve, reject) => {
         try {
+            // Get dynamic payment fee settings
+            const { getPaymentSettings } = require('./paymentFeeHelper');
+            const feeSettings = await getPaymentSettings();
+            const cardFeePercentage = feeSettings.CREDIT_CARD_TRANSACTION_FEE_PERCENTAGE || 5.0;
+            
             const doc = new PDFDocument({ margin: 50, size: 'A4' });
 
             const fileName = `Extension_Invoice_${bookingData.bookingRef || bookingData.id || Date.now()}.pdf`;
@@ -587,7 +597,7 @@ const generateExtensionInvoicePDF = (userData, bookingData, extensionInfo) => {
 
             // Display payment fee if applicable
             if (paymentFee > 0) {
-                const feeLabel = isCardPayment ? 'Card Fee (5%):' : 'Transaction Fee:';
+                const feeLabel = isCardPayment ? `Card Fee (${cardFeePercentage}%):` : 'Transaction Fee:';
                 doc.fillColor('#000000')
                     .font(bodyFont).fontSize(bodyFontSize)
                     .text(feeLabel, col4, totalsTop + (creditAmount > 0 ? 30 : 15))
@@ -627,8 +637,13 @@ const generateExtensionInvoicePDF = (userData, bookingData, extensionInfo) => {
 };
 
 const generateRescheduleInvoicePDF = (userData, bookingData, rescheduleInfo) => {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
         try {
+            // Get dynamic payment fee settings
+            const { getPaymentSettings } = require('./paymentFeeHelper');
+            const feeSettings = await getPaymentSettings();
+            const cardFeePercentage = feeSettings.CREDIT_CARD_TRANSACTION_FEE_PERCENTAGE || 5.0;
+            
             const doc = new PDFDocument({ margin: 50, size: 'A4' });
 
             const fileName = `Reschedule_Invoice_${bookingData.bookingRef || bookingData.id || Date.now()}.pdf`;

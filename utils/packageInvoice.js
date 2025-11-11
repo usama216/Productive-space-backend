@@ -4,9 +4,12 @@ const path = require("path");
 const { formatSingaporeDate, formatSingaporeTime, getCurrentSingaporeDateTime } = require('./timezoneUtils');
 
 const generatePackageInvoicePDF = (userData, packageData) => {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
         try {
-          
+            // Get dynamic payment fee settings
+            const { getPaymentSettings } = require('./paymentFeeHelper');
+            const feeSettings = await getPaymentSettings();
+            const cardFeePercentage = feeSettings.CREDIT_CARD_TRANSACTION_FEE_PERCENTAGE || 5.0;
             
             const doc = new PDFDocument({ margin: 50, size: 'A4' });
 
@@ -123,7 +126,7 @@ const generatePackageInvoicePDF = (userData, packageData) => {
             if (cardFee > 0) {
                 currentY += 20;
                 doc.font(bodyFont).fontSize(bodyFontSize)
-                    .text('Card Fee (5%)', summaryStartX, currentY)
+                    .text(`Card Fee (${cardFeePercentage}%)`, summaryStartX, currentY)
                     .font(bodyFont).fontSize(bodyFontSize)
                     .text(`SGD ${cardFee.toFixed(2)}`, summaryStartX + summaryWidth - 80, currentY);
             }

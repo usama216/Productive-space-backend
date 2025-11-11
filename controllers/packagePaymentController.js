@@ -287,14 +287,19 @@ async function createUserPasses(packagePurchase) {
             name: userData.firstName || userData.lastName || "N/A"
           });
 
-          // Calculate amounts with card fee
+          // Calculate amounts with dynamic fees
+          const { getPaymentSettings } = require('../utils/paymentFeeHelper');
+          const feeSettings = await getPaymentSettings();
+          const cardFeePercentage = feeSettings.CREDIT_CARD_TRANSACTION_FEE_PERCENTAGE || 5.0;
+          const paynowFeeAmount = feeSettings.PAYNOW_TRANSACTION_FEE || 0.20;
+          
           const baseAmount = parseFloat(packagePurchase.totalAmount) || 0;
           const paymentMethod = packagePurchase.paymentMethod || "Online Payment";
           const isCardPayment = paymentMethod.toLowerCase().includes('card');
           const isPayNow = paymentMethod.toLowerCase().includes('paynow');
           
-          const cardFee = isCardPayment ? baseAmount * 0.05 : 0; // 5% card fee
-          const payNowFee = (isPayNow && baseAmount < 10) ? 0.20 : 0; // 0.20 flat fee for PayNow when amount < 10
+          const cardFee = isCardPayment ? baseAmount * (cardFeePercentage / 100) : 0; // Dynamic % card fee
+          const payNowFee = (isPayNow && baseAmount < 10) ? paynowFeeAmount : 0; // Dynamic PayNow fee - ONLY < $10
           const finalAmount = baseAmount + cardFee + payNowFee;
 
           console.log("💰 Payment calculation:", {
@@ -482,13 +487,19 @@ exports.confirmPackagePayment = async (req, res) => {
       const isCardPayment = paymentMethod.toLowerCase().includes('card');
       const isPayNow = paymentMethod.toLowerCase().includes('paynow');
       
+      // Get dynamic fee settings
+      const { getPaymentSettings } = require('../utils/paymentFeeHelper');
+      const feeSettings = await getPaymentSettings();
+      const cardFeePercentage = feeSettings.CREDIT_CARD_TRANSACTION_FEE_PERCENTAGE || 5.0;
+      const paynowFeeAmount = feeSettings.PAYNOW_TRANSACTION_FEE || 0.20;
+      
       let cardFee = 0;
       let payNowFee = 0;
       
       if (isCardPayment) {
-        cardFee = baseAmount * 0.05; // 5% card fee
+        cardFee = baseAmount * (cardFeePercentage / 100); // Dynamic % card fee
       } else if (isPayNow && baseAmount < 10) {
-        payNowFee = 0.20; // 0.20 flat fee for PayNow
+        payNowFee = paynowFeeAmount; // Dynamic PayNow fee - ONLY < $10
       }
       
       const finalTotal = baseAmount + cardFee + payNowFee;
@@ -562,13 +573,19 @@ exports.confirmPackagePayment = async (req, res) => {
     const isCardPayment = paymentMethod.toLowerCase().includes('card');
     const isPayNow = paymentMethod.toLowerCase().includes('paynow');
     
+    // Get dynamic fee settings
+    const { getPaymentSettings } = require('../utils/paymentFeeHelper');
+    const feeSettings = await getPaymentSettings();
+    const cardFeePercentage = feeSettings.CREDIT_CARD_TRANSACTION_FEE_PERCENTAGE || 5.0;
+    const paynowFeeAmount = feeSettings.PAYNOW_TRANSACTION_FEE || 0.20;
+    
     let cardFee = 0;
     let payNowFee = 0;
     
     if (isCardPayment) {
-      cardFee = baseAmount * 0.05; // 5% card fee
-    } else if (isPayNow && baseAmount < 10) {
-      payNowFee = 0.20; // 0.20 flat fee for PayNow
+      cardFee = baseAmount * (cardFeePercentage / 100); // Dynamic % card fee
+    } else if (isPayNow) {
+      payNowFee = paynowFeeAmount; // Dynamic PayNow fee
     }
     
     const finalTotal = baseAmount + cardFee + payNowFee;

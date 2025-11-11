@@ -781,7 +781,11 @@ exports.confirmBookingPayment = async (req, res) => {
           // Add package discount info to booking data for PDF generation
           data.packageDiscountId = data.packageId;
           // Calculate actual discount amount (remove card processing fee from totalAmount)
-          const baseAmount = data.totalAmount / 1.05; // Remove 5% card fee
+          const { getPaymentSettings } = require('../utils/paymentFeeHelper');
+          const feeSettings = await getPaymentSettings();
+          const cardFeePercentage = feeSettings.CREDIT_CARD_TRANSACTION_FEE_PERCENTAGE || 5.0;
+          const multiplier = 1 + (cardFeePercentage / 100);
+          const baseAmount = data.totalAmount / multiplier; // Remove dynamic % card fee
           data.packageDiscountAmount = data.totalCost - baseAmount; // Calculate actual discount amount
           data.packageName = packageUsageResult.packageName || 'Package';
         } else {
@@ -1710,8 +1714,12 @@ exports.getBookingPaymentDetails = async (req, res) => {
          paymentMethod.toLowerCase().includes('credit'));
       
       if (isCardPayment) {
-        // If card payment, remove the 5% fee to get the amount before card fee
-        amountBeforeCardFee = paymentAmount / 1.05;
+        // If card payment, remove dynamic % fee to get the amount before card fee
+        const { getPaymentSettings } = require('../utils/paymentFeeHelper');
+        const feeSettings = await getPaymentSettings();
+        const cardFeePercentage = feeSettings.CREDIT_CARD_TRANSACTION_FEE_PERCENTAGE || 5.0;
+        const multiplier = 1 + (cardFeePercentage / 100);
+        amountBeforeCardFee = paymentAmount / multiplier;
       }
       
       // Package discount = totalCost - amountBeforeCardFee
@@ -1740,6 +1748,12 @@ exports.getBookingPaymentDetails = async (req, res) => {
     let cardFee = 0;
     let payNowFee = 0;
     
+    // Load payment settings ONCE before loop
+    const { getPaymentSettings } = require('../utils/paymentFeeHelper');
+    const feeSettings = await getPaymentSettings();
+    const cardFeePercentage = feeSettings.CREDIT_CARD_TRANSACTION_FEE_PERCENTAGE || 5.0;
+    const paynowFeeAmount = feeSettings.PAYNOW_TRANSACTION_FEE || 0.20;
+    
     if (allPayments && allPayments.length > 0) {
       console.log('💳 Calculating fees for each payment in UI...');
       
@@ -1756,8 +1770,9 @@ exports.getBookingPaymentDetails = async (req, res) => {
            paymentMethod.toLowerCase().includes('pay_now'));
         
         if (isCardPayment) {
-          // Calculate 5% card fee for this payment
-          const subtotal = paymentAmount / 1.05;
+          // Calculate dynamic % card fee for this payment
+          const multiplier = 1 + (cardFeePercentage / 100);
+          const subtotal = paymentAmount / multiplier;
           const feeForThisPayment = paymentAmount - subtotal;
           cardFee += feeForThisPayment;
           
@@ -1767,12 +1782,12 @@ exports.getBookingPaymentDetails = async (req, res) => {
             totalCardFee: cardFee
           });
         } else if (isPayNowPayment && paymentAmount < 10) {
-          // PayNow fee of $0.20 for amounts less than $10
-          payNowFee += 0.20;
+          // PayNow dynamic fee - ONLY for amounts < $10
+          payNowFee += paynowFeeAmount;
           
           console.log(`💳 PayNow payment ${index + 1} fee:`, {
             amount: paymentAmount,
-            fee: 0.20,
+            fee: paynowFeeAmount,
             totalPayNowFee: payNowFee
           });
         }
@@ -1794,10 +1809,13 @@ exports.getBookingPaymentDetails = async (req, res) => {
          paymentMethod.toLowerCase().includes('pay_now'));
       
       if (isCardPayment) {
-        const subtotal = paymentAmount / 1.05;
+        // Use already loaded feeSettings
+        const multiplier = 1 + (cardFeePercentage / 100);
+        const subtotal = paymentAmount / multiplier;
         cardFee = paymentAmount - subtotal;
       } else if (isPayNowPayment && paymentAmount < 10) {
-        payNowFee = 0.20;
+        // Use already loaded feeSettings - ONLY for amounts < $10
+        payNowFee = paynowFeeAmount;
       }
     }
 
@@ -3563,10 +3581,14 @@ exports.confirmExtensionPayment = async (req, res) => {
     const extensionCreditAmount = creditAmount || 0;
     const subtotalAfterCredits = Math.max(0, baseAmount - extensionCreditAmount);
     
-    // Calculate fee based on payment method
+    // Calculate fee based on payment method (DYNAMIC)
     // NO FEE if fully covered by credits (subtotal = 0)
     const isCreditCard = actualPaymentMethod === 'card' || actualPaymentMethod === 'credit_card' || actualPaymentMethod === 'creditcard' || actualPaymentMethod.toLowerCase().includes('card');
-    const paymentFee = subtotalAfterCredits === 0 ? 0 : (isCreditCard ? subtotalAfterCredits * 0.05 : (subtotalAfterCredits < 10 ? 0.20 : 0));
+    const { getPaymentSettings } = require('../utils/paymentFeeHelper');
+    const feeSettings = await getPaymentSettings();
+    const cardFeePercentage = feeSettings.CREDIT_CARD_TRANSACTION_FEE_PERCENTAGE || 5.0;
+    const paynowFeeAmount = feeSettings.PAYNOW_TRANSACTION_FEE || 0.20;
+    const paymentFee = subtotalAfterCredits === 0 ? 0 : (isCreditCard ? subtotalAfterCredits * (cardFeePercentage / 100) : (subtotalAfterCredits < 10 ? paynowFeeAmount : 0));
     const finalAmountPaid = subtotalAfterCredits + paymentFee;
     
     console.log('💰 Extension payment breakdown:', {

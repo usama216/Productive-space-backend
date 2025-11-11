@@ -1,10 +1,17 @@
+const { getPaymentSettings } = require('./paymentFeeHelper');
+
 /**
- * Calculate card processing fee and amounts
+ * Calculate card processing fee and amounts (DYNAMIC VERSION)
  * @param {number} totalAmount 
  * @param {string} paymentMethod
- * @returns {object}
+ * @returns {Promise<object>}
  */
-function calculatePaymentAmounts(totalAmount, paymentMethod) {
+async function calculatePaymentAmounts(totalAmount, paymentMethod) {
+  // Get dynamic settings from database
+  const settings = await getPaymentSettings();
+  const paynowFee = settings.PAYNOW_TRANSACTION_FEE || 0.20;
+  const cardFeePercentage = settings.CREDIT_CARD_TRANSACTION_FEE_PERCENTAGE || 5.0;
+  
   const isCardPayment = paymentMethod && (
     paymentMethod.toLowerCase().includes('card') || 
     paymentMethod.toLowerCase().includes('credit')
@@ -15,32 +22,32 @@ function calculatePaymentAmounts(totalAmount, paymentMethod) {
     paymentMethod.toLowerCase().includes('pay_now')
   );
   
-  let subtotal, cardFee, payNowFee, finalTotal;
+  let subtotal, cardFee, payNowFeeFinal, finalTotal;
   
   if (isCardPayment) {
-    // Card payment: totalAmount includes 5% fee
-    subtotal = totalAmount / 1.05;
-    cardFee = subtotal * 0.05;
-    payNowFee = 0;
+    // Card payment: totalAmount includes dynamic % fee
+    const multiplier = 1 + (cardFeePercentage / 100);
+    subtotal = totalAmount / multiplier;
+    cardFee = subtotal * (cardFeePercentage / 100);
+    payNowFeeFinal = 0;
     finalTotal = subtotal + cardFee;
   } else if (isPayNowPayment && totalAmount < 10) {
-    // PayNow fee of $0.20 for amounts less than $10
-    // totalAmount already includes the $0.20 fee
-    subtotal = totalAmount - 0.20;
+    // PayNow fee (dynamic from database) - ONLY for amounts < $10
+    subtotal = totalAmount - paynowFee;
     cardFee = 0;
-    payNowFee = 0.20;
+    payNowFeeFinal = paynowFee;
     finalTotal = totalAmount; // Already includes fee
   } else {
     subtotal = totalAmount;
     cardFee = 0;
-    payNowFee = 0;
+    payNowFeeFinal = 0;
     finalTotal = totalAmount;
   }
   
   return {
     subtotal: Math.round(subtotal * 100) / 100,
     cardFee: Math.round(cardFee * 100) / 100,
-    payNowFee: Math.round(payNowFee * 100) / 100,
+    payNowFee: Math.round(payNowFeeFinal * 100) / 100,
     finalTotal: Math.round(finalTotal * 100) / 100,
     isCardPayment: isCardPayment,
     isPayNowPayment: isPayNowPayment
@@ -101,9 +108,14 @@ function getPaymentMethodDisplayName(paymentMethod) {
 
 /**
  * @param {object} bookingData 
- * @returns {object} 
+ * @returns {Promise<object>} 
  */
-function calculatePaymentDetails(bookingData) {
+async function calculatePaymentDetails(bookingData) {
+  // Get dynamic settings from database
+  const settings = await getPaymentSettings();
+  const paynowFeeAmount = settings.PAYNOW_TRANSACTION_FEE || 0.20;
+  const cardFeePercentage = settings.CREDIT_CARD_TRANSACTION_FEE_PERCENTAGE || 5.0;
+  
   const totalAmount = parseFloat(bookingData.totalAmount || 0);
   const originalAmount = parseFloat(bookingData.totalCost || totalAmount);
   const discountAmount = parseFloat(bookingData.discountAmount || 0);
@@ -132,21 +144,17 @@ function calculatePaymentDetails(bookingData) {
   let subtotal, cardFee, payNowFee, finalTotal;
   
   if (isCardPayment) {
-    // Card payment: totalAmount includes 5% fee
-    // So: totalAmount = subtotal * 1.05
-    // Therefore: subtotal = totalAmount / 1.05
-    subtotal = totalAmount / 1.05;
-    cardFee = subtotal * 0.05;
+    // Card payment: totalAmount includes dynamic % fee
+    const multiplier = 1 + (cardFeePercentage / 100);
+    subtotal = totalAmount / multiplier;
+    cardFee = subtotal * (cardFeePercentage / 100);
     payNowFee = 0;
     finalTotal = subtotal + cardFee;
   } else if (isPayNowPayment && totalAmount < 10) {
-    // PayNow fee of $0.20 for amounts less than $10
-    // totalAmount already includes the $0.20 fee
-    // So: totalAmount = subtotal + 0.20
-    // Therefore: subtotal = totalAmount - 0.20
-    subtotal = totalAmount - 0.20;
+    // PayNow fee (dynamic from database) - ONLY for amounts < $10
+    subtotal = totalAmount - paynowFeeAmount;
     cardFee = 0;
-    payNowFee = 0.20;
+    payNowFee = paynowFeeAmount;
     finalTotal = totalAmount; // totalAmount already has the fee included
   } else {
     subtotal = totalAmount;

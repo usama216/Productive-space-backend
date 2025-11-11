@@ -65,6 +65,7 @@ const doorRoutes = require("./routes/door");
 const discountHistoryRoutes = require("./routes/discountHistory");
 const tuyaSettingsRoutes = require("./routes/tuyaSettings");
 const bookingActivityRoutes = require("./routes/bookingActivity");
+const paymentSettingsRoutes = require("./routes/paymentSettings");
 const { swaggerUi, specs } = require('./swagger');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
@@ -140,6 +141,7 @@ app.use("/api/reschedule", rescheduleRoutes);
 app.use("/api/discount-history", discountHistoryRoutes);
 app.use("/api/tuya-settings", tuyaSettingsRoutes);
 app.use("/api/booking-activity", bookingActivityRoutes);
+app.use("/api/payment-settings", paymentSettingsRoutes);
 app.use("/api/booking", require('./routes/packageApplication'));
 app.post('/api/test-package-usage', async (req, res) => {
   try {

@@ -154,11 +154,15 @@ const requestRefund = async (req, res) => {
          paymentMethod.toLowerCase().includes('pay_now'));
       
       if (isCardPayment) {
-        // Calculate original amount before 5% card fee
-        const originalAmount = actualCashPaid / 1.05;
+        // Calculate original amount before dynamic % card fee
+        const { getPaymentSettings } = require('../utils/paymentFeeHelper');
+        const feeSettings = await getPaymentSettings();
+        const cardFeePercentage = feeSettings.CREDIT_CARD_TRANSACTION_FEE_PERCENTAGE || 5.0;
+        const multiplier = 1 + (cardFeePercentage / 100);
+        const originalAmount = actualCashPaid / multiplier;
         finalRefundAmount = originalAmount;
         
-        console.log('💳 Card payment - deducting 5% fee from cash amount:', {
+        console.log(`💳 Card payment - deducting ${cardFeePercentage}% fee from cash amount:`, {
           cashPaid: actualCashPaid,
           originalAmount: originalAmount,
           cardFee: actualCashPaid - originalAmount,

@@ -552,11 +552,17 @@ const confirmReschedulePayment = async (req, res) => {
     const creditAmount = rescheduleData.creditAmount || 0;
     const subtotal = baseAmount - creditAmount;
     
-    // Calculate payment fees (same logic as frontend)
-    // Check payment method from payment object - try different possible field names
+    // Calculate payment fees with dynamic settings
     const paymentMethod = payment.paymentMethod || payment.method || payment.payment_type || payment.type || 'paynow_online';
     const isCreditCard = paymentMethod === 'card' || paymentMethod === 'credit_card' || paymentMethod === 'creditcard';
-    const fee = isCreditCard ? subtotal * 0.05 : (subtotal < 10 ? 0.20 : 0);
+    
+    // Get dynamic fee settings
+    const { getPaymentSettings } = require('../utils/paymentFeeHelper');
+    const feeSettings = await getPaymentSettings();
+    const cardFeePercentage = feeSettings.CREDIT_CARD_TRANSACTION_FEE_PERCENTAGE || 5.0;
+    const paynowFeeAmount = feeSettings.PAYNOW_TRANSACTION_FEE || 0.20;
+    
+    const fee = isCreditCard ? subtotal * (cardFeePercentage / 100) : (subtotal < 10 ? paynowFeeAmount : 0);
     const finalAmount = subtotal + fee;
     
     console.log('💰 Payment calculation:', {
@@ -654,10 +660,17 @@ const confirmReschedulePayment = async (req, res) => {
       const creditAmount = rescheduleData.creditAmount || 0;
       const subtotal = baseAmount - creditAmount;
       
-      // Calculate payment fees (same logic as frontend)
+      // Calculate payment fees with dynamic settings
       const paymentMethod = payment.paymentMethod || payment.method || payment.payment_type || payment.type || 'paynow_online';
       const isCreditCard = paymentMethod === 'card' || paymentMethod === 'credit_card' || paymentMethod === 'creditcard';
-      const fee = isCreditCard ? subtotal * 0.05 : (subtotal < 10 ? 0.20 : 0);
+      
+      // Get dynamic fee settings
+      const { getPaymentSettings } = require('../utils/paymentFeeHelper');
+      const feeSettings = await getPaymentSettings();
+      const cardFeePercentage = feeSettings.CREDIT_CARD_TRANSACTION_FEE_PERCENTAGE || 5.0;
+      const paynowFeeAmount = feeSettings.PAYNOW_TRANSACTION_FEE || 0.20;
+      
+      const fee = isCreditCard ? subtotal * (cardFeePercentage / 100) : (subtotal < 10 ? paynowFeeAmount : 0);
       const finalAmount = subtotal + fee;
 
       const rescheduleInfo = {
