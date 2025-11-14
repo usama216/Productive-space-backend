@@ -11,27 +11,28 @@ require('dotenv').config();
 
 class TuyaSmartLock {
   constructor() {
+    // Initialize with empty config - will be loaded from database
     this.config = {
-      host: process.env.TUYA_BASE_URL || 'https://openapi.tuyaus.com',
-      accessKey: process.env.TUYA_CLIENT_ID,
-      secretKey: process.env.TUYA_SECRET_KEY
+      host: null,
+      accessKey: null,
+      secretKey: null
     };
     
     this.token = '';
     this.tokenExpireTime = 0; // Timestamp when token expires
     this.configLoaded = false; // Track if we've loaded config from DB
     
-    // Create HTTP client
+    // Create HTTP client with temporary baseURL (will be updated after loading config)
     this.httpClient = axios.create({
-      baseURL: this.config.host,
+      baseURL: 'https://openapi.tuyaus.com', // Temporary default
       timeout: 5 * 1000,
     });
   }
 
   /**
    * Load Tuya configuration from database
-   * Falls back to environment variables if database read fails
    * @returns {Promise<void>}
+   * @throws {Error} If required settings are missing from database
    */
   async loadConfigFromDatabase() {
     if (this.configLoaded) {
@@ -46,27 +47,40 @@ class TuyaSmartLock {
         .select('*')
         .eq('isActive', true);
 
-      if (!error && settings && settings.length > 0) {
-        // Build config from database settings
-        const settingsMap = {};
-        settings.forEach(setting => {
-          settingsMap[setting.settingKey] = setting.settingValue;
-        });
-
-        // Update config with database values (fallback to env if not in DB)
-        this.config.host = settingsMap.TUYA_BASE_URL || process.env.TUYA_BASE_URL || 'https://openapi.tuyaus.com';
-        this.config.accessKey = settingsMap.TUYA_CLIENT_ID || process.env.TUYA_CLIENT_ID;
-        this.config.secretKey = settingsMap.TUYA_SECRET_KEY || process.env.TUYA_SECRET_KEY;
-
-        // Update HTTP client baseURL if changed
-        this.httpClient.defaults.baseURL = this.config.host;
-
-        console.log('✅ Tuya configuration loaded from database');
-      } else {
-        console.log('⚠️ No Tuya settings found in database, using environment variables');
+      if (error) {
+        throw new Error(`Database error: ${error.message}`);
       }
+
+      if (!settings || settings.length === 0) {
+        throw new Error('No Tuya settings found in database. Please configure settings in admin panel.');
+      }
+
+      // Build config from database settings
+      const settingsMap = {};
+      settings.forEach(setting => {
+        settingsMap[setting.settingKey] = setting.settingValue;
+      });
+
+      // Validate required settings
+      const requiredSettings = ['TUYA_BASE_URL', 'TUYA_CLIENT_ID', 'TUYA_SECRET_KEY'];
+      const missingSettings = requiredSettings.filter(key => !settingsMap[key]);
+      
+      if (missingSettings.length > 0) {
+        throw new Error(`Missing required Tuya settings in database: ${missingSettings.join(', ')}. Please configure them in admin panel.`);
+      }
+
+      // Update config with database values
+      this.config.host = settingsMap.TUYA_BASE_URL;
+      this.config.accessKey = settingsMap.TUYA_CLIENT_ID;
+      this.config.secretKey = settingsMap.TUYA_SECRET_KEY;
+
+      // Update HTTP client baseURL
+      this.httpClient.defaults.baseURL = this.config.host;
+
+      console.log('✅ Tuya configuration loaded from database');
     } catch (error) {
-      console.error('⚠️ Error loading Tuya config from database, using environment variables:', error.message);
+      console.error('❌ Error loading Tuya config from database:', error.message);
+      throw error; // Re-throw to prevent using invalid config
     } finally {
       this.configLoaded = true;
     }
@@ -320,22 +334,26 @@ class TuyaSmartLock {
       // Load config from database first
       await this.loadConfigFromDatabase();
 
-      // Get device ID from database if available
+      // Get device ID from database
       let targetDeviceId = deviceId;
       if (!targetDeviceId) {
         const supabase = require('../config/database');
-        const { data: lockIdSetting } = await supabase
+        const { data: lockIdSetting, error: lockIdError } = await supabase
           .from('TuyaSettings')
           .select('settingValue')
           .eq('settingKey', 'TUYA_SMART_LOCK_ID')
           .eq('isActive', true)
           .single();
         
-        targetDeviceId = lockIdSetting?.settingValue || process.env.TUYA_SMART_LOCK_ID;
+        if (lockIdError || !lockIdSetting) {
+          throw new Error('TUYA_SMART_LOCK_ID is not configured in database. Please configure it in admin settings.');
+        }
+        
+        targetDeviceId = lockIdSetting.settingValue;
       }
       
       if (!targetDeviceId) {
-        throw new Error('Device ID is required. Please configure TUYA_SMART_LOCK_ID in admin settings or environment variable.');
+        throw new Error('Device ID is required. Please configure TUYA_SMART_LOCK_ID in admin settings.');
       }
 
       // Step 1: Get temporary key
@@ -365,21 +383,25 @@ class TuyaSmartLock {
 module.exports = TuyaSmartLock;
 
 /*
- * Environment Variables Setup:
+ * Configuration Setup:
  * 
- * Create a .env file in the backend directory with the following variables:
+ * All Tuya configuration is loaded from the TuyaSettings table in Supabase.
+ * Required settings in the database:
  * 
- * TUYA_CLIENT_ID=your_access_key_here
- * TUYA_SECRET_KEY=your_secret_key_here
- * TUYA_BASE_URL=https://openapi.tuyaus.com
- * TUYA_SMART_LOCK_ID=your_device_id_here
+ * - TUYA_CLIENT_ID: Tuya API Access Key / Client ID
+ * - TUYA_SECRET_KEY: Tuya API Secret Key
+ * - TUYA_BASE_URL: Tuya API Base URL (e.g., https://openapi-sg.iotbing.com)
+ * - TUYA_SMART_LOCK_ID: Tuya Smart Lock Device ID
+ * - MAX_ACCESS_COUNT: Maximum door access attempts per booking (-1 for unlimited)
+ * 
+ * All settings must have isActive = true to be used.
  * 
  * Usage Examples:
  * 
- * // Using environment variables (recommended)
+ * // Configuration is automatically loaded from database
  * const smartLock = new TuyaSmartLock();
  * 
- * // Unlock door using device ID from environment variable
+ * // Unlock door using device ID from database
  * const result = await smartLock.unlockDoor();
  * 
  * // Unlock door with specific device ID
@@ -393,10 +415,11 @@ module.exports = TuyaSmartLock;
  * - Automatic retry on token expiration errors
  * - Token expiration tracking and validation
  * - Seamless operation without manual token management
+ * - Configuration loaded from database on first use
  * 
  * Dependencies:
  * - axios: HTTP client for API requests
  * - crypto: Built-in Node.js crypto module for HMAC-SHA256
  * - qs: Query string parsing library
- * - dotenv: Environment variable loading
+ * - supabase: Database client for loading configuration
  */

@@ -31,26 +31,54 @@ const calculateBookingStatus = (startAt, endAt, isRefunded = false, isCancelled 
   return 'completed';
 };
 
-// TUYA_SMART_LOCK_ID will be loaded from database or env
-const TUYA_SMART_LOCK_ID = process.env.TUYA_SMART_LOCK_ID;
+/**
+ * Get TUYA_SMART_LOCK_ID from database
+ * @returns {Promise<string|null>}
+ */
+const getTuyaSmartLockId = async () => {
+  try {
+    const { data: setting, error } = await supabase
+      .from('TuyaSettings')
+      .select('settingValue')
+      .eq('settingKey', 'TUYA_SMART_LOCK_ID')
+      .eq('isActive', true)
+      .single();
+    
+    if (error || !setting) {
+      console.error('Error loading TUYA_SMART_LOCK_ID from database:', error);
+      return null;
+    }
+    
+    return setting.settingValue;
+  } catch (error) {
+    console.error('Error loading TUYA_SMART_LOCK_ID from database:', error);
+    return null;
+  }
+};
 
 /**
- * Get MAX_ACCESS_COUNT from database or fallback to env
- * @returns {Promise<number>}
+ * Get MAX_ACCESS_COUNT from database
+ * @returns {Promise<number>} Returns -1 if not found (unlimited access)
  */
 const getMaxAccessCount = async () => {
   try {
-    const { data: setting } = await supabase
+    const { data: setting, error } = await supabase
       .from('TuyaSettings')
       .select('settingValue')
       .eq('settingKey', 'MAX_ACCESS_COUNT')
       .eq('isActive', true)
       .single();
     
-    return setting ? parseInt(setting.settingValue) : (process.env.MAX_ACCESS_COUNT || -1);
+    if (error || !setting) {
+      console.warn('MAX_ACCESS_COUNT not found in database, defaulting to -1 (unlimited)');
+      return -1; // Default to unlimited if not configured
+    }
+    
+    const value = parseInt(setting.settingValue);
+    return isNaN(value) ? -1 : value;
   } catch (error) {
-    console.error('Error loading MAX_ACCESS_COUNT from database, using env:', error);
-    return process.env.MAX_ACCESS_COUNT || -1;
+    console.error('Error loading MAX_ACCESS_COUNT from database:', error);
+    return -1; // Default to unlimited on error
   }
 };
 /**
@@ -272,16 +300,17 @@ const openDoor = async (req, res) => {
       return res.status(400).send(openDoorFailTemplate(`Maximum access attempts reached (${MAX_ACCESS_COUNT}). Please contact support for assistance.`, enableAt, expiresAt));
     }
 
-    // Check if TUYA_SMART_LOCK_ID is configured
-    if (!TUYA_SMART_LOCK_ID) {
-      console.error('TUYA_SMART_LOCK_ID is not configured');
+    // Get TUYA_SMART_LOCK_ID from database
+    const smartLockId = await getTuyaSmartLockId();
+    if (!smartLockId) {
+      console.error('TUYA_SMART_LOCK_ID is not configured in database');
       return res.status(500).send(openDoorFailTemplate('Smart lock system is not properly configured. Please contact support.', enableAt, expiresAt));
     }
 
     // Initialize Tuya Smart Lock
     const smartLock = new TuyaSmartLock();
-    // Attempt to unlock the door
-    const unlockResult = await smartLock.unlockDoor();
+    // Attempt to unlock the door (will use device ID from database if not provided)
+    const unlockResult = await smartLock.unlockDoor(smartLockId);
     // If you want to test the door opening without the smart lock, you can uncomment the line below
     // const unlockResult = { success: true };
 
