@@ -259,7 +259,7 @@ async function getUserVerificationExpiry(userId) {
       message: expired 
         ? 'Verification has expired. Please verify again to maintain student status.'
         : expiringSoon
-        ? `Verification expires in ${daysRemaining} days. Please renew soon.`
+        ? `Your student verification expire in ${daysRemaining} days.`
         : `Verification valid for ${daysRemaining} more days.`
     };
 
