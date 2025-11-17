@@ -265,16 +265,18 @@ const getAllUserCredits = async (req, res) => {
 
     // If search is provided, first find user IDs by email
     let userIdsToFilter = null;
+    let searchedUsers = null;
     if (search && typeof search === 'string' && search.trim() !== '') {
       const { data: users, error: userError } = await supabase
         .from('User')
-        .select('id')
+        .select('id, email, firstName, lastName')
         .ilike('email', `%${search.trim()}%`);
       
       if (userError) {
         console.error('❌ Error searching users:', userError);
       } else if (users && users.length > 0) {
         userIdsToFilter = users.map(u => u.id);
+        searchedUsers = users; // Store full user data for users with no credits
       } else {
         // No users found, return empty result
         return res.json({
@@ -322,15 +324,30 @@ const getAllUserCredits = async (req, res) => {
     const creditIds = credits.map(c => c.id);
     const uniqueUserIds = [...new Set(credits.map(c => c.userid))];
 
-    // Fetch all usages for these credits in one go
-    const { data: usagesAll } = await supabase
-      .from('creditusage')
-      .select('creditid, userid, amountused')
-      .in('creditid', creditIds);
+    // If searching, also include users who have no credits (show them with 0 credits)
+    if (searchedUsers && searchedUsers.length > 0) {
+      const usersWithCredits = new Set(uniqueUserIds);
+      const usersWithoutCredits = searchedUsers.filter(u => !usersWithCredits.has(u.id));
+      
+      // For users without credits, create virtual entries showing 0 credits
+      usersWithoutCredits.forEach(user => {
+        uniqueUserIds.push(user.id);
+      });
+    }
+
+    // Fetch all usages for these credits in one go (only if there are credits)
+    let usagesAll = [];
+    if (creditIds.length > 0) {
+      const { data: usages } = await supabase
+        .from('creditusage')
+        .select('creditid, userid, amountused')
+        .in('creditid', creditIds);
+      usagesAll = usages || [];
+    }
 
     // Index usage by creditId
     const usageByCreditId = {};
-    (usagesAll || []).forEach(u => {
+    usagesAll.forEach(u => {
       const used = parseFloat(u.amountused || 0);
       usageByCreditId[u.creditid] = (usageByCreditId[u.creditid] || 0) + used;
     });
@@ -364,13 +381,64 @@ const getAllUserCredits = async (req, res) => {
       creditOriginal: (usageByCreditId[credit.id] || 0) + (credit.status === 'ACTIVE' ? parseFloat(credit.amount || 0) : 0)
     }));
 
+    // If searching and there are users without credits, add virtual entries for them
+    if (searchedUsers && searchedUsers.length > 0) {
+      const usersWithCredits = new Set(credits.map(c => c.userid));
+      const usersWithoutCredits = searchedUsers.filter(u => !usersWithCredits.has(u.id));
+      
+      // Create a map of all users (with and without credits) for proper pagination
+      const allUserIds = [...new Set([...credits.map(c => c.userid), ...usersWithoutCredits.map(u => u.id)])];
+      
+      // Get paginated user IDs
+      const paginatedUserIds = allUserIds.slice(from, to + 1);
+      
+      // Add virtual credit entries for users with 0 credits that are in the current page
+      usersWithoutCredits.forEach(user => {
+        if (paginatedUserIds.includes(user.id)) {
+          enrichedCredits.push({
+            id: `virtual-${user.id}`, // Virtual ID
+            userid: user.id,
+            amount: 0,
+            status: 'ACTIVE',
+            createdat: user.createdAt || new Date().toISOString(),
+            expiresat: null,
+            refundedfrombookingid: null,
+            User: {
+              email: user.email,
+              firstName: user.firstName,
+              lastName: user.lastName
+            },
+            Booking: null,
+            ...userTotalsMap[user.id] || { totalCredit: 0, usedCredit: 0, remainingCredit: 0 },
+            creditUsed: 0,
+            creditRemaining: 0,
+            creditOriginal: 0
+          });
+        }
+      });
+      
+      // Sort enriched credits to maintain consistent order (by user email)
+      enrichedCredits.sort((a, b) => {
+        const emailA = (a.User?.email || '').toLowerCase();
+        const emailB = (b.User?.email || '').toLowerCase();
+        return emailA.localeCompare(emailB);
+      });
+    }
+
+    // Calculate total count: if searching, count all matching users; otherwise count credit records
+    let totalCount = count || enrichedCredits.length;
+    if (searchedUsers && searchedUsers.length > 0) {
+      // When searching, total should be the number of matching users
+      totalCount = searchedUsers.length;
+    }
+
     res.json({
       items: enrichedCredits,
       pagination: {
         page: pageNum,
         limit: pageSize,
-        total: count || enrichedCredits.length,
-        totalPages: count ? Math.ceil(count / pageSize) : 1
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / pageSize)
       }
     });
   } catch (error) {
