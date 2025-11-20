@@ -532,6 +532,50 @@ exports.getAdminBookingDetails = async (req, res) => {
     // Prefer whichever package table returned data
     const packageInfo = userPassResp && userPassResp.data ? userPassResp.data : (packagePurchaseResp && packagePurchaseResp.data ? packagePurchaseResp.data : null);
 
+    // Fetch package name from Package table if packageInfo exists and has packageId
+    let packageName = null;
+    if (packageInfo && packageInfo.packageId) {
+      const { data: packageData, error: packageError } = await supabase
+        .from('Package')
+        .select('id, name')
+        .eq('id', packageInfo.packageId)
+        .single();
+      
+      if (!packageError && packageData) {
+        packageName = packageData.name;
+      }
+    }
+
+    // Add package name to packageInfo if available
+    const packageWithName = packageInfo ? { ...packageInfo, packageName } : null;
+
+    // Fetch discount history for this booking
+    let discountHistory = [];
+    let packageDiscount = 0;
+    if (booking.id) {
+      const { data: discountData, error: discountError } = await supabase
+        .from('BookingDiscountHistory')
+        .select('*')
+        .eq('bookingId', booking.id)
+        .order('appliedAt', { ascending: true });
+      
+      if (!discountError && discountData) {
+        discountHistory = discountData;
+        // Calculate package discount (discountType === 'PASS')
+        packageDiscount = discountData
+          .filter(d => d.discountType === 'PASS')
+          .reduce((sum, d) => sum + (parseFloat(d.discountAmount) || 0), 0);
+      }
+    }
+
+    // Calculate payment fees
+    // Payment fee = (totalCost - discountAmount) - totalAmount
+    // This represents the fees charged on top of the base cost after discounts
+    const baseAmount = parseFloat(booking.totalCost) || 0;
+    const totalDiscount = parseFloat(booking.discountAmount) || 0;
+    const finalAmount = parseFloat(booking.totalAmount) || 0;
+    const paymentFee = Math.max(0, finalAmount - (baseAmount - totalDiscount));
+
     return res.status(200).json({
       success: true,
       data: {
@@ -539,7 +583,10 @@ exports.getAdminBookingDetails = async (req, res) => {
         user: userData,
         payment: paymentResp ? paymentResp.data : null,
         promoCode: promoResp ? promoResp.data : null,
-        package: packageInfo,
+        package: packageWithName,
+        discountHistory,
+        packageDiscount,
+        paymentFee,
         userStats,
         recentBookings,
       },
