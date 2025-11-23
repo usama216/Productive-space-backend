@@ -3560,16 +3560,53 @@ exports.confirmExtensionPayment = async (req, res) => {
 
     // Log extension activity
     try {
+      // Get user details for activity log
+      const { data: userData } = await supabase
+        .from('User')
+        .select('id, email, firstName, lastName')
+        .eq('id', existingBooking.userId)
+        .single()
+
+      const userName = userData ? `${userData.firstName || ''} ${userData.lastName || ''}`.trim() : null
+      
+      // Format dates for description - for extend, only end time changes
+      const oldStart = new Date(existingBooking.startAt).toLocaleString('en-SG', { 
+        year: 'numeric', month: '2-digit', day: '2-digit', 
+        hour: '2-digit', minute: '2-digit', hour12: true 
+      })
+      const oldEnd = new Date(existingBooking.endAt).toLocaleString('en-SG', { 
+        year: 'numeric', month: '2-digit', day: '2-digit', 
+        hour: '2-digit', minute: '2-digit', hour12: true 
+      })
+      const newEnd = new Date(extensionData.newEndAt).toLocaleString('en-SG', { 
+        year: 'numeric', month: '2-digit', day: '2-digit', 
+        hour: '2-digit', minute: '2-digit', hour12: true 
+      })
+      const extensionHours = extensionData.hours || extensionData.extensionHours || 0
+      
       await logBookingActivity({
         bookingId: updatedBooking.id,
         bookingRef: updatedBooking.bookingRef,
         activityType: ACTIVITY_TYPES.EXTEND_APPROVED,
         activityTitle: 'Booking Extended',
-        activityDescription: `Booking extended by ${extensionData.hours} hours`,
+        activityDescription: `Extended by ${extensionHours} hour(s). Old: ${oldStart} - ${oldEnd} → New: ${oldStart} - ${newEnd}`,
         userId: existingBooking.userId,
-        userEmail: existingBooking.bookedForEmails?.[0],
-        amount: extensionData.cost
+        userName: userName,
+        userEmail: userData?.email || existingBooking.bookedForEmails?.[0],
+        amount: extensionData.extensionCost || extensionData.cost || 0,
+        oldValue: `${existingBooking.startAt} - ${existingBooking.endAt}`,
+        newValue: `${existingBooking.startAt} - ${extensionData.newEndAt}`,
+        metadata: {
+          originalStartAt: existingBooking.startAt,
+          originalEndAt: existingBooking.endAt,
+          newStartAt: existingBooking.startAt, // Start time unchanged for extend
+          newEndAt: extensionData.newEndAt,
+          extensionHours: extensionHours,
+          extensionCost: extensionData.extensionCost || extensionData.cost || 0,
+          creditAmount: creditAmount
+        }
       });
+      console.log('✅ Extension activity logged successfully');
 
       // Log credit usage if credits were used for extension
       if (creditAmount > 0) {
@@ -3580,12 +3617,14 @@ exports.confirmExtensionPayment = async (req, res) => {
           activityTitle: 'Credits Applied to Extension',
           activityDescription: `Credits used for extension payment`,
           userId: existingBooking.userId,
-          userEmail: existingBooking.bookedForEmails?.[0],
+          userName: userName,
+          userEmail: userData?.email || existingBooking.bookedForEmails?.[0],
           amount: creditAmount
         });
+        console.log('✅ Credit usage activity logged successfully');
       }
     } catch (logError) {
-      console.error('Error logging extension activity:', logError);
+      console.error('❌ Error logging extension activity:', logError);
       // Don't fail extension if logging fails
     }
 

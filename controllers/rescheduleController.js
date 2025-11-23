@@ -1,6 +1,7 @@
 const { createClient } = require('@supabase/supabase-js')
 const { sendRescheduleConfirmation } = require('../utils/email')
 const { useCreditsForBooking } = require('../utils/creditHelper')
+const { logBookingActivity, ACTIVITY_TYPES } = require('../utils/bookingActivityLogger')
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -241,6 +242,61 @@ const rescheduleBooking = async (req, res) => {
     }
 
     console.log('🎉 Booking rescheduled successfully:', updatedBooking.id)
+
+    // Log reschedule activity
+    try {
+      // Get user details for activity log
+      const { data: userData } = await supabase
+        .from('User')
+        .select('id, email, firstName, lastName')
+        .eq('id', currentBooking.userId)
+        .single()
+
+      const userName = userData ? `${userData.firstName || ''} ${userData.lastName || ''}`.trim() : null
+      
+      // Format dates for description
+      const oldStart = new Date(currentBooking.startAt).toLocaleString('en-SG', { 
+        year: 'numeric', month: '2-digit', day: '2-digit', 
+        hour: '2-digit', minute: '2-digit', hour12: true 
+      })
+      const oldEnd = new Date(currentBooking.endAt).toLocaleString('en-SG', { 
+        year: 'numeric', month: '2-digit', day: '2-digit', 
+        hour: '2-digit', minute: '2-digit', hour12: true 
+      })
+      const newStart = new Date(updatedBooking.startAt).toLocaleString('en-SG', { 
+        year: 'numeric', month: '2-digit', day: '2-digit', 
+        hour: '2-digit', minute: '2-digit', hour12: true 
+      })
+      const newEnd = new Date(updatedBooking.endAt).toLocaleString('en-SG', { 
+        year: 'numeric', month: '2-digit', day: '2-digit', 
+        hour: '2-digit', minute: '2-digit', hour12: true 
+      })
+      
+      await logBookingActivity({
+        bookingId: updatedBooking.id,
+        bookingRef: updatedBooking.bookingRef,
+        activityType: ACTIVITY_TYPES.RESCHEDULE_APPROVED,
+        activityTitle: 'Booking Rescheduled',
+        activityDescription: `Old: ${oldStart} - ${oldEnd} → New: ${newStart} - ${newEnd}`,
+        userId: currentBooking.userId,
+        userName: userName,
+        userEmail: userData?.email || currentBooking.bookedForEmails?.[0],
+        oldValue: `${currentBooking.startAt} - ${currentBooking.endAt}`,
+        newValue: `${updatedBooking.startAt} - ${updatedBooking.endAt}`,
+        metadata: {
+          originalStartAt: currentBooking.startAt,
+          originalEndAt: currentBooking.endAt,
+          newStartAt: updatedBooking.startAt,
+          newEndAt: updatedBooking.endAt,
+          rescheduleCost: req.body.rescheduleCost || 0,
+          creditAmount: req.body.creditAmount || 0
+        }
+      })
+      console.log('✅ Reschedule activity logged successfully')
+    } catch (activityError) {
+      console.error('❌ Error logging reschedule activity:', activityError)
+      // Don't fail the request if activity logging fails
+    }
 
     // Send reschedule confirmation email and PDF
     try {
@@ -639,6 +695,79 @@ const confirmReschedulePayment = async (req, res) => {
     }
 
     console.log('✅ Payment verified and booking updated with reschedule:', updatedBooking.id)
+
+    // Log reschedule activity
+    try {
+      // Get user details for activity log
+      const { data: userData } = await supabase
+        .from('User')
+        .select('id, email, firstName, lastName')
+        .eq('id', existingBooking.userId)
+        .single()
+
+      const userName = userData ? `${userData.firstName || ''} ${userData.lastName || ''}`.trim() : null
+      
+      // Format dates for description
+      const originalStart = new Date(rescheduleData.originalStartAt || existingBooking.startAt).toLocaleString('en-SG', { 
+        year: 'numeric', month: '2-digit', day: '2-digit', 
+        hour: '2-digit', minute: '2-digit', hour12: true 
+      })
+      const originalEnd = new Date(rescheduleData.originalEndAt || existingBooking.endAt).toLocaleString('en-SG', { 
+        year: 'numeric', month: '2-digit', day: '2-digit', 
+        hour: '2-digit', minute: '2-digit', hour12: true 
+      })
+      const newStart = new Date(rescheduleData.newStartAt).toLocaleString('en-SG', { 
+        year: 'numeric', month: '2-digit', day: '2-digit', 
+        hour: '2-digit', minute: '2-digit', hour12: true 
+      })
+      const newEnd = new Date(rescheduleData.newEndAt).toLocaleString('en-SG', { 
+        year: 'numeric', month: '2-digit', day: '2-digit', 
+        hour: '2-digit', minute: '2-digit', hour12: true 
+      })
+      
+      await logBookingActivity({
+        bookingId: updatedBooking.id,
+        bookingRef: updatedBooking.bookingRef,
+        activityType: ACTIVITY_TYPES.RESCHEDULE_APPROVED,
+        activityTitle: 'Booking Rescheduled',
+        activityDescription: `Old: ${originalStart} - ${originalEnd} → New: ${newStart} - ${newEnd}`,
+        userId: existingBooking.userId,
+        userName: userName,
+        userEmail: userData?.email || existingBooking.bookedForEmails?.[0],
+        oldValue: `${rescheduleData.originalStartAt || existingBooking.startAt} - ${rescheduleData.originalEndAt || existingBooking.endAt}`,
+        newValue: `${rescheduleData.newStartAt} - ${rescheduleData.newEndAt}`,
+        amount: rescheduleData.additionalCost || rescheduleData.rescheduleCost || 0,
+        metadata: {
+          originalStartAt: rescheduleData.originalStartAt || existingBooking.startAt,
+          originalEndAt: rescheduleData.originalEndAt || existingBooking.endAt,
+          newStartAt: rescheduleData.newStartAt,
+          newEndAt: rescheduleData.newEndAt,
+          additionalCost: rescheduleData.additionalCost || rescheduleData.rescheduleCost || 0,
+          creditAmount: rescheduleData.creditAmount || 0,
+          additionalHours: rescheduleData.additionalHours || 0
+        }
+      })
+      console.log('✅ Reschedule activity logged successfully')
+
+      // Log credit usage if credits were used
+      if (rescheduleData.creditAmount && rescheduleData.creditAmount > 0) {
+        await logBookingActivity({
+          bookingId: updatedBooking.id,
+          bookingRef: updatedBooking.bookingRef,
+          activityType: ACTIVITY_TYPES.CREDIT_USED,
+          activityTitle: 'Credits Applied to Reschedule',
+          activityDescription: `Credits used for reschedule payment`,
+          userId: existingBooking.userId,
+          userName: userName,
+          userEmail: userData?.email || existingBooking.bookedForEmails?.[0],
+          amount: rescheduleData.creditAmount
+        })
+        console.log('✅ Credit usage activity logged successfully')
+      }
+    } catch (activityError) {
+      console.error('❌ Error logging reschedule activity:', activityError)
+      // Don't fail the request if activity logging fails
+    }
 
     // Send reschedule confirmation email and PDF
     try {
