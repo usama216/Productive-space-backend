@@ -3569,20 +3569,30 @@ exports.confirmExtensionPayment = async (req, res) => {
 
       const userName = userData ? `${userData.firstName || ''} ${userData.lastName || ''}`.trim() : null
       
-      // Format dates for description - for extend, only end time changes
-      const oldStart = new Date(existingBooking.startAt).toLocaleString('en-SG', { 
-        year: 'numeric', month: '2-digit', day: '2-digit', 
-        hour: '2-digit', minute: '2-digit', hour12: true 
-      })
-      const oldEnd = new Date(existingBooking.endAt).toLocaleString('en-SG', { 
-        year: 'numeric', month: '2-digit', day: '2-digit', 
-        hour: '2-digit', minute: '2-digit', hour12: true 
-      })
-      const newEnd = new Date(extensionData.newEndAt).toLocaleString('en-SG', { 
-        year: 'numeric', month: '2-digit', day: '2-digit', 
-        hour: '2-digit', minute: '2-digit', hour12: true 
-      })
+      // IMPORTANT: Capture original times BEFORE any updates
+      // Use existingBooking times as the ORIGINAL times (before this extension)
+      const originalStartAt = existingBooking.startAt
+      const originalEndAt = existingBooking.endAt
+      const newStartAt = existingBooking.startAt // Start time unchanged for extend
+      const newEndAt = extensionData.newEndAt
       const extensionHours = extensionData.hours || extensionData.extensionHours || 0
+      
+      // Format dates for description - ensure we use the correct original times
+      const oldStart = new Date(originalStartAt).toLocaleString('en-SG', { 
+        timeZone: 'Asia/Singapore',
+        year: 'numeric', month: '2-digit', day: '2-digit', 
+        hour: '2-digit', minute: '2-digit', hour12: true 
+      })
+      const oldEnd = new Date(originalEndAt).toLocaleString('en-SG', { 
+        timeZone: 'Asia/Singapore',
+        year: 'numeric', month: '2-digit', day: '2-digit', 
+        hour: '2-digit', minute: '2-digit', hour12: true 
+      })
+      const newEnd = new Date(newEndAt).toLocaleString('en-SG', { 
+        timeZone: 'Asia/Singapore',
+        year: 'numeric', month: '2-digit', day: '2-digit', 
+        hour: '2-digit', minute: '2-digit', hour12: true 
+      })
       
       await logBookingActivity({
         bookingId: updatedBooking.id,
@@ -3594,19 +3604,20 @@ exports.confirmExtensionPayment = async (req, res) => {
         userName: userName,
         userEmail: userData?.email || existingBooking.bookedForEmails?.[0],
         amount: extensionData.extensionCost || extensionData.cost || 0,
-        oldValue: `${existingBooking.startAt} - ${existingBooking.endAt}`,
-        newValue: `${existingBooking.startAt} - ${extensionData.newEndAt}`,
+        oldValue: `${originalStartAt} - ${originalEndAt}`,
+        newValue: `${newStartAt} - ${newEndAt}`,
         metadata: {
-          originalStartAt: existingBooking.startAt,
-          originalEndAt: existingBooking.endAt,
-          newStartAt: existingBooking.startAt, // Start time unchanged for extend
-          newEndAt: extensionData.newEndAt,
+          originalStartAt: originalStartAt,
+          originalEndAt: originalEndAt,
+          newStartAt: newStartAt, // Start time unchanged for extend
+          newEndAt: newEndAt,
           extensionHours: extensionHours,
           extensionCost: extensionData.extensionCost || extensionData.cost || 0,
           creditAmount: creditAmount
         }
       });
-      console.log('✅ Extension activity logged successfully');
+      console.log('✅ Extension activity logged successfully')
+      console.log('📝 Activity times - Old:', { start: originalStartAt, end: originalEndAt }, 'New:', { start: newStartAt, end: newEndAt });
 
       // Log credit usage if credits were used for extension
       if (creditAmount > 0) {

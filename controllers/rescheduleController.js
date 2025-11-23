@@ -254,20 +254,31 @@ const rescheduleBooking = async (req, res) => {
 
       const userName = userData ? `${userData.firstName || ''} ${userData.lastName || ''}`.trim() : null
       
-      // Format dates for description
-      const oldStart = new Date(currentBooking.startAt).toLocaleString('en-SG', { 
+      // IMPORTANT: Capture original times BEFORE any updates
+      // Use the currentBooking values which are the ORIGINAL times before reschedule
+      const originalStartAt = currentBooking.startAt
+      const originalEndAt = currentBooking.endAt
+      const newStartAt = updatedBooking.startAt
+      const newEndAt = updatedBooking.endAt
+      
+      // Format dates for description - ensure we use the original times
+      const oldStart = new Date(originalStartAt).toLocaleString('en-SG', { 
+        timeZone: 'Asia/Singapore',
         year: 'numeric', month: '2-digit', day: '2-digit', 
         hour: '2-digit', minute: '2-digit', hour12: true 
       })
-      const oldEnd = new Date(currentBooking.endAt).toLocaleString('en-SG', { 
+      const oldEnd = new Date(originalEndAt).toLocaleString('en-SG', { 
+        timeZone: 'Asia/Singapore',
         year: 'numeric', month: '2-digit', day: '2-digit', 
         hour: '2-digit', minute: '2-digit', hour12: true 
       })
-      const newStart = new Date(updatedBooking.startAt).toLocaleString('en-SG', { 
+      const newStart = new Date(newStartAt).toLocaleString('en-SG', { 
+        timeZone: 'Asia/Singapore',
         year: 'numeric', month: '2-digit', day: '2-digit', 
         hour: '2-digit', minute: '2-digit', hour12: true 
       })
-      const newEnd = new Date(updatedBooking.endAt).toLocaleString('en-SG', { 
+      const newEnd = new Date(newEndAt).toLocaleString('en-SG', { 
+        timeZone: 'Asia/Singapore',
         year: 'numeric', month: '2-digit', day: '2-digit', 
         hour: '2-digit', minute: '2-digit', hour12: true 
       })
@@ -281,18 +292,19 @@ const rescheduleBooking = async (req, res) => {
         userId: currentBooking.userId,
         userName: userName,
         userEmail: userData?.email || currentBooking.bookedForEmails?.[0],
-        oldValue: `${currentBooking.startAt} - ${currentBooking.endAt}`,
-        newValue: `${updatedBooking.startAt} - ${updatedBooking.endAt}`,
+        oldValue: `${originalStartAt} - ${originalEndAt}`,
+        newValue: `${newStartAt} - ${newEndAt}`,
         metadata: {
-          originalStartAt: currentBooking.startAt,
-          originalEndAt: currentBooking.endAt,
-          newStartAt: updatedBooking.startAt,
-          newEndAt: updatedBooking.endAt,
+          originalStartAt: originalStartAt,
+          originalEndAt: originalEndAt,
+          newStartAt: newStartAt,
+          newEndAt: newEndAt,
           rescheduleCost: req.body.rescheduleCost || 0,
           creditAmount: req.body.creditAmount || 0
         }
       })
       console.log('✅ Reschedule activity logged successfully')
+      console.log('📝 Activity times - Old:', { start: originalStartAt, end: originalEndAt }, 'New:', { start: newStartAt, end: newEndAt })
     } catch (activityError) {
       console.error('❌ Error logging reschedule activity:', activityError)
       // Don't fail the request if activity logging fails
@@ -707,20 +719,32 @@ const confirmReschedulePayment = async (req, res) => {
 
       const userName = userData ? `${userData.firstName || ''} ${userData.lastName || ''}`.trim() : null
       
-      // Format dates for description
-      const originalStart = new Date(rescheduleData.originalStartAt || existingBooking.startAt).toLocaleString('en-SG', { 
+      // IMPORTANT: Use existingBooking times as the ORIGINAL times (before this reschedule)
+      // Only use rescheduleData.originalStartAt/EndAt if explicitly provided (for cases where booking was already rescheduled)
+      // Otherwise, use existingBooking which represents the state before this update
+      const originalStartAt = rescheduleData.originalStartAt || existingBooking.startAt
+      const originalEndAt = rescheduleData.originalEndAt || existingBooking.endAt
+      const newStartAt = rescheduleData.newStartAt
+      const newEndAt = rescheduleData.newEndAt
+      
+      // Format dates for description - ensure we use the correct original times
+      const originalStart = new Date(originalStartAt).toLocaleString('en-SG', { 
+        timeZone: 'Asia/Singapore',
         year: 'numeric', month: '2-digit', day: '2-digit', 
         hour: '2-digit', minute: '2-digit', hour12: true 
       })
-      const originalEnd = new Date(rescheduleData.originalEndAt || existingBooking.endAt).toLocaleString('en-SG', { 
+      const originalEnd = new Date(originalEndAt).toLocaleString('en-SG', { 
+        timeZone: 'Asia/Singapore',
         year: 'numeric', month: '2-digit', day: '2-digit', 
         hour: '2-digit', minute: '2-digit', hour12: true 
       })
-      const newStart = new Date(rescheduleData.newStartAt).toLocaleString('en-SG', { 
+      const newStart = new Date(newStartAt).toLocaleString('en-SG', { 
+        timeZone: 'Asia/Singapore',
         year: 'numeric', month: '2-digit', day: '2-digit', 
         hour: '2-digit', minute: '2-digit', hour12: true 
       })
-      const newEnd = new Date(rescheduleData.newEndAt).toLocaleString('en-SG', { 
+      const newEnd = new Date(newEndAt).toLocaleString('en-SG', { 
+        timeZone: 'Asia/Singapore',
         year: 'numeric', month: '2-digit', day: '2-digit', 
         hour: '2-digit', minute: '2-digit', hour12: true 
       })
@@ -734,20 +758,21 @@ const confirmReschedulePayment = async (req, res) => {
         userId: existingBooking.userId,
         userName: userName,
         userEmail: userData?.email || existingBooking.bookedForEmails?.[0],
-        oldValue: `${rescheduleData.originalStartAt || existingBooking.startAt} - ${rescheduleData.originalEndAt || existingBooking.endAt}`,
-        newValue: `${rescheduleData.newStartAt} - ${rescheduleData.newEndAt}`,
+        oldValue: `${originalStartAt} - ${originalEndAt}`,
+        newValue: `${newStartAt} - ${newEndAt}`,
         amount: rescheduleData.additionalCost || rescheduleData.rescheduleCost || 0,
         metadata: {
-          originalStartAt: rescheduleData.originalStartAt || existingBooking.startAt,
-          originalEndAt: rescheduleData.originalEndAt || existingBooking.endAt,
-          newStartAt: rescheduleData.newStartAt,
-          newEndAt: rescheduleData.newEndAt,
+          originalStartAt: originalStartAt,
+          originalEndAt: originalEndAt,
+          newStartAt: newStartAt,
+          newEndAt: newEndAt,
           additionalCost: rescheduleData.additionalCost || rescheduleData.rescheduleCost || 0,
           creditAmount: rescheduleData.creditAmount || 0,
           additionalHours: rescheduleData.additionalHours || 0
         }
       })
       console.log('✅ Reschedule activity logged successfully')
+      console.log('📝 Activity times - Old:', { start: originalStartAt, end: originalEndAt }, 'New:', { start: newStartAt, end: newEndAt })
 
       // Log credit usage if credits were used
       if (rescheduleData.creditAmount && rescheduleData.creditAmount > 0) {
