@@ -212,10 +212,7 @@ const requestRefund = async (req, res) => {
       return res.status(403).json({ error: 'You can only request refunds for your own bookings' });
     }
 
-    // Check if booking is already refunded or refund requested
-    if (booking.refundstatus !== 'NONE') {
-      return res.status(400).json({ error: 'Refund already requested or processed' });
-    }
+ 
 
     // Check if booking is confirmed (has payment)
     if (!booking.confirmedPayment) {
