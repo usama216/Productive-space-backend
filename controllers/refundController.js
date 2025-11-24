@@ -8,6 +8,22 @@ const requestRefund = async (req, res) => {
 
     console.log('🔄 Refund request:', { bookingid, userid, reason });
 
+    // Validate required fields
+    if (!bookingid) {
+      console.error('❌ Missing bookingid');
+      return res.status(400).json({ error: 'Booking ID is required' });
+    }
+
+    if (!userid) {
+      console.error('❌ Missing userid');
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    if (!reason || !reason.trim()) {
+      console.error('❌ Missing or empty reason');
+      return res.status(400).json({ error: 'Refund reason is required' });
+    }
+
     // Fetch the actual booking data from database
     console.log('🔍 Fetching booking data from database...');
     const { data: booking, error: bookingError } = await supabase
@@ -36,13 +52,27 @@ const requestRefund = async (req, res) => {
 
     // Find ALL payments related to this booking (original + reschedule)
     // Try multiple query patterns to find all related payments
-    const { data: payments, error: paymentsError } = await supabase
+    let paymentQuery = supabase
       .from('Payment')
-      .select('id, totalAmount, cost, paymentMethod, bookingRef, createdAt')
-      .or(`bookingRef.eq.${booking.bookingRef},bookingRef.eq.RESCHEDULE_${booking.id},bookingRef.eq.${booking.id}`)
-      .order('createdAt', { ascending: true }); // Order by creation time to see original first
+      .select('id, totalAmount, cost, paymentMethod, bookingRef, createdAt');
+    
+    // Build the OR condition safely
+    const orConditions = [];
+    if (booking.bookingRef) {
+      orConditions.push(`bookingRef.eq.${booking.bookingRef}`);
+    }
+    orConditions.push(`bookingRef.eq.RESCHEDULE_${booking.id}`);
+    orConditions.push(`bookingRef.eq.${booking.id}`);
+    
+    if (orConditions.length > 0) {
+      paymentQuery = paymentQuery.or(orConditions.join(','));
+    }
+    
+    paymentQuery = paymentQuery.order('createdAt', { ascending: true }); // Order by creation time to see original first
+    
+    const { data: payments, error: paymentsError } = await paymentQuery;
 
-    console.log('🔍 Refund query used:', `bookingRef.eq.${booking.bookingRef},bookingRef.eq.RESCHEDULE_${booking.id},bookingRef.eq.${booking.id}`);
+    console.log('🔍 Refund query used:', orConditions.join(','));
 
     if (payments && !paymentsError) {
       allPayments = payments;
@@ -280,6 +310,7 @@ const requestRefund = async (req, res) => {
     }
 
     // Create user credit for cash refund (if any)
+    let credit = null;
     if (finalRefundAmount > 0) {
       console.log('🔄 Creating user credit for cash refund:', {
         userid: userid,
@@ -288,7 +319,7 @@ const requestRefund = async (req, res) => {
         expiresat: expiresat.toISOString()
       });
       
-      const { data: credit, error: creditError } = await supabase
+      const { data: creditData, error: creditError } = await supabase
         .from('usercredits')
         .insert({
           userid: userid,
@@ -303,6 +334,8 @@ const requestRefund = async (req, res) => {
         console.error('❌ Error creating user credit:', creditError);
         return res.status(500).json({ error: 'Failed to create user credit' });
       }
+      
+      credit = creditData;
     }
 
     // Update refund transaction status to APPROVED
@@ -371,7 +404,7 @@ const requestRefund = async (req, res) => {
     };
 
     // Add credit ID if cash refund exists
-    if (finalRefundAmount > 0) {
+    if (finalRefundAmount > 0 && credit) {
       response.cashCreditId = credit.id;
     }
 
