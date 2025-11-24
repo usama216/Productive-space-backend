@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { authenticateUser, requireAdmin } = require("../middleware/auth");
 const {
   getAllPaymentSettings,
   getPaymentSetting,
@@ -7,6 +8,8 @@ const {
   updateMultiplePaymentSettings,
   calculateTransactionFee
 } = require('../controllers/paymentSettingsController');
+
+// Public routes - anyone can read payment settings for fee calculation
 
 /**
  * @swagger
@@ -21,6 +24,7 @@ const {
  *       500:
  *         description: Server error
  */
+// GET routes are public (needed for fee calculation)
 router.get('/', getAllPaymentSettings);
 
 /**
@@ -79,7 +83,8 @@ router.get('/:key', getPaymentSetting);
  *       500:
  *         description: Server error
  */
-router.put('/:key', updatePaymentSetting);
+// Update routes require admin authentication
+router.put('/:key', authenticateUser, requireAdmin, updatePaymentSetting);
 
 /**
  * @swagger
@@ -112,7 +117,7 @@ router.put('/:key', updatePaymentSetting);
  *       500:
  *         description: Server error
  */
-router.post('/bulk-update', updateMultiplePaymentSettings);
+router.post('/bulk-update', authenticateUser, requireAdmin, updateMultiplePaymentSettings);
 
 /**
  * @swagger
@@ -143,6 +148,7 @@ router.post('/bulk-update', updateMultiplePaymentSettings);
  *       500:
  *         description: Server error
  */
+// Calculate fee is public (needed for booking/payment flows)
 router.post('/calculate-fee', calculateTransactionFee);
 
 module.exports = router;

@@ -101,7 +101,7 @@ const generateOpenLink = async (req, res) => {
     // Fetch booking details from the Booking table
     const { data: bookingData, error: bookingError } = await supabase
       .from('Booking')
-      .select('startAt, endAt, refundstatus, deletedAt')
+      .select('userId, startAt, endAt, refundstatus, deletedAt')
       .eq('bookingRef', bookingRef)
       .single();
 
@@ -109,6 +109,14 @@ const generateOpenLink = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Booking not found or invalid booking reference'
+      });
+    }
+
+    // Verify that the authenticated user owns this booking
+    if (req.user && req.user.id !== bookingData.userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only generate access links for your own bookings.'
       });
     }
 

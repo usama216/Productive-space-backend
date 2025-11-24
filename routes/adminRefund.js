@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { authenticateUser, requireAdmin } = require("../middleware/auth");
 const {
   getAllRefundRequests,
   approveRefund,
@@ -9,7 +10,9 @@ const {
   updateUserCredits
 } = require('../controllers/adminRefundController');
 
-// Admin routes (temporarily without auth for testing)
+// Apply authentication and admin check to all routes
+router.use(authenticateUser, requireAdmin);
+
 router.get('/refunds', getAllRefundRequests);
 router.post('/refunds/:refundId/approve', approveRefund);
 router.post('/refunds/:refundId/reject', rejectRefund);

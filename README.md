@@ -75,6 +75,9 @@ SUPABASE_KEY=your_supabase_anon_key
 # HitPay Payment Gateway
 HITPAY_API_URL=https://api.hit-pay.com
 HITPAY_API_KEY=your_hitpay_api_key
+HITPAY_WEBHOOK_SALT=your_hitpay_webhook_salt
+# Note: Get the webhook salt from HitPay dashboard under Webhook settings
+# This is required for webhook signature verification to prevent fake webhook attacks
 
 # Email Configuration (Gmail SMTP)
 EMAIL_USER=your_email@gmail.com

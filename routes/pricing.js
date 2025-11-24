@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { authenticateUser, requireAdmin } = require("../middleware/auth");
 const {
   getAllPricingConfigurations,
   getPricingByLocationAndMemberType,
@@ -9,11 +10,11 @@ const {
   getPricingConfigurationById
 } = require('../controllers/pricingController');
 
-// Admin routes for pricing management
-router.get('/admin/pricing', getAllPricingConfigurations);
-router.get('/admin/pricing/:id', getPricingConfigurationById);
-router.post('/admin/pricing', upsertPricingConfiguration);
-router.delete('/admin/pricing/:id', deletePricingConfiguration);
+// Admin routes for pricing management - require authentication and admin access
+router.get('/admin/pricing', authenticateUser, requireAdmin, getAllPricingConfigurations);
+router.get('/admin/pricing/:id', authenticateUser, requireAdmin, getPricingConfigurationById);
+router.post('/admin/pricing', authenticateUser, requireAdmin, upsertPricingConfiguration);
+router.delete('/admin/pricing/:id', authenticateUser, requireAdmin, deletePricingConfiguration);
 
 // Public routes for fetching pricing (used by booking page)
 router.get('/pricing/:location', getAllPricingForLocation);

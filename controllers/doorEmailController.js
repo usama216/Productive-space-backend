@@ -73,6 +73,14 @@ const sendDoorAccessLink = async (req, res) => {
 
     console.log('Booking found:', bookingData.bookingRef, 'User ID:', bookingData.userId);
 
+    // Verify that the authenticated user owns this booking
+    if (req.user && req.user.id !== bookingData.userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only send access links for your own bookings.'
+      });
+    }
+
     // Then fetch user details separately
     console.log('Searching for user with ID:', bookingData.userId);
     const { data: userData, error: userError } = await supabase

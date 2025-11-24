@@ -17,12 +17,14 @@ const {
   handlePackageWebhook,
   getPurchaseStatus
 } = require("../controllers/packagePurchaseController");
+const { verifyHitPayWebhookMiddleware } = require("../utils/webhookVerification");
 
 router.get("/", getPackages);
 router.get("/:id", getPackageById);
 router.post("/purchase", purchasePackage);
 router.post("/initiate", initiatePackagePurchase);
-router.post("/webhook", handlePackageWebhook);
+// Apply webhook signature verification before processing webhook
+router.post("/webhook", verifyHitPayWebhookMiddleware, handlePackageWebhook);
 router.get("/status/:orderId", getPurchaseStatus);
 router.get("/user/:userId/packages", getUserPackages);
 router.get("/user/:userId/passes", getUserPasses);

@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { authenticateUser, requireAdmin } = require("../middleware/auth");
 const {
   getAllTuyaSettings,
   getTuyaSetting,
@@ -7,6 +8,9 @@ const {
   updateMultipleTuyaSettings,
   testTuyaConnection
 } = require('../controllers/tuyaSettingsController');
+
+// Apply authentication and admin check to all routes
+router.use(authenticateUser, requireAdmin);
 
 /**
  * @swagger

@@ -17,7 +17,40 @@ startCreditCleanup();
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+
+// Middleware to capture raw body for webhook signature verification
+// Must capture raw body before express.json() parses it
+const isWebhookRoute = (path) => path === '/api/hitpay/webhook' || path === '/api/packages/webhook';
+
+app.use((req, res, next) => {
+  if (isWebhookRoute(req.path)) {
+    let data = '';
+    req.setEncoding('utf8');
+    req.on('data', chunk => {
+      data += chunk;
+    });
+    req.on('end', () => {
+      req.rawBody = data;
+      try {
+        req.body = JSON.parse(data);
+        next();
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid JSON' });
+      }
+    });
+  } else {
+    next();
+  }
+});
+
+// Apply JSON parsing for non-webhook routes
+app.use((req, res, next) => {
+  if (isWebhookRoute(req.path)) {
+    return next(); // Skip JSON parsing for webhook routes (already parsed above)
+  }
+  express.json()(req, res, next);
+});
+
 app.use(express.urlencoded({ extended: true }))
 
 const storage = multer.diskStorage({
