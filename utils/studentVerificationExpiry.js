@@ -197,11 +197,11 @@ async function convertExpiredStudents() {
       errors
     };
 
-    console.log('✅ Expired student conversion complete:', result);
+   
     return result;
 
   } catch (err) {
-    console.error('❌ Error in convertExpiredStudents:', err);
+   
     return { success: false, converted: 0, errors: [err.message] };
   }
 }
