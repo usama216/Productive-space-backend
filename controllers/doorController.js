@@ -236,8 +236,8 @@ const openDoor = async (req, res) => {
       .single();
 
     if (tokenError || !tokenData) {
-      console.error('Invalid or expired token:', tokenError);
-      return res.status(400).send(openDoorFailTemplate('Invalid or expired access token. Please request a new access link.', undefined, undefined));
+      console.error('Invalid token:', tokenError);
+      return res.status(400).send(openDoorFailTemplate('Invalid token. Please request a new access link.', undefined, undefined));
     }
 
     let startTime, endTime, bookingRef;
