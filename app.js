@@ -59,7 +59,7 @@ app.use(express.urlencoded({ extended: true }))
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, 'uploads/') 
+    cb(null, 'uploads/')
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
@@ -67,7 +67,7 @@ const storage = multer.diskStorage({
   }
 })
 
-const upload = multer({ 
+const upload = multer({
   storage: storage,
   limits: {
     fileSize: 5 * 1024 * 1024
@@ -103,12 +103,14 @@ const discountHistoryRoutes = require("./routes/discountHistory");
 const tuyaSettingsRoutes = require("./routes/tuyaSettings");
 const bookingActivityRoutes = require("./routes/bookingActivity");
 const paymentSettingsRoutes = require("./routes/paymentSettings");
+const announcementRoutes = require("./routes/announcement");
+const adminUserRoutes = require('./routes/adminUser');
 const { swaggerUi, specs } = require('./swagger');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
 app.get("/", (req, res) => {
-    res.send(`
+  res.send(`
         <!DOCTYPE html>
         <html lang="en">
         <head>
@@ -179,28 +181,30 @@ app.use("/api/discount-history", discountHistoryRoutes);
 app.use("/api/tuya-settings", tuyaSettingsRoutes);
 app.use("/api/booking-activity", bookingActivityRoutes);
 app.use("/api/payment-settings", paymentSettingsRoutes);
+app.use("/api", announcementRoutes);
+app.use("/api", adminUserRoutes);
 app.use("/api/booking", require('./routes/packageApplication'));
 app.post('/api/test-package-usage', async (req, res) => {
   try {
     const { handlePackageUsage } = require('./utils/packageUsageHelper');
     const { createClient } = require('@supabase/supabase-js');
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);    
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
     const { data: userPasses, error: checkError } = await supabase
       .from('UserPass')
       .select('*')
       .eq('packagepurchaseid', req.body.packageId);
-    
-   
+
+
     if (userPasses && userPasses.length > 0) {
       const testPass = userPasses[0];
-      
+
       const { error: testError } = await supabase
         .from('UserPass')
         .update({ remainingCount: testPass.remainingCount - 1 })
         .eq('id', testPass.id);
-      
+
     }
-    
+
     const result = await handlePackageUsage(
       req.body.userId,
       req.body.packageId,
@@ -210,7 +214,7 @@ app.post('/api/test-package-usage', async (req, res) => {
       req.body.startTime || new Date().toISOString(),
       req.body.endTime || new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString()
     );
-    
+
     res.json({ success: true, result, userPasses });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -221,22 +225,22 @@ app.post('/api/test-package-usage', async (req, res) => {
 app.get('/api/test-verification-tracking/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
-    
+
     console.log('🧪 Test verification tracking for user:', userId);
-    
+
     const { data: user, error } = await supabase
       .from('User')
       .select('*')
       .eq('id', userId)
       .single();
-    
+
     if (error || !user) {
       return res.status(404).json({
         success: false,
         error: 'User not found'
       });
     }
-    
+
     res.json({
       success: true,
       user: {
@@ -262,15 +266,15 @@ app.get('/api/test-verification-tracking/:userId', async (req, res) => {
 app.get('/api/verification-history/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
-    
+
     console.log('📋 Getting verification history for user:', userId);
-    
+
     const { data: history, error } = await supabase
       .from('VerificationHistory')
       .select('*')
       .eq('userId', userId)
       .order('changedAt', { ascending: false }); // Most recent first
-    
+
     if (error) {
       console.error('Error fetching verification history:', error);
       return res.status(500).json({
@@ -278,7 +282,7 @@ app.get('/api/verification-history/:userId', async (req, res) => {
         error: 'Failed to fetch verification history'
       });
     }
-    
+
     res.json({
       success: true,
       history: history || []
@@ -311,25 +315,25 @@ app.use('/docs', swaggerUi.serve, swaggerUi.setup(specs, {
 
 
 app.get("/users", async (req, res) => {
-    const { data, error } = await supabase.from("User").select("*");
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
+  const { data, error } = await supabase.from("User").select("*");
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
 });
 
 app.get("/api/user/:userId", async (req, res) => {
-    try {
-        const { userId } = req.params;
-        
-        if (!userId) {
-            return res.status(400).json({ 
-                error: "User ID is required",
-                message: "Please provide a valid user ID" 
-            });
-        }
+  try {
+    const { userId } = req.params;
 
-        const { data: user, error } = await supabase
-            .from("User")
-            .select(`
+    if (!userId) {
+      return res.status(400).json({
+        error: "User ID is required",
+        message: "Please provide a valid user ID"
+      });
+    }
+
+    const { data: user, error } = await supabase
+      .from("User")
+      .select(`
                 id,
                 email,
                 firstName,
@@ -343,90 +347,90 @@ app.get("/api/user/:userId", async (req, res) => {
                 studentRejectionReason,
                 studentVerificationStatus
             `)
-            .eq("id", userId)
-            .single();
+      .eq("id", userId)
+      .single();
 
-        if (error) {
-            console.error('Get user profile error:', error);
-            return res.status(500).json({ 
-                error: "Failed to fetch user profile", 
-                details: error.message 
-            });
-        }
-
-        if (!user) {
-            return res.status(404).json({ 
-                error: "User not found",
-                message: "The specified user does not exist" 
-            });
-        }
-
-        res.json({
-            success: true,
-            user: user
-        });
-
-    } catch (err) {
-        console.error('Get user profile error:', err);
-        res.status(500).json({ 
-            error: "Internal server error", 
-            details: err.message 
-        });
+    if (error) {
+      console.error('Get user profile error:', error);
+      return res.status(500).json({
+        error: "Failed to fetch user profile",
+        details: error.message
+      });
     }
+
+    if (!user) {
+      return res.status(404).json({
+        error: "User not found",
+        message: "The specified user does not exist"
+      });
+    }
+
+    res.json({
+      success: true,
+      user: user
+    });
+
+  } catch (err) {
+    console.error('Get user profile error:', err);
+    res.status(500).json({
+      error: "Internal server error",
+      details: err.message
+    });
+  }
 });
 
 
 app.put("/api/user/:userId", upload.single('studentVerificationFile'), async (req, res) => {
-    try {
-        const { userId } = req.params;
-        const { 
-            firstName, 
-            lastName, 
-            contactNumber, 
-            memberType, 
-            updatedAt 
-        } = req.body;
-        
-        if (!userId) {
-            return res.status(400).json({ 
-                error: "User ID is required",
-                message: "Please provide a valid user ID" 
-            });
-        }
+  try {
+    const { userId } = req.params;
+    const {
+      firstName,
+      lastName,
+      contactNumber,
+      memberType,
+      updatedAt
+    } = req.body;
 
-        const { data: existingUser, error: userError } = await supabase
-            .from("User")
-            .select("id")
-            .eq("id", userId)
-            .single();
+    if (!userId) {
+      return res.status(400).json({
+        error: "User ID is required",
+        message: "Please provide a valid user ID"
+      });
+    }
 
-        if (userError || !existingUser) {
-            return res.status(404).json({ 
-                error: "User not found",
-                message: "The specified user does not exist" 
-            });
-        }
+    const { data: existingUser, error: userError } = await supabase
+      .from("User")
+      .select("id")
+      .eq("id", userId)
+      .single();
 
-        const updateData = {
-            updatedAt: updatedAt || new Date().toISOString()
-        };
+    if (userError || !existingUser) {
+      return res.status(404).json({
+        error: "User not found",
+        message: "The specified user does not exist"
+      });
+    }
 
-        if (firstName !== undefined) updateData.firstName = firstName;
-        if (lastName !== undefined) updateData.lastName = lastName;
-        if (contactNumber !== undefined) updateData.contactNumber = contactNumber;
-        if (memberType !== undefined) updateData.memberType = memberType;
+    const updateData = {
+      updatedAt: updatedAt || new Date().toISOString()
+    };
 
-        if (req.file) {
-            updateData.studentVerificationImageUrl = `/uploads/${req.file.filename}`;
-            updateData.studentVerificationDate = new Date().toISOString();
-            updateData.studentVerificationStatus = 'PENDING'; 
-        }
+    if (firstName !== undefined) updateData.firstName = firstName;
+    if (lastName !== undefined) updateData.lastName = lastName;
+    if (contactNumber !== undefined) updateData.contactNumber = contactNumber;
+    if (memberType !== undefined) updateData.memberType = memberType;
 
-        const { data: updatedUser, error: updateError } = await supabase
-            .from("User")
-            .update(updateData)
-            .eq("id", userId)
-            .select(`
+    if (req.file) {
+      updateData.studentVerificationImageUrl = `/uploads/${req.file.filename}`;
+      updateData.studentVerificationDate = new Date().toISOString();
+      updateData.studentVerificationStatus = 'PENDING';
+    }
+
+    const { data: updatedUser, error: updateError } = await supabase
+      .from("User")
+      .update(updateData)
+      .eq("id", userId)
+      .select(`
                 id,
                 email,
                 firstName,
@@ -440,29 +444,29 @@ app.put("/api/user/:userId", upload.single('studentVerificationFile'), async (re
                 studentRejectionReason,
                 studentVerificationStatus
             `)
-            .single();
+      .single();
 
-        if (updateError) {
-            return res.status(500).json({ 
-                error: "Failed to update user profile", 
-                details: updateError.message 
-            });
-        }
-
-        res.json({
-            success: true,
-            message: "User profile updated successfully",
-            user: updatedUser
-        });
-
-    } catch (err) {
-        res.status(500).json({ 
-            error: "Internal server error", 
-            details: err.message 
-        });
+    if (updateError) {
+      return res.status(500).json({
+        error: "Failed to update user profile",
+        details: updateError.message
+      });
     }
+
+    res.json({
+      success: true,
+      message: "User profile updated successfully",
+      user: updatedUser
+    });
+
+  } catch (err) {
+    res.status(500).json({
+      error: "Internal server error",
+      details: err.message
+    });
+  }
 });
 
 app.listen(process.env.PORT, () => {
-    console.log(`Server running on port ${process.env.PORT}`);
+  console.log(`Server running on port ${process.env.PORT}`);
 });
