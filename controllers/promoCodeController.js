@@ -2,6 +2,15 @@ const supabase = require("../config/database");
 const { v4: uuidv4 } = require('uuid');
 const { logPromoCodeUsage } = require('../utils/discountTracker');
 
+// Helper function to convert UTC time to Singapore timezone by adding 8 hours
+function convertToSingaporeTime(utcDate) {
+  if (!utcDate) return null;
+  const date = new Date(utcDate);
+  // Add 8 hours for Singapore timezone (UTC+8)
+  date.setHours(date.getHours() + 8);
+  return date;
+}
+
 function checkMinimumHoursRequirement(promoCode, startAt, endAt) {
   if (!promoCode.minimum_hours) {
     return {
@@ -218,14 +227,18 @@ exports.applyPromoCode = async (req, res) => {
     }
 
     const now = new Date();
-    if (promoData.activefrom && new Date(promoData.activefrom) > now) {
+    // Convert database UTC times to Singapore timezone (UTC+8) by adding 8 hours
+    const activeFromSGT = convertToSingaporeTime(promoData.activefrom);
+    const activeToSGT = convertToSingaporeTime(promoData.activeto);
+    
+    if (activeFromSGT && activeFromSGT > now) {
       return res.status(400).json({
         error: "Promo code not yet active",
         message: "This promo code is not yet active"
       });
     }
 
-    if (promoData.activeto && new Date(promoData.activeto) < now) {
+    if (activeToSGT && activeToSGT < now) {
       return res.status(400).json({
         error: "Promo code expired",
         message: "This promo code has expired"
@@ -402,11 +415,16 @@ exports.getUserAvailablePromos = async (req, res) => {
       });
     }
 
+    // Filter promo codes based on Singapore timezone (UTC+8)
     const validPromoCodes = promoCodes.filter(promo => {
-      if (promo.activefrom && new Date(promo.activefrom) > now) {
+      // Convert database UTC times to Singapore timezone by adding 8 hours
+      const activeFromSGT = convertToSingaporeTime(promo.activefrom);
+      const activeToSGT = convertToSingaporeTime(promo.activeto);
+      
+      if (activeFromSGT && activeFromSGT > now) {
         return false;
       }
-      if (promo.activeto && new Date(promo.activeto) < now) {
+      if (activeToSGT && activeToSGT < now) {
         return false;
       }
       return true;
