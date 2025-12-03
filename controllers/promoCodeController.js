@@ -2,13 +2,20 @@ const supabase = require("../config/database");
 const { v4: uuidv4 } = require('uuid');
 const { logPromoCodeUsage } = require('../utils/discountTracker');
 
-// Helper function to convert UTC time to Singapore timezone by adding 8 hours
-function convertToSingaporeTime(utcDate) {
+// Helper function to get current time (machine's local timezone)
+function getCurrentTime() {
+  return new Date();
+}
+
+// Helper function to convert UTC date to local timezone for comparison
+function convertUTCToLocal(utcDate) {
   if (!utcDate) return null;
-  const date = new Date(utcDate);
-  // Add 8 hours for Singapore timezone (UTC+8)
-  date.setHours(date.getHours() + 8);
-  return date;
+  // Ensure the date string is treated as UTC by appending 'Z' if not present
+  let dateStr = utcDate;
+  if (!dateStr.endsWith('Z') && !dateStr.match(/[+-]\d{2}:\d{2}$/)) {
+    dateStr = dateStr + 'Z';
+  }
+  return new Date(dateStr);
 }
 
 function checkMinimumHoursRequirement(promoCode, startAt, endAt) {
@@ -40,8 +47,6 @@ function checkMinimumHoursRequirement(promoCode, startAt, endAt) {
 
 async function checkPromoCodeEligibility(promoCode, userData, userId) {
   try {
-    console.log(`Checking eligibility for promo ${promoCode.code} (${promoCode.promoType}/${promoCode.targetGroup})`);
-
     if (promoCode.promoType === 'USER_SPECIFIC') {
       if (!promoCode.targetUserIds || !promoCode.targetUserIds.includes(userId)) {
         return {
@@ -226,19 +231,21 @@ exports.applyPromoCode = async (req, res) => {
       });
     }
 
-    const now = new Date();
-    // Convert database UTC times to Singapore timezone (UTC+8) by adding 8 hours
-    const activeFromSGT = convertToSingaporeTime(promoData.activefrom);
-    const activeToSGT = convertToSingaporeTime(promoData.activeto);
+    // Get current time in machine's local timezone
+    const now = getCurrentTime();
     
-    if (activeFromSGT && activeFromSGT > now) {
+    // Convert UTC database times to local timezone for comparison
+    const activeFromLocal = convertUTCToLocal(promoData.activefrom);
+    const activeToLocal = convertUTCToLocal(promoData.activeto);
+    
+    if (activeFromLocal && activeFromLocal > now) {
       return res.status(400).json({
         error: "Promo code not yet active",
         message: "This promo code is not yet active"
       });
     }
 
-    if (activeToSGT && activeToSGT < now) {
+    if (activeToLocal && activeToLocal < now) {
       return res.status(400).json({
         error: "Promo code expired",
         message: "This promo code has expired"
@@ -375,7 +382,8 @@ exports.getUserAvailablePromos = async (req, res) => {
       });
     }
 
-    const now = new Date();
+    // Get current time in machine's local timezone
+    const now = getCurrentTime();
 
     const { data: promoCodes, error: promosError } = await supabase
       .from("PromoCode")
@@ -415,16 +423,16 @@ exports.getUserAvailablePromos = async (req, res) => {
       });
     }
 
-    // Filter promo codes based on Singapore timezone (UTC+8)
+    // Filter promo codes based on current timezone
     const validPromoCodes = promoCodes.filter(promo => {
-      // Convert database UTC times to Singapore timezone by adding 8 hours
-      const activeFromSGT = convertToSingaporeTime(promo.activefrom);
-      const activeToSGT = convertToSingaporeTime(promo.activeto);
+      // Convert UTC database times to local timezone for comparison
+      const activeFromLocal = convertUTCToLocal(promo.activefrom);
+      const activeToLocal = convertUTCToLocal(promo.activeto);
       
-      if (activeFromSGT && activeFromSGT > now) {
+      if (activeFromLocal && activeFromLocal > now) {
         return false;
       }
-      if (activeToSGT && activeToSGT < now) {
+      if (activeToLocal && activeToLocal < now) {
         return false;
       }
       return true;
@@ -646,13 +654,17 @@ exports.createPromoCode = async (req, res) => {
     let processedActiveTo = activeto;
 
     if (activefrom) {
+      // Parse datetime - JavaScript will treat datetime-local input as LOCAL time
+      // and toISOString() will convert it to UTC automatically
       const fromDate = new Date(activefrom);
+      
       if (isNaN(fromDate.getTime())) {
         return res.status(400).json({
           error: "Invalid active from date",
           message: "Please provide a valid date for active from"
         });
       }
+      
       processedActiveFrom = fromDate.toISOString();
     } else {
       processedActiveFrom = new Date().toISOString();
@@ -660,6 +672,7 @@ exports.createPromoCode = async (req, res) => {
 
     if (activeto) {
       const toDate = new Date(activeto);
+      
       if (isNaN(toDate.getTime())) {
         return res.status(400).json({
           error: "Invalid active to date",
@@ -787,6 +800,29 @@ exports.updatePromoCode = async (req, res) => {
 
     if (updateData.promoType) {
       updateData.isWelcomeCode = updateData.promoType === 'WELCOME';
+    }
+
+    // Process dates - JavaScript treats datetime-local as LOCAL time
+    if (updateData.activefrom) {
+      const fromDate = new Date(updateData.activefrom);
+      if (isNaN(fromDate.getTime())) {
+        return res.status(400).json({
+          error: "Invalid active from date",
+          message: "Please provide a valid date for active from"
+        });
+      }
+      updateData.activefrom = fromDate.toISOString();
+    }
+
+    if (updateData.activeto) {
+      const toDate = new Date(updateData.activeto);
+      if (isNaN(toDate.getTime())) {
+        return res.status(400).json({
+          error: "Invalid active to date",
+          message: "Please provide a valid date for active to"
+        });
+      }
+      updateData.activeto = toDate.toISOString();
     }
 
     const { data, error } = await supabase

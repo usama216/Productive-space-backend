@@ -450,28 +450,51 @@ exports.deleteUser = async (req, res) => {
 
     const { data: userBookings, error: bookingError } = await supabase
       .from('Booking')
-      .select('id')
+      .select('id, startAt, endAt, bookingRef')
       .eq('userId', userId);
 
     if (bookingError) {
       return res.status(500).json({ error: 'Failed to check user bookings' });
     }
 
+    // Check if user has any future or ongoing bookings
     if (userBookings && userBookings.length > 0) {
-      return res.status(400).json({ 
-        error: 'Cannot delete user with existing bookings',
-        message: 'Please cancel all user bookings before deleting the account',
-        bookingCount: userBookings.length
+      const now = new Date();
+      
+      // Filter for future and ongoing bookings
+      const futureOrOngoingBookings = userBookings.filter(booking => {
+        // Ensure UTC by appending 'Z' if not present
+        const endAtUTC = booking.endAt.endsWith('Z') ? booking.endAt : booking.endAt + 'Z';
+        const endAt = new Date(endAtUTC);
+        
+        // If booking end time is in the future, it's either ongoing or upcoming
+        return endAt > now;
       });
+
+      if (futureOrOngoingBookings.length > 0) {
+        return res.status(400).json({ 
+          error: 'Cannot delete user with future or ongoing bookings',
+          message: 'User has active or upcoming bookings. Please cancel them before deleting the account',
+          activeBookings: futureOrOngoingBookings.length,
+          totalBookings: userBookings.length
+        });
+      }
     }
 
+    // With ON DELETE CASCADE setup, database will automatically handle related records
+    // Just delete the user directly
     const { error: deleteError } = await supabase
       .from('User')
       .delete()
       .eq('id', userId);
 
     if (deleteError) {
-      return res.status(500).json({ error: 'Failed to delete user' });
+      console.error('Delete user error:', deleteError);
+      return res.status(500).json({ 
+        error: 'Failed to delete user', 
+        details: deleteError.message,
+        code: deleteError.code 
+      });
     }
     
     res.json({
