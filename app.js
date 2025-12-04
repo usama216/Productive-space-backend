@@ -16,7 +16,18 @@ const { cronJob: studentExpiryCronJob } = require('./automaticExpiryCheck');
 startCreditCleanup();
 
 const app = express();
-app.use(cors());
+
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // allow requests with no origin (Postman, mobile apps, curl)
+    if (!origin) return callback(null, true);
+    return callback(null, true); // allow all origins dynamically
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 
 
@@ -105,6 +116,7 @@ const bookingActivityRoutes = require("./routes/bookingActivity");
 const paymentSettingsRoutes = require("./routes/paymentSettings");
 const announcementRoutes = require("./routes/announcement");
 const adminUserRoutes = require('./routes/adminUser');
+const shopHoursRoutes = require('./routes/shopHours');
 const { swaggerUi, specs } = require('./swagger');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
@@ -183,6 +195,7 @@ app.use("/api/booking-activity", bookingActivityRoutes);
 app.use("/api/payment-settings", paymentSettingsRoutes);
 app.use("/api", announcementRoutes);
 app.use("/api", adminUserRoutes);
+app.use("/api/shop-hours", shopHoursRoutes);
 app.use("/api/booking", require('./routes/packageApplication'));
 app.post('/api/test-package-usage', async (req, res) => {
   try {
