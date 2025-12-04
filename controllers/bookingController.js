@@ -3558,6 +3558,30 @@ exports.confirmExtensionPayment = async (req, res) => {
       });
     }
 
+    // Calculate payment fee for activity logging
+    const baseAmountForLog = parseFloat(extensionData.extensionCost) || 0;
+    const extensionCreditAmount = creditAmount || 0;
+    const subtotalAfterCredits = Math.max(0, baseAmountForLog - extensionCreditAmount);
+    
+    // Calculate fee based on payment method (DYNAMIC)
+    const isCreditCard = actualPaymentMethod === 'card' || actualPaymentMethod === 'credit_card' || actualPaymentMethod === 'creditcard' || actualPaymentMethod.toLowerCase().includes('card');
+    const { getPaymentSettings } = require('../utils/paymentFeeHelper');
+    const feeSettings = await getPaymentSettings();
+    const cardFeePercentage = feeSettings.CREDIT_CARD_TRANSACTION_FEE_PERCENTAGE || 5.0;
+    const paynowFeeAmount = feeSettings.PAYNOW_TRANSACTION_FEE || 0.20;
+    const paymentFeeForLog = subtotalAfterCredits === 0 ? 0 : (isCreditCard ? subtotalAfterCredits * (cardFeePercentage / 100) : (subtotalAfterCredits < 10 ? paynowFeeAmount : 0));
+    const finalAmountPaidForLog = subtotalAfterCredits + paymentFeeForLog;
+    
+    console.log('💰 Extension payment breakdown for logging:', {
+      baseAmount: baseAmountForLog,
+      creditAmount: extensionCreditAmount,
+      subtotalAfterCredits,
+      paymentMethod: actualPaymentMethod,
+      isCreditCard,
+      paymentFee: paymentFeeForLog,
+      finalAmountPaid: finalAmountPaidForLog
+    });
+
     // Log extension activity
     try {
       // Get user details for activity log
@@ -3613,7 +3637,11 @@ exports.confirmExtensionPayment = async (req, res) => {
           newEndAt: newEndAt,
           extensionHours: extensionHours,
           extensionCost: extensionData.extensionCost || extensionData.cost || 0,
-          creditAmount: creditAmount
+          creditAmount: creditAmount,
+          paymentMethod: actualPaymentMethod || 'N/A',
+          paymentFee: paymentFeeForLog,
+          subtotal: subtotalAfterCredits,
+          finalAmount: finalAmountPaidForLog
         }
       });
       console.log('✅ Extension activity logged successfully')
@@ -3673,30 +3701,8 @@ exports.confirmExtensionPayment = async (req, res) => {
       console.error("Error fetching user data:", userError);
     }
 
-    // Calculate payment fee for invoice
-    const baseAmount = parseFloat(extensionData.extensionCost) || 0;
-    const extensionCreditAmount = creditAmount || 0;
-    const subtotalAfterCredits = Math.max(0, baseAmount - extensionCreditAmount);
-    
-    // Calculate fee based on payment method (DYNAMIC)
-    // NO FEE if fully covered by credits (subtotal = 0)
-    const isCreditCard = actualPaymentMethod === 'card' || actualPaymentMethod === 'credit_card' || actualPaymentMethod === 'creditcard' || actualPaymentMethod.toLowerCase().includes('card');
-    const { getPaymentSettings } = require('../utils/paymentFeeHelper');
-    const feeSettings = await getPaymentSettings();
-    const cardFeePercentage = feeSettings.CREDIT_CARD_TRANSACTION_FEE_PERCENTAGE || 5.0;
-    const paynowFeeAmount = feeSettings.PAYNOW_TRANSACTION_FEE || 0.20;
-    const paymentFee = subtotalAfterCredits === 0 ? 0 : (isCreditCard ? subtotalAfterCredits * (cardFeePercentage / 100) : (subtotalAfterCredits < 10 ? paynowFeeAmount : 0));
-    const finalAmountPaid = subtotalAfterCredits + paymentFee;
-    
-    console.log('💰 Extension payment breakdown:', {
-      baseAmount,
-      creditAmount: extensionCreditAmount,
-      subtotalAfterCredits,
-      paymentMethod: actualPaymentMethod,
-      isCreditCard,
-      paymentFee,
-      finalAmountPaid
-    });
+    // Use already calculated payment values from activity logging (no duplicate calculation needed)
+    // Variables already available: baseAmountForLog, extensionCreditAmount, subtotalAfterCredits, paymentFeeForLog, finalAmountPaidForLog
 
     // Send extension confirmation email with invoice PDF (NOW with properly formatted timestamps)
     try {
@@ -3706,10 +3712,10 @@ exports.confirmExtensionPayment = async (req, res) => {
           extensionCost: extensionData.extensionCost,
           originalEndAt: formattedOriginalEndTime,
           newEndAt: updatedBooking.endAt, // Use formatted endAt
-          creditAmount: extensionCreditAmount, // Use the calculated credit amount
+          creditAmount: extensionCreditAmount, // Use already calculated credit amount
           paymentMethod: actualPaymentMethod || updatedBooking.paymentMethod || 'paynow_online',
-          paymentFee: paymentFee,
-          finalAmount: finalAmountPaid
+          paymentFee: paymentFeeForLog, // Use already calculated fee
+          finalAmount: finalAmountPaidForLog // Use already calculated final amount
         });
         console.log("✅ Extension confirmation email sent successfully");
       }

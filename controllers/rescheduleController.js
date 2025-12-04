@@ -768,7 +768,11 @@ const confirmReschedulePayment = async (req, res) => {
           newEndAt: newEndAt,
           additionalCost: rescheduleData.additionalCost || rescheduleData.rescheduleCost || 0,
           creditAmount: rescheduleData.creditAmount || 0,
-          additionalHours: rescheduleData.additionalHours || 0
+          additionalHours: rescheduleData.additionalHours || 0,
+          paymentMethod: paymentMethod,
+          paymentFee: fee,
+          subtotal: subtotal,
+          finalAmount: finalAmount
         }
       })
       console.log('✅ Reschedule activity logged successfully')

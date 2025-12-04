@@ -561,6 +561,78 @@ exports.getAdminBookingDetails = async (req, res) => {
     const finalAmount = parseFloat(booking.totalAmount) || 0;
     const paymentFee = Math.max(0, finalAmount - (baseAmount - totalDiscount));
 
+    // Calculate audit breakdown with detailed payment info
+    const payment = paymentResp ? paymentResp.data : null;
+    let totalCardFee = 0;
+    let totalPayNowFee = 0;
+    let totalPaid = finalAmount;
+    let paymentBreakdownList = [];
+
+    if (payment) {
+      try {
+        const { getPaymentSettings } = require('../utils/paymentFeeHelper');
+        const feeSettings = await getPaymentSettings();
+        const cardFeePercentage = feeSettings.CREDIT_CARD_TRANSACTION_FEE_PERCENTAGE || 5.0;
+        const paynowFeeAmount = feeSettings.PAYNOW_TRANSACTION_FEE || 0.20;
+
+        const amount = parseFloat(payment.totalAmount) || parseFloat(payment.cost) || 0;
+        const method = payment.paymentMethod || '';
+        
+        const isCard = method && (method.toLowerCase().includes('card') || method.toLowerCase().includes('credit'));
+        const isPayNow = method && (method.toLowerCase().includes('paynow') || method.toLowerCase().includes('pay_now'));
+        
+        let fee = 0;
+        let subtotal = amount;
+        
+        if (isCard) {
+          const multiplier = 1 + (cardFeePercentage / 100);
+          subtotal = amount / multiplier;
+          fee = amount - subtotal;
+          totalCardFee = fee;
+        } else if (isPayNow && amount < 10) {
+          fee = paynowFeeAmount;
+          subtotal = amount - fee;
+          totalPayNowFee = fee;
+        }
+        
+        paymentBreakdownList = [{
+          id: payment.id,
+          amount: amount,
+          subtotal: Math.round(subtotal * 100) / 100,
+          fee: Math.round(fee * 100) / 100,
+          method: method,
+          status: payment.status,
+          createdAt: payment.createdAt
+        }];
+      } catch (feeError) {
+        console.error('Error calculating fees in admin details:', feeError);
+      }
+    }
+
+    // Calculate discount breakdown
+    const promoDiscount = parseFloat(booking.discountamount || 0);
+    const creditUsed = parseFloat(booking.creditAmount || 0);
+
+    const auditBreakdown = {
+      originalPrice: baseAmount,
+      totalCost: baseAmount,
+      discounts: {
+        promoCode: promoDiscount,
+        package: packageDiscount,
+        credit: creditUsed,
+        total: promoDiscount + packageDiscount + creditUsed
+      },
+      payments: {
+        subtotal: totalPaid - totalCardFee - totalPayNowFee,
+        cardFee: Math.round(totalCardFee * 100) / 100,
+        payNowFee: Math.round(totalPayNowFee * 100) / 100,
+        totalFees: Math.round((totalCardFee + totalPayNowFee) * 100) / 100,
+        totalPaid: Math.round(totalPaid * 100) / 100
+      },
+      paymentBreakdown: paymentBreakdownList,
+      finalAmount: finalAmount
+    };
+
     return res.status(200).json({
       success: true,
       data: {
@@ -572,6 +644,7 @@ exports.getAdminBookingDetails = async (req, res) => {
         discountHistory,
         packageDiscount,
         paymentFee,
+        auditBreakdown,
         userStats,
         recentBookings,
       },
