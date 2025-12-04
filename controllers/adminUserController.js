@@ -60,6 +60,7 @@ const createAdminUser = async (req, res) => {
             email: email.toLowerCase().trim(),
             password: password,
             email_confirm: true, // Auto-confirm email for admin users
+            user_metadata: { role: 'admin' }
         });
 
         if (authError) {

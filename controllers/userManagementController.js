@@ -43,7 +43,7 @@ exports.getAllUsers = async (req, res) => {
     let usersWithStats = users;
     if (includeStats === 'true') {
       const userIds = users.map(user => user.id);
-      
+
       const { data: bookingCounts, error: bookingError } = await supabase
         .from('Booking')
         .select('userId, confirmedPayment, totalAmount')
@@ -109,10 +109,10 @@ exports.getAllUsers = async (req, res) => {
 exports.getUserAnalytics = async (req, res) => {
   try {
     const { period = 'month' } = req.query;
-    
+
     const now = new Date();
     let startDate, endDate;
-    
+
     switch (period) {
       case 'week':
         startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -130,7 +130,7 @@ exports.getUserAnalytics = async (req, res) => {
       default:
         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
     }
-    
+
     endDate = now;
 
     const { count: totalUsers } = await supabase
@@ -289,8 +289,8 @@ exports.verifyStudentAccount = async (req, res) => {
     });
 
     if (!['VERIFIED', 'REJECTED'].includes(studentVerificationStatus)) {
-      return res.status(400).json({ 
-        error: 'Invalid verification status. Must be VERIFIED or REJECTED' 
+      return res.status(400).json({
+        error: 'Invalid verification status. Must be VERIFIED or REJECTED'
       });
     }
 
@@ -314,8 +314,8 @@ exports.verifyStudentAccount = async (req, res) => {
     });
 
     if (!existingUser.studentVerificationImageUrl) {
-      return res.status(400).json({ 
-        error: 'User has not uploaded verification document' 
+      return res.status(400).json({
+        error: 'User has not uploaded verification document'
       });
     }
 
@@ -340,7 +340,7 @@ exports.verifyStudentAccount = async (req, res) => {
       userId: userId,
       previousStatus: existingUser.studentVerificationStatus || 'PENDING',
       newStatus: studentVerificationStatus,
-      reason: studentVerificationStatus === 'REJECTED' 
+      reason: studentVerificationStatus === 'REJECTED'
         ? (rejectionReason || 'Admin rejection - no reason provided')
         : (studentVerificationStatus === 'VERIFIED' ? 'Student verification approved' : 'Status changed'),
       changedBy: 'admin', // You can get this from req.user if you have admin auth
@@ -367,8 +367,8 @@ exports.verifyStudentAccount = async (req, res) => {
       .single();
 
     if (updateError) {
-     
-      return res.status(500).json({ 
+
+      return res.status(500).json({
         error: 'Failed to update verification status',
         details: updateError.message,
         attemptedUpdate: updateData
@@ -405,18 +405,18 @@ exports.getVerificationExpiry = async (req, res) => {
   try {
     const { userId } = req.params;
     const { getUserVerificationExpiry } = require('../utils/studentVerificationExpiry');
-    
+
     const expiryInfo = await getUserVerificationExpiry(userId);
-    
+
     if (expiryInfo.error) {
       return res.status(404).json({ error: expiryInfo.error });
     }
-    
+
     res.json({
       success: true,
       ...expiryInfo
     });
-    
+
   } catch (err) {
     res.status(500).json({ error: 'Failed to get verification expiry', details: err.message });
   }
@@ -425,14 +425,14 @@ exports.getVerificationExpiry = async (req, res) => {
 exports.deleteUser = async (req, res) => {
   try {
     const { userId } = req.params;
-    
+
     console.log('deleteUser request:', {
       userId,
       body: req.body,
       hasBody: !!req.body,
       bodyType: typeof req.body
     });
-    
+
     if (!userId) {
       return res.status(400).json({ error: 'User ID is required' });
     }
@@ -460,19 +460,19 @@ exports.deleteUser = async (req, res) => {
     // Check if user has any future or ongoing bookings
     if (userBookings && userBookings.length > 0) {
       const now = new Date();
-      
+
       // Filter for future and ongoing bookings
       const futureOrOngoingBookings = userBookings.filter(booking => {
         // Ensure UTC by appending 'Z' if not present
         const endAtUTC = booking.endAt.endsWith('Z') ? booking.endAt : booking.endAt + 'Z';
         const endAt = new Date(endAtUTC);
-        
+
         // If booking end time is in the future, it's either ongoing or upcoming
         return endAt > now;
       });
 
       if (futureOrOngoingBookings.length > 0) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: 'Cannot delete user with future or ongoing bookings',
           message: 'User has active or upcoming bookings. Please cancel them before deleting the account',
           activeBookings: futureOrOngoingBookings.length,
@@ -490,13 +490,13 @@ exports.deleteUser = async (req, res) => {
 
     if (deleteError) {
       console.error('Delete user error:', deleteError);
-      return res.status(500).json({ 
-        error: 'Failed to delete user', 
+      return res.status(500).json({
+        error: 'Failed to delete user',
         details: deleteError.message,
-        code: deleteError.code 
+        code: deleteError.code
       });
     }
-    
+
     res.json({
       message: 'User deleted successfully',
       deletedUser: {
@@ -513,3 +513,176 @@ exports.deleteUser = async (req, res) => {
   }
 };
 
+/**
+ * Change a user's role (memberType)
+ * @route PUT /api/admin/users/:userId/role
+ * @access Admin only
+ */
+exports.changeUserRole = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { newRole, reason } = req.body;
+
+    console.log('changeUserRole request:', { userId, newRole, reason });
+
+    // Validate newRole
+    const validRoles = ['ADMIN', 'STUDENT', 'MEMBER', 'TUTOR', null];
+    if (!validRoles.includes(newRole)) {
+      return res.status(400).json({
+        error: 'Invalid role. Must be one of: ADMIN, STUDENT, MEMBER, TUTOR, or null'
+      });
+    }
+
+    // Get existing user
+    const { data: existingUser, error: fetchError } = await supabase
+      .from('User')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (fetchError || !existingUser) {
+      console.error('User not found:', fetchError);
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Check if role is actually changing
+    if (existingUser.memberType === newRole) {
+      return res.status(400).json({
+        error: 'User already has this role',
+        currentRole: existingUser.memberType
+      });
+    }
+
+    // Check for active bookings (warning only)
+    const { data: activeBookings, error: bookingError } = await supabase
+      .from('Booking')
+      .select('id, startAt, endAt')
+      .eq('userId', userId)
+      .gte('endAt', new Date().toISOString());
+
+    const warnings = [];
+    if (activeBookings && activeBookings.length > 0) {
+      warnings.push(`User has ${activeBookings.length} active booking(s). Role change may affect pricing.`);
+    }
+
+    // Update User table
+    const { data: updatedUser, error: updateError } = await supabase
+      .from('User')
+      .update({
+        memberType: newRole,
+        updatedAt: new Date().toISOString()
+      })
+      .eq('id', userId)
+      .select('*')
+      .single();
+
+    if (updateError) {
+      console.error('Failed to update user role:', updateError);
+      return res.status(500).json({
+        error: 'Failed to update user role',
+        details: updateError.message
+      });
+    }
+
+    // If promoting to ADMIN, update Supabase Auth metadata
+    if (newRole === 'ADMIN') {
+      try {
+        const { createClient } = require('@supabase/supabase-js');
+        const supabaseAdmin = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_SERVICE_ROLE_KEY
+        );
+
+        const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(
+          userId,
+          { user_metadata: { role: 'admin' } }
+        );
+
+        if (authError) {
+          console.error('Failed to update auth metadata:', authError);
+          warnings.push('User role updated in database, but failed to update authentication metadata. User may not have full admin permissions until they log out and log back in.');
+        } else {
+          console.log('✅ Successfully updated auth metadata for new admin');
+        }
+      } catch (authErr) {
+        console.error('Error updating auth metadata:', authErr);
+        warnings.push('Failed to update authentication metadata.');
+      }
+    }
+
+    // If demoting from ADMIN, remove auth metadata
+    if (existingUser.memberType === 'ADMIN' && newRole !== 'ADMIN') {
+      try {
+        const { createClient } = require('@supabase/supabase-js');
+        const supabaseAdmin = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_SERVICE_ROLE_KEY
+        );
+
+        const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(
+          userId,
+          { user_metadata: { role: null } }
+        );
+
+        if (authError) {
+          console.error('Failed to remove auth metadata:', authError);
+          warnings.push('User role updated in database, but failed to remove authentication metadata.');
+        } else {
+          console.log('✅ Successfully removed admin auth metadata');
+        }
+      } catch (authErr) {
+        console.error('Error removing auth metadata:', authErr);
+        warnings.push('Failed to remove authentication metadata.');
+      }
+    }
+
+    // Record role change history
+    const historyData = {
+      userId: userId,
+      previousRole: existingUser.memberType,
+      newRole: newRole,
+      reason: reason || 'Admin role change - no reason provided',
+      changedBy: 'admin', // TODO: Get from req.user when auth middleware is implemented
+      changedAt: new Date().toISOString()
+    };
+
+    const { error: historyError } = await supabase
+      .from('RoleChangeHistory')
+      .insert([historyData]);
+
+    if (historyError) {
+      console.error('Failed to record role change history:', historyError);
+      // Don't fail the operation if history recording fails
+      warnings.push('Role change was successful but failed to record in history.');
+    } else {
+      console.log('✅ Role change history recorded successfully');
+    }
+
+    const response = {
+      success: true,
+      message: `User role changed from ${existingUser.memberType || 'regular'} to ${newRole || 'regular'}`,
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        firstName: updatedUser.firstName,
+        lastName: updatedUser.lastName,
+        memberType: updatedUser.memberType,
+        updatedAt: updatedUser.updatedAt
+      }
+    };
+
+    if (warnings.length > 0) {
+      response.warnings = warnings;
+    }
+
+    console.log('✅ Role change completed successfully');
+    res.json(response);
+
+  } catch (err) {
+    console.error('changeUserRole error:', err);
+    res.status(500).json({
+      error: 'Failed to change user role',
+      details: err.message
+    });
+  }
+};

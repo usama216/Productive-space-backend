@@ -2,17 +2,17 @@ const express = require("express");
 const { authenticateUser, requireAdmin } = require("../middleware/auth");
 
 // Import from new modular controllers
-const { 
-  createBooking, 
-  getAllBookings, 
-  getBookingById, 
+const {
+  createBooking,
+  getAllBookings,
+  getBookingById,
   getAdminBookingDetails,
   updateBooking,
   cancelBooking
 } = require("../controllers/bookingCoreController");
 
 const {
-  confirmBookingPayment, 
+  confirmBookingPayment,
   confirmBookingWithPackage,
   getBookingPaymentDetails
 } = require("../controllers/bookingPaymentController");
@@ -23,7 +23,7 @@ const {
 } = require("../controllers/bookingExtensionController");
 
 const {
-  getBookedSeats, 
+  getBookedSeats,
   validatePassForBooking,
   applyPassToBooking,
   getUserPassBalance
@@ -47,7 +47,8 @@ const {
   getUserManagementSummary,
   verifyStudentAccount,
   getVerificationExpiry,
-  deleteUser
+  deleteUser,
+  changeUserRole
 } = require("../controllers/userManagementController");
 
 const router = express.Router();
@@ -85,5 +86,6 @@ router.get("/admin/users/analytics", authenticateUser, requireAdmin, getUserAnal
 router.get("/admin/users/dashboard", authenticateUser, requireAdmin, getUserManagementSummary);
 router.put("/admin/users/:userId/verify", authenticateUser, requireAdmin, verifyStudentAccount);
 router.get("/admin/users/:userId/verification-expiry", authenticateUser, requireAdmin, getVerificationExpiry);
+router.put("/admin/users/:userId/role", authenticateUser, requireAdmin, changeUserRole);
 router.delete("/admin/users/:userId", authenticateUser, requireAdmin, deleteUser);
 module.exports = router;
