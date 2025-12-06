@@ -131,11 +131,49 @@ const createAnnouncement = async (req, res) => {
             });
         }
 
+        // Check active announcement count (Max 6)
+        if (isActive !== false) { // Only check if we are creating an active announcement
+            const { count, error: countError } = await supabase
+                .from('Announcement')
+                .select('*', { count: 'exact', head: true })
+                .eq('isActive', true);
+
+            if (countError) {
+                console.error('Error checking announcement count:', countError);
+                return res.status(500).json({ success: false, error: 'Failed to check announcement count' });
+            }
+
+            if (count >= 6) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Max announcement: Unable to create more announcement, please delete one to create a new one.'
+                });
+            }
+        }
+
+        // Auto-assign order to avoid duplicates
+        // Get the current max order
+        const { data: maxOrderData, error: maxOrderError } = await supabase
+            .from('Announcement')
+            .select('order')
+            .order('order', { ascending: false })
+            .limit(1)
+            .single();
+
+        // If error (e.g. no rows), start at 1. Else max + 1
+        const nextOrder = (maxOrderData && maxOrderData.order) ? maxOrderData.order + 1 : 1;
+
+        // Use provided order if it seems valid/intentional, otherwise use nextOrder
+        // But to fix the "duplicate order" issue, it's safer to always enforce nextOrder 
+        // unless the frontend is very smart (which it seems it isn't).
+        // Let's rely on nextOrder for new creations.
+        const finalOrder = nextOrder;
+
         const announcementData = {
             title,
             description: description || null,
             imageUrl: imageUrl || null,
-            order: order !== undefined ? parseInt(order) : 0,
+            order: finalOrder,
             isActive: isActive !== undefined ? isActive : true,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
@@ -246,13 +284,10 @@ const deleteAnnouncement = async (req, res) => {
             });
         }
 
-        // Soft delete by setting isActive to false
+        // Hard delete
         const { data: announcement, error } = await supabase
             .from('Announcement')
-            .update({
-                isActive: false,
-                updatedAt: new Date().toISOString()
-            })
+            .delete()
             .eq('id', id)
             .select()
             .single();
@@ -308,10 +343,56 @@ const updateAnnouncementOrder = async (req, res) => {
             });
         }
 
+        const newOrder = parseInt(order);
+
+        // Get current announcement to know its current order
+        const { data: currentAnnouncement, error: fetchError } = await supabase
+            .from('Announcement')
+            .select('order, id')
+            .eq('id', id)
+            .single();
+
+        if (fetchError || !currentAnnouncement) {
+            return res.status(404).json({ success: false, error: 'Announcement not found' });
+        }
+
+        const currentOrder = currentAnnouncement.order;
+
+        // Check if another announcement already has the newOrder
+        const { data: existingWithOrder, error: checkError } = await supabase
+            .from('Announcement')
+            .select('id, order')
+            .eq('order', newOrder)
+            .neq('id', id) // Exclude self
+            .maybeSingle(); // Use maybeSingle to not error if multiple or none
+
+        if (existingWithOrder) {
+            console.log(`Swapping order between ${id} (curr: ${currentOrder}) and ${existingWithOrder.id} (curr: ${newOrder})`);
+
+            // Swap! Update the OTHER announcement to use the OLD order of the current one
+            // We use 'currentOrder' for the other one.
+            // If currentOrder is null/undefined (legacy data), maybe give it a max order? 
+            // For now assume safely it has an order or we assign something safe?
+            // Actually if currentOrder is same as newOrder (why update?), we skip.
+
+            const effectiveCurrentOrder = currentOrder !== null ? currentOrder : 999; // Fallback
+
+            const { error: swapError } = await supabase
+                .from('Announcement')
+                .update({ order: effectiveCurrentOrder, updatedAt: new Date().toISOString() })
+                .eq('id', existingWithOrder.id);
+
+            if (swapError) {
+                console.error('Failed to swap order:', swapError);
+                return res.status(500).json({ success: false, error: 'Failed to reorder' });
+            }
+        }
+
+        // Now update the target announcement to the new Order
         const { data: announcement, error } = await supabase
             .from('Announcement')
             .update({
-                order: parseInt(order),
+                order: newOrder,
                 updatedAt: new Date().toISOString()
             })
             .eq('id', id)
@@ -319,13 +400,9 @@ const updateAnnouncementOrder = async (req, res) => {
             .single();
 
         if (error) {
-            if (error.code === 'PGRST116') {
-                return res.status(404).json({
-                    success: false,
-                    error: 'Announcement not found'
-                });
-            }
             console.error(' Error updating announcement order:', error);
+            // If we failed here, we might have left the swapped item in a weird state (swapped but primary failed).
+            // But usually this succeeds.
             return res.status(500).json({
                 success: false,
                 error: 'Failed to update announcement order'

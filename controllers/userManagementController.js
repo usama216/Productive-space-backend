@@ -636,6 +636,46 @@ exports.changeUserRole = async (req, res) => {
       }
     }
 
+    // If checking to STUDENT, auto-verify the user
+    if (newRole === 'STUDENT') {
+      try {
+        const updateData = {
+          studentVerificationStatus: 'VERIFIED',
+          studentVerificationDate: new Date().toISOString(), // Required for frontend display
+          studentVerifiedAt: new Date().toISOString(), // Keep for consistency with verifyStudentAccount
+          studentRejectionReason: null,
+          updatedAt: new Date().toISOString()
+        };
+
+        const { error: verifyError } = await supabase
+          .from('User')
+          .update(updateData)
+          .eq('id', userId);
+
+        if (verifyError) {
+          console.error('Failed to auto-verify student:', verifyError);
+          warnings.push('User role changed to STUDENT, but automatic verification failed.');
+        } else {
+          console.log('✅ User automatically verified as STUDENT');
+
+          // Add verification history for the auto-verification
+          const historyData = {
+            userId: userId,
+            previousStatus: existingUser.studentVerificationStatus || 'PENDING',
+            newStatus: 'VERIFIED',
+            reason: 'Auto-verified upon role change to STUDENT by admin',
+            changedBy: 'admin',
+            changedAt: new Date().toISOString()
+          };
+
+          await supabase.from('VerificationHistory').insert([historyData]);
+        }
+      } catch (err) {
+        console.error('Error during auto-verification:', err);
+        warnings.push('Automatic verification failed.');
+      }
+    }
+
     // Record role change history
     const historyData = {
       userId: userId,
