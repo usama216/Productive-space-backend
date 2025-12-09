@@ -1,5 +1,5 @@
 const express = require("express");
-const { authenticateUser, requireAdmin } = require("../middleware/auth");
+const { authenticateUser, requireAdmin, requireOwnershipOrAdmin } = require("../middleware/auth");
 
 // Import from new modular controllers
 const {
@@ -52,22 +52,26 @@ const {
 } = require("../controllers/userManagementController");
 
 const router = express.Router();
-router.post("/create", createBooking);
-router.get("/all", getAllBookings);
+
+// Public routes (no authentication required)
 router.get("/getById/:id", getBookingById);
 router.get("/:id", getBookingById);
-router.post("/confirmBooking", confirmBookingPayment);
-router.post("/confirmWithPackage", confirmBookingWithPackage);
 router.post("/getBookedSeats", getBookedSeats);
-router.post("/validatePass", validatePassForBooking);
-router.post("/applyPass", applyPassToBooking);
-router.get("/passBalance/:userId", getUserPassBalance);
-router.post("/userStats", getUserBookingStats);
 
-router.post("/user/bookings", getUserBookings);
-router.post("/user/analytics", getUserBookingAnalytics);
-router.post("/user/dashboard", getUserDashboardSummary);
-router.post("/getBookingPaymentDetails", getBookingPaymentDetails);
+// User routes (authentication required)
+router.post("/create", authenticateUser, createBooking);
+router.post("/confirmBooking", authenticateUser, confirmBookingPayment);
+router.post("/confirmWithPackage", authenticateUser, confirmBookingWithPackage);
+router.post("/validatePass", authenticateUser, validatePassForBooking);
+router.post("/applyPass", authenticateUser, applyPassToBooking);
+router.get("/passBalance/:userId", authenticateUser, requireOwnershipOrAdmin('userId'), getUserPassBalance);
+router.post("/userStats", authenticateUser, getUserBookingStats);
+router.post("/user/bookings", authenticateUser, getUserBookings);
+router.post("/user/analytics", authenticateUser, getUserBookingAnalytics);
+router.post("/user/dashboard", authenticateUser, getUserDashboardSummary);
+router.post("/getBookingPaymentDetails", authenticateUser, getBookingPaymentDetails);
+router.post("/extend", authenticateUser, extendBooking);
+router.post("/confirm-extension-payment", authenticateUser, confirmExtensionPayment);
 
 
 router.get("/admin/all", authenticateUser, requireAdmin, getAllBookings);
@@ -77,8 +81,6 @@ router.get("/admin/dashboard", authenticateUser, requireAdmin, getDashboardSumma
 router.put("/admin/:id", authenticateUser, requireAdmin, updateBooking);
 router.delete("/admin/:id", authenticateUser, requireAdmin, cancelBooking);
 
-router.post("/extend", extendBooking);
-router.post("/confirm-extension-payment", confirmExtensionPayment);
 
 // Admin user management routes - require authentication and admin access
 router.get("/admin/users", authenticateUser, requireAdmin, getAllUsers);

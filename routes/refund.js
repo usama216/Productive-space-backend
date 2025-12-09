@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { authenticateUser } = require('../middleware/auth');
 const {
   requestRefund,
   getUserRefundRequests,
@@ -7,10 +8,10 @@ const {
   getUserCreditUsage
 } = require('../controllers/refundController');
 
-// User routes (temporarily without auth for testing)
-router.post('/request', requestRefund);
-router.get('/requests', getUserRefundRequests);
-router.get('/credits', getUserCredits);
-router.get('/credit-usage', getUserCreditUsage);
+// User routes (authentication required)
+router.post('/request', authenticateUser, requestRefund);
+router.get('/requests', authenticateUser, getUserRefundRequests);
+router.get('/credits', authenticateUser, getUserCredits);
+router.get('/credit-usage', authenticateUser, getUserCreditUsage);
 
 module.exports = router;

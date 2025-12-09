@@ -1,21 +1,11 @@
-const express = require('express')
-const router = express.Router()
-const { rescheduleBooking, getAvailableSeatsForReschedule, confirmReschedulePayment } = require('../controllers/rescheduleController')
+const express = require('express');
+const router = express.Router();
+const { authenticateUser } = require('../middleware/auth');
+const { rescheduleBooking, getAvailableSeatsForReschedule, confirmReschedulePayment } = require('../controllers/rescheduleController');
 
-// Middleware to authenticate user (you may need to adjust this based on your auth setup)
-const authenticateUser = (req, res, next) => {
-  // This is a placeholder - implement your actual authentication middleware
-  // For now, we'll skip auth validation in the controller
-  next()
-}
+// User routes (authentication required)
+router.put('/booking/:bookingId', authenticateUser, rescheduleBooking);
+router.get('/booking/:bookingId/available-seats', authenticateUser, getAvailableSeatsForReschedule);
+router.post('/confirm-payment', authenticateUser, confirmReschedulePayment);
 
-// Reschedule booking endpoint
-router.put('/booking/:bookingId', authenticateUser, rescheduleBooking)
-
-// Get available seats for reschedule
-router.get('/booking/:bookingId/available-seats', authenticateUser, getAvailableSeatsForReschedule)
-
-// Confirm reschedule payment
-router.post('/confirm-payment', authenticateUser, confirmReschedulePayment)
-
-module.exports = router
+module.exports = router;

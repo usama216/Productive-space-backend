@@ -1,12 +1,15 @@
 
-
-const express=require("express")
-const { createPayment, handleWebhook }=require("../controllers/payment")
-const { verifyHitPayWebhookMiddleware } = require("../utils/webhookVerification")
+const express = require("express");
+const { authenticateUser } = require("../middleware/auth");
+const { createPayment, handleWebhook } = require("../controllers/payment");
+const { verifyHitPayWebhookMiddleware } = require("../utils/webhookVerification");
 
 const router = express.Router();
-router.post("/create-payment", createPayment);
-// Apply webhook signature verification before processing webhook
+
+// User routes (authentication required)
+router.post("/create-payment", authenticateUser, createPayment);
+
+// Webhook route (no authentication - uses signature verification instead)
 router.post("/webhook", verifyHitPayWebhookMiddleware, handleWebhook);
 
-module.exports= router;
+module.exports = router;

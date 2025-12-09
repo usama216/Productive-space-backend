@@ -12,6 +12,9 @@ const { startCreditCleanup } = require('./scheduledCreditCleanup');
 // Import automatic student expiry check (this will start the cron job)
 const { cronJob: studentExpiryCronJob } = require('./automaticExpiryCheck');
 
+// Import authentication middleware
+const { authenticateUser, requireAdmin, requireOwnershipOrAdmin } = require('./middleware/auth');
+
 // Start cleanup schedulers
 startCreditCleanup();
 
@@ -35,10 +38,15 @@ app.use(cors({
 
 // Middleware to capture raw body for webhook signature verification
 // Must capture raw body before express.json() parses it
-const isWebhookRoute = (path) => path === '/api/hitpay/webhook' || path === '/api/packages/webhook';
+// HitPay webhooks can come to multiple endpoints
+const isWebhookRoute = (path) => {
+  return path === '/api/hitpay/webhook' || 
+         path === '/api/packages/webhook' ||
+         path.endsWith('/webhook'); // Catch any webhook route
+};
 
 app.use((req, res, next) => {
-  if (isWebhookRoute(req.path)) {
+  if (isWebhookRoute(req.path) && req.method === 'POST') {
     let data = '';
     req.setEncoding('utf8');
     req.on('data', chunk => {
@@ -46,12 +54,15 @@ app.use((req, res, next) => {
     });
     req.on('end', () => {
       req.rawBody = data;
+      // Try to parse as JSON first, if that fails, keep as raw string for form-encoded parsing
       try {
         req.body = JSON.parse(data);
-        next();
       } catch (e) {
-        return res.status(400).json({ error: 'Invalid JSON' });
+        // If not JSON, it's likely form-encoded - keep rawBody for verification
+        // The urlencoded middleware will parse it later
+        req.body = {};
       }
+      next();
     });
   } else {
     next();
@@ -60,13 +71,20 @@ app.use((req, res, next) => {
 
 // Apply JSON parsing for non-webhook routes
 app.use((req, res, next) => {
-  if (isWebhookRoute(req.path)) {
-    return next(); // Skip JSON parsing for webhook routes (already parsed above)
+  if (isWebhookRoute(req.path) && req.method === 'POST') {
+    return next(); // Skip JSON parsing for webhook routes (raw body already captured)
   }
   express.json()(req, res, next);
 });
 
-app.use(express.urlencoded({ extended: true }))
+// Apply urlencoded parsing for non-webhook routes
+// Webhook routes handle parsing in verification middleware
+app.use((req, res, next) => {
+  if (isWebhookRoute(req.path) && req.method === 'POST') {
+    return next(); // Skip urlencoded parsing for webhook routes
+  }
+  express.urlencoded({ extended: true })(req, res, next);
+});
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -197,7 +215,7 @@ app.use("/api", announcementRoutes);
 app.use("/api", adminUserRoutes);
 app.use("/api/shop-hours", shopHoursRoutes);
 app.use("/api/booking", require('./routes/packageApplication'));
-app.post('/api/test-package-usage', async (req, res) => {
+app.post('/api/test-package-usage', authenticateUser, requireAdmin, async (req, res) => {
   try {
     const { handlePackageUsage } = require('./utils/packageUsageHelper');
     const { createClient } = require('@supabase/supabase-js');
@@ -235,7 +253,7 @@ app.post('/api/test-package-usage', async (req, res) => {
 });
 
 // Test verification tracking endpoint
-app.get('/api/test-verification-tracking/:userId', async (req, res) => {
+app.get('/api/test-verification-tracking/:userId', authenticateUser, requireOwnershipOrAdmin('userId'), async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -276,7 +294,7 @@ app.get('/api/test-verification-tracking/:userId', async (req, res) => {
 });
 
 // Get verification history for a user
-app.get('/api/verification-history/:userId', async (req, res) => {
+app.get('/api/verification-history/:userId', authenticateUser, requireOwnershipOrAdmin('userId'), async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -309,7 +327,7 @@ app.get('/api/verification-history/:userId', async (req, res) => {
   }
 });
 
-app.post('/api/cleanup-unpaid-bookings', async (req, res) => {
+app.post('/api/cleanup-unpaid-bookings', authenticateUser, requireAdmin, async (req, res) => {
   try {
     await cleanupUnpaidBookings();
     res.json({ success: true, message: 'Cleanup completed' });
@@ -327,13 +345,10 @@ app.use('/docs', swaggerUi.serve, swaggerUi.setup(specs, {
 }));
 
 
-app.get("/users", async (req, res) => {
-  const { data, error } = await supabase.from("User").select("*");
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
+// Note: /users route removed - use authenticated routes instead
+// Use /api/admin/users with admin authentication
 
-app.get("/api/user/:userId", async (req, res) => {
+app.get("/api/user/:userId", authenticateUser, requireOwnershipOrAdmin('userId'), async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -393,7 +408,7 @@ app.get("/api/user/:userId", async (req, res) => {
 });
 
 
-app.put("/api/user/:userId", upload.single('studentVerificationFile'), async (req, res) => {
+app.put("/api/user/:userId", authenticateUser, requireOwnershipOrAdmin('userId'), upload.single('studentVerificationFile'), async (req, res) => {
   try {
     const { userId } = req.params;
     const {

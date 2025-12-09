@@ -1,14 +1,17 @@
 const express = require('express');
 const router = express.Router();
+const { authenticateUser, requireAdmin } = require('../middleware/auth');
 const { 
   checkStudentVerification, 
   checkMultipleStudentVerifications, 
   getStudentVerificationStats 
 } = require('../controllers/studentVerificationController');
 
+// User routes (authentication required)
+router.post('/check-verification', authenticateUser, checkStudentVerification);
+router.post('/check-multiple', authenticateUser, checkMultipleStudentVerifications);
 
-router.post('/check-verification', checkStudentVerification);
-router.post('/check-multiple', checkMultipleStudentVerifications);
-router.get('/stats', getStudentVerificationStats);
+// Admin routes (authentication + admin required)
+router.get('/stats', authenticateUser, requireAdmin, getStudentVerificationStats);
 
 module.exports = router;

@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { authenticateUser, requireAdmin } = require('../middleware/auth');
 const {
     getAllAnnouncements,
     getAllAnnouncementsAdmin,
@@ -10,15 +11,15 @@ const {
     updateAnnouncementOrder
 } = require('../controllers/announcementController');
 
-// Public routes
+// Public routes (no authentication required)
 router.get('/announcements', getAllAnnouncements);
 
-// Admin routes
-router.get('/admin/announcements', getAllAnnouncementsAdmin);
-router.get('/admin/announcements/:id', getAnnouncementById);
-router.post('/admin/announcements', createAnnouncement);
-router.put('/admin/announcements/:id', updateAnnouncement);
-router.delete('/admin/announcements/:id', deleteAnnouncement);
-router.put('/admin/announcements/:id/order', updateAnnouncementOrder);
+// Admin routes (authentication + admin required)
+router.get('/admin/announcements', authenticateUser, requireAdmin, getAllAnnouncementsAdmin);
+router.get('/admin/announcements/:id', authenticateUser, requireAdmin, getAnnouncementById);
+router.post('/admin/announcements', authenticateUser, requireAdmin, createAnnouncement);
+router.put('/admin/announcements/:id', authenticateUser, requireAdmin, updateAnnouncement);
+router.delete('/admin/announcements/:id', authenticateUser, requireAdmin, deleteAnnouncement);
+router.put('/admin/announcements/:id/order', authenticateUser, requireAdmin, updateAnnouncementOrder);
 
 module.exports = router;
