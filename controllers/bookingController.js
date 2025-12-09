@@ -474,13 +474,45 @@ exports.getAdminBookingDetails = async (req, res) => {
     if (booking.promocodeid && !booking.promoCodeId) booking.promoCodeId = booking.promocodeid;
     if (booking.discountamount !== undefined && booking.discountAmount === undefined) booking.discountAmount = booking.discountamount;
 
+    // Fetch ALL payments for this booking (original + reschedule payments)
+    // Payments can be linked by bookingRef (original booking) or RESCHEDULE_ prefix
+    let allPayments = [];
+    const paymentQueries = [
+      // Original payment by bookingRef
+      supabase.from('Payment').select('*').eq('bookingRef', booking.bookingRef).order('createdAt', { ascending: true }),
+      // Reschedule payments (if bookingRef starts with RESCHEDULE_)
+      supabase.from('Payment').select('*').eq('bookingRef', `RESCHEDULE_${booking.id}`).order('createdAt', { ascending: true }),
+      // Also check by booking ID as bookingRef
+      supabase.from('Payment').select('*').eq('bookingRef', booking.id).order('createdAt', { ascending: true }),
+    ];
+    
+    const paymentResults = await Promise.all(paymentQueries);
+    const paymentSet = new Set();
+    
+    paymentResults.forEach(result => {
+      if (result.data && Array.isArray(result.data)) {
+        result.data.forEach(payment => {
+          // Use payment ID as unique key to avoid duplicates
+          if (!paymentSet.has(payment.id)) {
+            allPayments.push(payment);
+            paymentSet.add(payment.id);
+          }
+        });
+      }
+    });
+    
+    // Sort all payments by creation date
+    allPayments.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    
+    // Get primary payment (first payment or the one linked to booking.paymentId)
+    const primaryPayment = booking.paymentId 
+      ? allPayments.find(p => p.id === booking.paymentId) || allPayments[0] || null
+      : allPayments[0] || null;
+
     // Fetch related entities in parallel
-    const [userResp, paymentResp, promoResp, userPassResp, packagePurchaseResp] = await Promise.all([
+    const [userResp, promoResp, userPassResp, packagePurchaseResp] = await Promise.all([
       booking.userId
         ? supabase.from('User').select('id, email, firstName, lastName, contactNumber, memberType, createdAt, updatedAt').eq('id', booking.userId).single()
-        : Promise.resolve({ data: null, error: null }),
-      booking.paymentId
-        ? supabase.from('Payment').select('*').eq('id', booking.paymentId).single()
         : Promise.resolve({ data: null, error: null }),
       booking.promoCodeId
         ? supabase.from('PromoCode').select('*').eq('id', booking.promoCodeId).single()
@@ -581,7 +613,8 @@ exports.getAdminBookingDetails = async (req, res) => {
       data: {
         booking,
         user: userData,
-        payment: paymentResp ? paymentResp.data : null,
+        payment: primaryPayment, // Primary payment for backward compatibility
+        allPayments: allPayments, // All payments including reschedule payments
         promoCode: promoResp ? promoResp.data : null,
         package: packageWithName,
         discountHistory,
