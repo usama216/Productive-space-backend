@@ -57,12 +57,23 @@ const requestRefund = async (req, res) => {
       .select('id, totalAmount, cost, paymentMethod, bookingRef, createdAt');
     
     // Build the OR condition safely
+    // Sanitize booking references to prevent SQL injection
+    const { sanitizeBookingRef, sanitizeUUID } = require("../utils/inputSanitizer");
+    
     const orConditions = [];
     if (booking.bookingRef) {
-      orConditions.push(`bookingRef.eq.${booking.bookingRef}`);
+      const sanitizedRef = sanitizeBookingRef(booking.bookingRef);
+      if (sanitizedRef) {
+        orConditions.push(`bookingRef.eq.${sanitizedRef}`);
+      }
     }
-    orConditions.push(`bookingRef.eq.RESCHEDULE_${booking.id}`);
-    orConditions.push(`bookingRef.eq.${booking.id}`);
+    
+    // Sanitize booking ID (UUID)
+    const sanitizedBookingId = sanitizeUUID(booking.id);
+    if (sanitizedBookingId) {
+      orConditions.push(`bookingRef.eq.RESCHEDULE_${sanitizedBookingId}`);
+      orConditions.push(`bookingRef.eq.${sanitizedBookingId}`);
+    }
     
     if (orConditions.length > 0) {
       paymentQuery = paymentQuery.or(orConditions.join(','));

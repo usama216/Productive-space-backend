@@ -8,7 +8,7 @@ exports.createBooking = async (req, res) => {
   try {
 
     const {
-      id, 
+      id,
       bookingRef,
       userId,
       location,
@@ -28,10 +28,10 @@ exports.createBooking = async (req, res) => {
       bookedForEmails,
       confirmedPayment,
       paymentId,
-      promoCodeId, 
-      discountAmount, 
-      packageId, 
-      packageUsed 
+      promoCodeId,
+      discountAmount,
+      packageId,
+      packageUsed
     } = req.body;
 
     if (id) {
@@ -42,7 +42,7 @@ exports.createBooking = async (req, res) => {
         .single();
 
       if (existingBooking && !checkError) {
-        return res.status(409).json({ 
+        return res.status(409).json({
           error: "Booking already exists",
           message: "A booking with this ID already exists",
           existingBookingId: id
@@ -58,7 +58,7 @@ exports.createBooking = async (req, res) => {
         .single();
 
       if (existingRef && !refError) {
-        return res.status(409).json({ 
+        return res.status(409).json({
           error: "Duplicate booking reference",
           message: "A booking with this reference number already exists",
           existingBookingRef: bookingRef
@@ -74,10 +74,10 @@ exports.createBooking = async (req, res) => {
       .overlaps("startAt", startAt, "endAt", endAt);
 
     if (!duplicateError && duplicateBookings && duplicateBookings.length > 0) {
-      const isSameBooking = duplicateBookings.some(booking => 
-        booking.id === id || 
+      const isSameBooking = duplicateBookings.some(booking =>
+        booking.id === id ||
         (Math.abs(new Date(booking.startAt) - new Date(startAt)) < 60000 &&
-         Math.abs(new Date(booking.endAt) - new Date(endAt)) < 60000)
+          Math.abs(new Date(booking.endAt) - new Date(endAt)) < 60000)
       );
 
       if (!isSameBooking) {
@@ -91,15 +91,16 @@ exports.createBooking = async (req, res) => {
 
     if (seatNumbers && seatNumbers.length > 0) {
       console.log(`🔍 Checking seat conflicts for seats: ${seatNumbers.join(', ')}`);
-      
+
       const { data: conflictingBookings, error: seatConflictError } = await supabase
         .from("Booking")
-        .select("seatNumbers, startAt, endAt, bookingRef, userId, confirmedPayment, createdAt, refundstatus")
+        .select("seatNumbers, startAt, endAt, bookingRef, userId, confirmedPayment, createdAt, refundstatus, status")
         .eq("location", location)
         .in("confirmedPayment", [true, false])
         .neq("refundstatus", "APPROVED") // Exclude refunded bookings from seat availability
-        .lt("startAt", endAt)  
-        .gt("endAt", startAt); 
+        .neq("status", "cancelled") // Exclude cancelled bookings from seat availability
+        .lt("startAt", endAt)
+        .gt("endAt", startAt);
 
       if (seatConflictError) {
         return res.status(500).json({
@@ -115,11 +116,11 @@ exports.createBooking = async (req, res) => {
       const conflictingSeats = seatNumbers.filter(seat => allBookedSeats.includes(seat));
 
       if (conflictingSeats.length > 0) {
-        const confirmedConflicts = conflictingBookings?.filter(b => 
+        const confirmedConflicts = conflictingBookings?.filter(b =>
           b.confirmedPayment && b.seatNumbers?.some(seat => conflictingSeats.includes(seat))
         ) || [];
-        
-        const pendingConflicts = conflictingBookings?.filter(b => 
+
+        const pendingConflicts = conflictingBookings?.filter(b =>
           !b.confirmedPayment && b.seatNumbers?.some(seat => conflictingSeats.includes(seat))
         ) || [];
 
@@ -142,9 +143,9 @@ exports.createBooking = async (req, res) => {
               createdAt: b.createdAt
             }))
           },
-          availableSeats: allBookedSeats.length > 0 ? 
+          availableSeats: allBookedSeats.length > 0 ?
             ['A1', 'A2', 'A3', 'A4', 'B1', 'B2', 'B3', 'B4', 'C1', 'C2', 'C3', 'C4', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10', 'S11', 'S12']
-              .filter(seat => !allBookedSeats.includes(seat)) : 
+              .filter(seat => !allBookedSeats.includes(seat)) :
             ['A1', 'A2', 'A3', 'A4', 'B1', 'B2', 'B3', 'B4', 'C1', 'C2', 'C3', 'C4', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10', 'S11', 'S12']
         });
       }
@@ -203,7 +204,7 @@ exports.createBooking = async (req, res) => {
       .from("Booking")
       .insert([
         {
-          id: id || uuidv4(), 
+          id: id || uuidv4(),
           bookingRef,
           userId,
           location,
@@ -223,8 +224,8 @@ exports.createBooking = async (req, res) => {
           bookedForEmails,
           confirmedPayment,
           paymentId,
-          promocodeid: promoCodeId, 
-          discountamount: discountAmount, 
+          promocodeid: promoCodeId,
+          discountamount: discountAmount,
           packageId: packageId,
           packageUsed: packageUsed,
           createdAt: new Date().toISOString(),
@@ -272,11 +273,11 @@ exports.createBooking = async (req, res) => {
           userId: userId,
           creditAmount: req.body.creditAmount
         });
-        
+
         // Use credits with ORIGINAL_BOOKING action type for discount tracking
         creditUsageResult = await useCreditsForBooking(userId, data.id, req.body.creditAmount, 'ORIGINAL_BOOKING');
         console.log('✅ Credit usage processed:', creditUsageResult);
-        
+
         // Add credit amount to booking data for email/PDF
         data.creditAmount = req.body.creditAmount;
 
@@ -336,9 +337,9 @@ exports.createBooking = async (req, res) => {
         console.error('Error logging package usage:', logError);
       }
     }
-   
-    res.status(201).json({ 
-      message: "Booking created successfully", 
+
+    res.status(201).json({
+      message: "Booking created successfully",
       booking: data,
       promoCodeApplied: !!promoCodeId,
       creditUsage: creditUsageResult
@@ -359,9 +360,9 @@ exports.getBookingById = async (req, res) => {
       .single();
 
     if (error) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        error: "Booking not found" 
+        error: "Booking not found"
       });
     }
 
@@ -373,7 +374,7 @@ exports.getBookingById = async (req, res) => {
       if (data.discountamount && !data.discountAmount) {
         data.discountAmount = data.discountamount;
       }
-      
+
       // Ensure timestamps are in proper UTC format with 'Z' suffix
       if (data.startAt && !data.startAt.endsWith('Z')) {
         data.startAt = data.startAt + 'Z';
@@ -390,14 +391,14 @@ exports.getBookingById = async (req, res) => {
       if (data.updatedAt && !data.updatedAt.endsWith('Z')) {
         data.updatedAt = data.updatedAt + 'Z';
       }
-      
+
       // Fetch discount history for this booking
       const { data: discountHistory, error: discountError } = await supabase
         .from('BookingDiscountHistory')
         .select('*')
         .eq('bookingId', id)
         .order('appliedAt', { ascending: true });
-      
+
       if (!discountError && discountHistory) {
         // Calculate discount summary
         const discountSummary = {
@@ -405,27 +406,27 @@ exports.getBookingById = async (req, res) => {
           byType: { CREDIT: 0, PASS: 0, PROMO_CODE: 0 },
           byAction: { ORIGINAL_BOOKING: 0, RESCHEDULE: 0, EXTENSION: 0, MODIFICATION: 0 }
         };
-        
+
         discountHistory.forEach(discount => {
           const amount = parseFloat(discount.discountAmount || 0);
           discountSummary.totalDiscount += amount;
           discountSummary.byType[discount.discountType] = (discountSummary.byType[discount.discountType] || 0) + amount;
           discountSummary.byAction[discount.actionType] = (discountSummary.byAction[discount.actionType] || 0) + amount;
         });
-        
+
         data.discountHistory = discountHistory;
         data.discountSummary = discountSummary;
       }
     }
 
-    res.status(200).json({ 
+    res.status(200).json({
       success: true,
-      booking: data 
+      booking: data
     });
   } catch (err) {
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: "Internal Server Error" 
+      error: "Internal Server Error"
     });
   }
 };
@@ -527,7 +528,7 @@ exports.getAdminBookingDetails = async (req, res) => {
         .select('id, name')
         .eq('id', packageInfo.packageId)
         .single();
-      
+
       if (!packageError && packageData) {
         packageName = packageData.name;
       }
@@ -545,7 +546,7 @@ exports.getAdminBookingDetails = async (req, res) => {
         .select('*')
         .eq('bookingId', booking.id)
         .order('appliedAt', { ascending: true });
-      
+
       if (!discountError && discountData) {
         discountHistory = discountData;
         // Calculate package discount (discountType === 'PASS')
@@ -610,8 +611,13 @@ exports.getAllBookings = async (req, res) => {
       .select('*', { count: 'exact' });
 
     if (search) {
-      // Search by bookingRef, location, or user email (bookedForEmails)
-      query = query.or(`bookingRef.ilike.%${search}%,location.ilike.%${search}%,bookedForEmails.cs.{${search}}`);
+      // Sanitize search input to prevent SQL injection
+      const { sanitizeSearchQuery } = require("../utils/inputSanitizer");
+      const sanitizedSearch = sanitizeSearchQuery(search);
+      if (sanitizedSearch) {
+        // Use sanitized search - Supabase PostgREST handles parameterization safely
+        query = query.or(`bookingRef.ilike.%${sanitizedSearch}%,location.ilike.%${sanitizedSearch}%,bookedForEmails.cs.{${sanitizedSearch}}`);
+      }
     }
 
     if (status) {
@@ -692,14 +698,14 @@ exports.getAllBookings = async (req, res) => {
     const userIds = bookings
       .filter(b => b.userId)
       .map(b => b.userId);
-    
+
     let userData = {};
     if (userIds.length > 0) {
       const { data: users, error: userError } = await supabase
         .from('User')
         .select('id, name, email, memberType')
         .in('id', userIds);
-      
+
       if (!userError && users) {
         users.forEach(user => {
           userData[user.id] = user;
@@ -710,14 +716,14 @@ exports.getAllBookings = async (req, res) => {
     const promoCodeIds = bookings
       .filter(b => b.promoCodeId)
       .map(b => b.promoCodeId);
-    
+
     let promoCodeData = {};
     if (promoCodeIds.length > 0) {
       const { data: promoCodes, error: promoError } = await supabase
         .from('PromoCode')
         .select('id, code, discountAmount')
         .in('id', promoCodeIds);
-      
+
       if (!promoError && promoCodes) {
         promoCodes.forEach(promo => {
           promoCodeData[promo.id] = promo;
@@ -730,18 +736,18 @@ exports.getAllBookings = async (req, res) => {
       // Ensure UTC timestamps have 'Z' suffix for proper timezone handling
       const startAtUTC = booking.startAt.endsWith('Z') ? booking.startAt : booking.startAt + 'Z';
       const endAtUTC = booking.endAt.endsWith('Z') ? booking.endAt : booking.endAt + 'Z';
-      
+
       const startAt = new Date(startAtUTC);
       const endAt = new Date(endAtUTC);
-      
+
       const isOngoing = startAt <= now && endAt > now;
       const isToday = startAt.toDateString() === now.toDateString();
       const isCompleted = endAt <= now;
       const isUpcoming = !isOngoing && !isToday && startAt > now;
-      
+
       const durationMs = endAt.getTime() - startAt.getTime();
       const durationHours = Math.round(durationMs / (1000 * 60 * 60) * 100) / 100;
-      
+
       let timeUntilBooking = null;
       if (isUpcoming) {
         const remainingMs = startAt.getTime() - now.getTime();
@@ -820,6 +826,7 @@ exports.updateBooking = async (req, res) => {
     const { id } = req.params;
     const updateData = req.body;
 
+    // Fetch existing booking
     const { data: existingBooking, error: fetchError } = await supabase
       .from('Booking')
       .select('*')
@@ -830,10 +837,86 @@ exports.updateBooking = async (req, res) => {
       return res.status(404).json({ error: 'Booking not found' });
     }
 
+    // Check if startAt or endAt is being modified
+    const isTimeModified = updateData.startAt || updateData.endAt;
+    let recalculatedData = { ...updateData };
+
+    if (isTimeModified) {
+      // Use new times if provided, otherwise use existing
+      const newStartAt = updateData.startAt || existingBooking.startAt;
+      const newEndAt = updateData.endAt || existingBooking.endAt;
+      const location = updateData.location || existingBooking.location;
+      const memberType = existingBooking.memberType;
+
+      // Calculate new duration in hours
+      const startTime = new Date(newStartAt);
+      const endTime = new Date(newEndAt);
+      const durationMs = endTime.getTime() - startTime.getTime();
+      const durationHours = durationMs / (1000 * 60 * 60);
+
+      console.log(`📊 Recalculating booking cost:`, {
+        bookingId: id,
+        oldDuration: ((new Date(existingBooking.endAt) - new Date(existingBooking.startAt)) / (1000 * 60 * 60)).toFixed(2) + 'h',
+        newDuration: durationHours.toFixed(2) + 'h',
+        location,
+        memberType
+      });
+
+      // Fetch pricing configuration for this location and member type
+      const { data: pricingConfig, error: pricingError } = await supabase
+        .from('pricing_configuration')
+        .select('*')
+        .eq('location', location)
+        .eq('memberType', memberType)
+        .eq('isActive', true)
+        .single();
+
+      if (pricingError || !pricingConfig) {
+        console.error('❌ Error fetching pricing configuration:', pricingError);
+        return res.status(400).json({
+          error: 'Pricing configuration not found for this location and member type'
+        });
+      }
+
+      // Calculate new total cost based on duration
+      let newTotalCost = 0;
+      if (durationHours <= 1) {
+        // First hour rate
+        newTotalCost = parseFloat(pricingConfig.oneHourRate);
+      } else {
+        // First hour + additional hours
+        const additionalHours = durationHours - 1;
+        newTotalCost = parseFloat(pricingConfig.oneHourRate) +
+          (additionalHours * parseFloat(pricingConfig.overOneHourRate));
+      }
+
+      // Multiply by number of people
+      const pax = existingBooking.pax || 1;
+      newTotalCost = newTotalCost * pax;
+
+      console.log(`💰 New pricing calculation:`, {
+        oneHourRate: pricingConfig.oneHourRate,
+        overOneHourRate: pricingConfig.overOneHourRate,
+        durationHours: durationHours.toFixed(2),
+        pax,
+        newTotalCost: newTotalCost.toFixed(2)
+      });
+
+      // Update recalculated data
+      recalculatedData.totalCost = newTotalCost;
+
+      // If totalAmount was not explicitly provided, set it to totalCost
+      // (assuming no discounts unless explicitly specified)
+      if (!updateData.totalAmount) {
+        recalculatedData.totalAmount = newTotalCost;
+      }
+    }
+
+    // Perform the update
     const { data: updatedBooking, error: updateError } = await supabase
       .from('Booking')
       .update({
-        ...updateData,
+        ...recalculatedData,
         updatedAt: new Date().toISOString()
       })
       .eq('id', id)
@@ -841,9 +924,11 @@ exports.updateBooking = async (req, res) => {
       .single();
 
     if (updateError) {
+      console.error('❌ Error updating booking:', updateError);
       return res.status(500).json({ error: 'Failed to update booking' });
     }
 
+    // Fetch user data
     let userData = null;
     if (updatedBooking.userId) {
       const { data: user, error: userError } = await supabase
@@ -851,7 +936,7 @@ exports.updateBooking = async (req, res) => {
         .select('id, name, email')
         .eq('id', updatedBooking.userId)
         .single();
-      
+
       if (!userError && user) {
         userData = user;
       }
@@ -862,16 +947,14 @@ exports.updateBooking = async (req, res) => {
       User: userData
     };
 
-    if (updateError) {
-      return res.status(500).json({ error: 'Failed to update booking' });
-    }
-
     res.json({
       message: 'Booking updated successfully',
-      booking: finalResponse
+      booking: finalResponse,
+      recalculated: isTimeModified
     });
 
   } catch (err) {
+    console.error('❌ Error in updateBooking:', err);
     res.status(500).json({ error: 'Failed to update booking' });
   }
 };
@@ -881,6 +964,7 @@ exports.cancelBooking = async (req, res) => {
     const { id } = req.params;
     const { reason, refundAmount } = req.body;
 
+    // Fetch existing booking
     const { data: existingBooking, error: fetchError } = await supabase
       .from('Booking')
       .select('*')
@@ -891,33 +975,74 @@ exports.cancelBooking = async (req, res) => {
       return res.status(404).json({ error: 'Booking not found' });
     }
 
+    // Check if already cancelled
+    if (existingBooking.status === 'cancelled') {
+      return res.status(400).json({ error: 'Booking is already cancelled' });
+    }
+
     const now = new Date();
     const startAt = new Date(existingBooking.startAt);
-    
+
+    // Allow cancellation of future bookings only (optional - remove if you want to allow past cancellations)
     if (startAt <= now) {
       return res.status(400).json({ error: 'Cannot cancel past or ongoing bookings' });
     }
 
-    const { error: deleteError } = await supabase
+    // Update booking status to 'cancelled' instead of deleting
+    const { data: cancelledBooking, error: updateError } = await supabase
       .from('Booking')
-      .delete()
-      .eq('id', id);
+      .update({
+        status: 'cancelled',
+        cancelledBy: 'admin',
+        cancelledAt: now.toISOString(),
+        cancellationReason: reason || 'Cancelled by Admin',
+        refundAmount: refundAmount || existingBooking.totalAmount,
+        updatedAt: now.toISOString()
+      })
+      .eq('id', id)
+      .select('*')
+      .single();
 
-    if (deleteError) {
+    if (updateError) {
+      console.error('❌ Error updating booking status:', updateError);
       return res.status(500).json({ error: 'Failed to cancel booking' });
     }
 
+    // Log cancellation activity
+    try {
+      await logBookingActivity({
+        bookingId: existingBooking.id,
+        bookingRef: existingBooking.bookingRef,
+        activityType: ACTIVITY_TYPES.BOOKING_CANCELLED,
+        activityTitle: 'Booking Cancelled by Admin',
+        activityDescription: `Booking cancelled by admin. Reason: ${reason || 'No reason provided'}`,
+        userId: existingBooking.userId,
+        userEmail: existingBooking.bookedForEmails?.[0],
+        amount: refundAmount || existingBooking.totalAmount
+      });
+    } catch (logError) {
+      console.error('Error logging cancellation activity:', logError);
+      // Don't fail the cancellation if logging fails
+    }
+
     res.json({
+      success: true,
       message: 'Booking cancelled successfully',
+      booking: cancelledBooking,
       cancelledBooking: {
         id: existingBooking.id,
         bookingRef: existingBooking.bookingRef,
-        reason: reason || 'Admin cancellation',
-        refundAmount: refundAmount || existingBooking.totalAmount
+        status: 'cancelled',
+        cancelledBy: 'admin',
+        reason: reason || 'Cancelled by Admin',
+        refundAmount: refundAmount || existingBooking.totalAmount,
+        seatNumbers: existingBooking.seatNumbers // Seats are now released
       }
     });
 
   } catch (err) {
+    console.error('❌ Error in cancelBooking:', err);
     res.status(500).json({ error: 'Failed to cancel booking' });
   }
 };
+

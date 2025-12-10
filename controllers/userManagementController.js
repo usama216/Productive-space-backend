@@ -1,4 +1,5 @@
 const supabase = require("../config/database");
+const { sanitizeSearchQuery, sanitizeString, sanitizeNumber } = require("../utils/inputSanitizer");
 
 exports.getAllUsers = async (req, res) => {
   try {
@@ -18,21 +19,39 @@ exports.getAllUsers = async (req, res) => {
       .select('*', { count: 'exact' });
 
     if (search) {
-      query = query.or(`firstName.ilike.%${search}%,lastName.ilike.%${search}%,email.ilike.%${search}%`);
+      // Sanitize search input to prevent SQL injection
+      const sanitizedSearch = sanitizeSearchQuery(search);
+      if (sanitizedSearch) {
+        // Use parameterized approach - Supabase PostgREST handles this safely
+        // but we sanitize the input anyway
+        query = query.or(`firstName.ilike.%${sanitizedSearch}%,lastName.ilike.%${sanitizedSearch}%,email.ilike.%${sanitizedSearch}%`);
+      }
     }
 
     if (memberType) {
-      query = query.eq('memberType', memberType);
+      const sanitizedMemberType = sanitizeString(memberType, 20);
+      if (sanitizedMemberType) {
+        query = query.eq('memberType', sanitizedMemberType);
+      }
     }
 
     if (studentVerificationStatus) {
-      query = query.eq('studentVerificationStatus', studentVerificationStatus);
+      const sanitizedStatus = sanitizeString(studentVerificationStatus, 20);
+      if (sanitizedStatus) {
+        query = query.eq('studentVerificationStatus', sanitizedStatus);
+      }
     }
 
-    query = query.order(sortBy, { ascending: sortOrder === 'asc' });
+    // Sanitize sortBy to prevent injection
+    const allowedSortFields = ['createdAt', 'updatedAt', 'email', 'firstName', 'lastName', 'memberType'];
+    const sanitizedSortBy = allowedSortFields.includes(sortBy) ? sortBy : 'createdAt';
+    query = query.order(sanitizedSortBy, { ascending: sortOrder === 'asc' });
 
-    const offset = (page - 1) * limit;
-    query = query.range(offset, offset + limit - 1);
+    // Sanitize pagination parameters
+    const sanitizedPage = sanitizeNumber(page, 1, 1000) || 1;
+    const sanitizedLimit = sanitizeNumber(limit, 1, 100) || 20;
+    const offset = (sanitizedPage - 1) * sanitizedLimit;
+    query = query.range(offset, offset + sanitizedLimit - 1);
 
     const { data: users, error, count } = await query;
 

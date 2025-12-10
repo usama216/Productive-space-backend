@@ -19,6 +19,7 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
+    "express-rate-limit": "^7.5.1",
     "moment-timezone": "^0.6.0",
     "multer": "^2.0.2",
     "node-cron": "^3.0.3",

@@ -15,26 +15,59 @@ const { cronJob: studentExpiryCronJob } = require('./automaticExpiryCheck');
 // Import authentication middleware
 const { authenticateUser, requireAdmin, requireOwnershipOrAdmin } = require('./middleware/auth');
 
+// Import rate limiting middleware
+const { 
+  generalLimiter, 
+  authLimiter, 
+  sensitiveOperationLimiter, 
+  adminLimiter,
+  userLimiter,
+  publicLimiter 
+} = require('./middleware/rateLimiter');
+
 // Start cleanup schedulers
 startCreditCleanup();
 
 const app = express();
 
 
+// CORS Configuration - Security: Only allow trusted origins
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+  : [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'https://productive-space.vercel.app',
+      'https://www.productivespace.sg'
+    ];
+
 app.use(cors({
   origin: function (origin, callback) {
-    // allow requests with no origin (Postman, mobile apps, curl)
-    if (!origin) return callback(null, true);
-    return callback(null, true); // allow all origins dynamically
+    // Allow requests with no origin (Postman, mobile apps, curl, server-to-server)
+    // This is needed for webhooks and server-side requests
+    if (!origin) {
+      return callback(null, true);
+    }
+    
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      // Log blocked origin for security monitoring
+      console.warn(`🚫 CORS blocked origin: ${origin}`);
+      callback(new Error('Not allowed by CORS policy'));
+    }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  maxAge: 86400 // 24 hours
 }));
 
-
-
-
+// Apply general rate limiting to all routes
+// Specific routes can override with their own limiters
+app.use('/api', generalLimiter);
 
 // Middleware to capture raw body for webhook signature verification
 // Must capture raw body before express.json() parses it
@@ -190,32 +223,34 @@ app.get("/", (req, res) => {
 });
 app.use("/api/door", doorRoutes);
 // Public door unlock endpoint - clean URL without exposing internal API structure
-app.get("/open", require('./controllers/doorController').openDoor);
+// Apply public rate limiting (more permissive) - door unlock uses token-based auth
+app.get("/open", publicLimiter, require('./controllers/doorController').openDoor);
 app.use("/api/hitpay", paymentRoutes);
 app.use("/api/booking", bookingRoutes);
+// Apply rate limiting based on route sensitivity
 app.use("/api/promocode", promoCodeRoutes);
 app.use("/api/student", studentVerificationRoutes);
 app.use("/api/packages", packageRoutes);
-app.use("/api/packages", packagePaymentRoutes);
+app.use("/api/packages", sensitiveOperationLimiter, packagePaymentRoutes);
 app.use("/api/new-packages", newPackageRoutes);
 app.use("/api/packages", packageUsageRoutes);
-app.use("/api/admin/packages", adminPackageUsageRoutes);
-app.use("/api/admin/packages", adminPackageRoutes);
-app.use("/api/test", simpleTestRoutes);
-app.use("/api/refund", refundRoutes);
-app.use("/api/admin/refund", adminRefundRoutes);
-app.use("/api/credit", creditRoutes);
+app.use("/api/admin/packages", adminLimiter, adminPackageUsageRoutes);
+app.use("/api/admin/packages", adminLimiter, adminPackageRoutes);
+app.use("/api/test", adminLimiter, simpleTestRoutes); // Test routes should be admin-only
+app.use("/api/refund", sensitiveOperationLimiter, refundRoutes);
+app.use("/api/admin/refund", adminLimiter, adminRefundRoutes);
+app.use("/api/credit", sensitiveOperationLimiter, creditRoutes);
 app.use("/api", pricingRoutes);
-app.use("/api/reschedule", rescheduleRoutes);
+app.use("/api/reschedule", sensitiveOperationLimiter, rescheduleRoutes);
 app.use("/api/discount-history", discountHistoryRoutes);
-app.use("/api/tuya-settings", tuyaSettingsRoutes);
+app.use("/api/tuya-settings", adminLimiter, tuyaSettingsRoutes);
 app.use("/api/booking-activity", bookingActivityRoutes);
 app.use("/api/payment-settings", paymentSettingsRoutes);
 app.use("/api", announcementRoutes);
-app.use("/api", adminUserRoutes);
+app.use("/api", adminLimiter, adminUserRoutes);
 app.use("/api/shop-hours", shopHoursRoutes);
-app.use("/api/booking", require('./routes/packageApplication'));
-app.post('/api/test-package-usage', authenticateUser, requireAdmin, async (req, res) => {
+app.use("/api/booking", sensitiveOperationLimiter, require('./routes/packageApplication'));
+app.post('/api/test-package-usage', adminLimiter, authenticateUser, requireAdmin, async (req, res) => {
   try {
     const { handlePackageUsage } = require('./utils/packageUsageHelper');
     const { createClient } = require('@supabase/supabase-js');
@@ -253,7 +288,7 @@ app.post('/api/test-package-usage', authenticateUser, requireAdmin, async (req, 
 });
 
 // Test verification tracking endpoint
-app.get('/api/test-verification-tracking/:userId', authenticateUser, requireOwnershipOrAdmin('userId'), async (req, res) => {
+app.get('/api/test-verification-tracking/:userId', adminLimiter, authenticateUser, requireOwnershipOrAdmin('userId'), async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -262,7 +297,7 @@ app.get('/api/test-verification-tracking/:userId', authenticateUser, requireOwne
     const { data: user, error } = await supabase
       .from('User')
       .select('*')
-      .eq('id', userId)
+      .eq('id', sanitizedUserId)
       .single();
 
     if (error || !user) {
@@ -294,16 +329,26 @@ app.get('/api/test-verification-tracking/:userId', authenticateUser, requireOwne
 });
 
 // Get verification history for a user
-app.get('/api/verification-history/:userId', authenticateUser, requireOwnershipOrAdmin('userId'), async (req, res) => {
+app.get('/api/verification-history/:userId', userLimiter, authenticateUser, requireOwnershipOrAdmin('userId'), async (req, res) => {
   try {
+    const { sanitizeUUID } = require('./utils/inputSanitizer');
     const { userId } = req.params;
+    
+    // Sanitize userId to prevent injection
+    const sanitizedUserId = sanitizeUUID(userId);
+    if (!sanitizedUserId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid user ID format'
+      });
+    }
 
-    console.log('📋 Getting verification history for user:', userId);
+    console.log('📋 Getting verification history for user:', sanitizedUserId);
 
     const { data: history, error } = await supabase
       .from('VerificationHistory')
       .select('*')
-      .eq('userId', userId)
+      .eq('userId', sanitizedUserId)
       .order('changedAt', { ascending: false }); // Most recent first
 
     if (error) {
@@ -327,7 +372,7 @@ app.get('/api/verification-history/:userId', authenticateUser, requireOwnershipO
   }
 });
 
-app.post('/api/cleanup-unpaid-bookings', authenticateUser, requireAdmin, async (req, res) => {
+app.post('/api/cleanup-unpaid-bookings', adminLimiter, authenticateUser, requireAdmin, async (req, res) => {
   try {
     await cleanupUnpaidBookings();
     res.json({ success: true, message: 'Cleanup completed' });
@@ -375,7 +420,7 @@ app.get("/api/user/:userId", authenticateUser, requireOwnershipOrAdmin('userId')
                 studentRejectionReason,
                 studentVerificationStatus
             `)
-      .eq("id", userId)
+      .eq("id", sanitizedUserId)
       .single();
 
     if (error) {
@@ -410,7 +455,17 @@ app.get("/api/user/:userId", authenticateUser, requireOwnershipOrAdmin('userId')
 
 app.put("/api/user/:userId", authenticateUser, requireOwnershipOrAdmin('userId'), upload.single('studentVerificationFile'), async (req, res) => {
   try {
+    const { sanitizeUUID } = require('./utils/inputSanitizer');
     const { userId } = req.params;
+    
+    // Sanitize userId to prevent injection
+    const sanitizedUserId = sanitizeUUID(userId);
+    if (!sanitizedUserId) {
+      return res.status(400).json({
+        error: "Invalid user ID format",
+        message: "Please provide a valid user ID"
+      });
+    }
     const {
       firstName,
       lastName,
@@ -419,17 +474,10 @@ app.put("/api/user/:userId", authenticateUser, requireOwnershipOrAdmin('userId')
       updatedAt
     } = req.body;
 
-    if (!userId) {
-      return res.status(400).json({
-        error: "User ID is required",
-        message: "Please provide a valid user ID"
-      });
-    }
-
     const { data: existingUser, error: userError } = await supabase
       .from("User")
       .select("id")
-      .eq("id", userId)
+      .eq("id", sanitizedUserId)
       .single();
 
     if (userError || !existingUser) {
@@ -457,7 +505,7 @@ app.put("/api/user/:userId", authenticateUser, requireOwnershipOrAdmin('userId')
     const { data: updatedUser, error: updateError } = await supabase
       .from("User")
       .update(updateData)
-      .eq("id", userId)
+      .eq("id", sanitizedUserId)
       .select(`
                 id,
                 email,

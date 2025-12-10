@@ -93,13 +93,15 @@ const rescheduleBooking = async (req, res) => {
     const startAtUTC = startAt.endsWith('Z') ? startAt : startAt + 'Z';
     const endAtUTC = endAt.endsWith('Z') ? endAt : endAt + 'Z';
     
+    // Use Supabase's chained methods instead of string interpolation for date comparison
     const { data: conflictingBookings, error: conflictError } = await supabase
       .from('Booking')
       .select('id, seatNumbers, startAt, endAt')
       .eq('location', currentBooking.location)
       .eq('confirmedPayment', true)
       .neq('id', bookingId) // Exclude current booking
-      .or(`and(startAt.lt.${endAtUTC},endAt.gt.${startAtUTC})`)
+      .lt('startAt', endAtUTC)
+      .gt('endAt', startAtUTC)
 
     if (conflictError) {
       console.error('❌ Error checking seat conflicts:', conflictError)
@@ -417,7 +419,8 @@ const getAvailableSeatsForReschedule = async (req, res) => {
       .eq('location', currentBooking.location)
       .eq('confirmedPayment', true)
       .neq('id', bookingId) // Exclude current booking
-      .or(`and(startAt.lt.${endAtUTC},endAt.gt.${startAtUTC})`)
+      .lt('startAt', endAtUTC)
+      .gt('endAt', startAtUTC)
 
     if (conflictError) {
       return res.status(500).json({
@@ -532,10 +535,18 @@ const confirmReschedulePayment = async (req, res) => {
           payment = paymentByRescheduleRef
         } else {
           // Try 3: Find the most recent payment for this booking
+          // Sanitize booking ID to prevent SQL injection
+          const { sanitizeUUID, sanitizeBookingRef } = require("../utils/inputSanitizer");
+          const sanitizedBookingId = sanitizeUUID(bookingId);
+          
+          if (!sanitizedBookingId) {
+            return res.status(400).json({ error: 'Invalid booking ID format' });
+          }
+          
           const { data: recentPayments, error: errorRecent } = await supabase
             .from('Payment')
             .select('*')
-            .or(`bookingRef.eq.${bookingId},bookingRef.eq.RESCHEDULE_${bookingId}`)
+            .or(`bookingRef.eq.${sanitizedBookingId},bookingRef.eq.RESCHEDULE_${sanitizedBookingId}`)
             .order('createdAt', { ascending: false })
             .limit(5)
           

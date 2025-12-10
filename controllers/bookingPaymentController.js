@@ -879,14 +879,32 @@ exports.getBookingPaymentDetails = async (req, res) => {
 
     // First, let's check what payments exist for this booking
     // Try multiple query patterns to find all related payments
+    // Sanitize booking references to prevent SQL injection
+    const { sanitizeBookingRef, sanitizeUUID } = require("../utils/inputSanitizer");
+    
+    const orConditions = [];
+    if (booking.bookingRef) {
+      const sanitizedRef = sanitizeBookingRef(booking.bookingRef);
+      if (sanitizedRef) {
+        orConditions.push(`bookingRef.eq.${sanitizedRef}`);
+      }
+    }
+    
+    const sanitizedBookingId = sanitizeUUID(booking.id);
+    if (sanitizedBookingId) {
+      orConditions.push(`bookingRef.eq.RESCHEDULE_${sanitizedBookingId}`);
+      orConditions.push(`bookingRef.eq.${sanitizedBookingId}`);
+    }
+    
     const { data: allPaymentsCheck, error: checkError } = await supabase
       .from('Payment')
       .select('id, totalAmount, cost, paymentMethod, bookingRef, createdAt')
-      .or(`bookingRef.eq.${booking.bookingRef},bookingRef.eq.RESCHEDULE_${booking.id},bookingRef.eq.${booking.id}`)
+      .or(orConditions.length > 0 ? orConditions.join(',') : 'id.eq.null') // Use null condition if no valid conditions
       .order('createdAt', { ascending: true });
 
     console.log('🔍 All payments found for booking:', allPaymentsCheck);
-    console.log('🔍 Query used:', `bookingRef.eq.${booking.bookingRef},bookingRef.eq.RESCHEDULE_${booking.id},bookingRef.eq.${booking.id}`);
+    // Log sanitized query for debugging (using sanitized values)
+    console.log('🔍 Query used:', orConditions.join(','));
 
     // Also try a broader search to see all payments
     const { data: allPaymentsBroader, error: broaderError } = await supabase

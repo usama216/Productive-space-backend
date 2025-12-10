@@ -1036,7 +1036,12 @@ exports.getAllPromoCodes = async (req, res) => {
       .is("deletedAt", null);
 
     if (search) {
-      query = query.or(`code.ilike.%${search}%,name.ilike.%${search}%,description.ilike.%${search}%`);
+      // Sanitize search input to prevent SQL injection
+      const { sanitizeSearchQuery } = require("../utils/inputSanitizer");
+      const sanitizedSearch = sanitizeSearchQuery(search);
+      if (sanitizedSearch) {
+        query = query.or(`code.ilike.%${sanitizedSearch}%,name.ilike.%${sanitizedSearch}%,description.ilike.%${sanitizedSearch}%`);
+      }
     }
 
     if (status === "active") {
