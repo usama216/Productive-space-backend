@@ -10,8 +10,8 @@ const rateLimit = require('express-rate-limit');
  * 100 requests per 15 minutes per IP
  */
 const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
+  windowMs: 60 * 60 * 1000, // 15 minutes
+  max: 1000, // Limit each IP to 100 requests per windowMs
   message: {
     success: false,
     error: 'Too many requests',
@@ -31,8 +31,8 @@ const generalLimiter = rateLimit({
  * Prevents brute force attacks
  */
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit each IP to 5 requests per windowMs
+  windowMs: 65 * 60 * 1000, // 15 minutes
+  max: 50, // Limit each IP to 5 requests per windowMs
   message: {
     success: false,
     error: 'Too many authentication attempts',
@@ -52,8 +52,8 @@ const authLimiter = rateLimit({
  * For operations like payment, booking creation, etc.
  */
 const sensitiveOperationLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // Limit each IP to 20 requests per windowMs
+  windowMs: 60 * 60 * 1000, // 15 minutes
+  max: 200, // Limit each IP to 20 requests per windowMs
   message: {
     success: false,
     error: 'Too many requests',
@@ -69,8 +69,8 @@ const sensitiveOperationLimiter = rateLimit({
  * Higher limit for admin operations
  */
 const adminLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200, // Limit each IP to 200 requests per windowMs
+  windowMs: 60 * 60 * 1000, // 15 minutes
+  max: 2000, // Limit each IP to 200 requests per windowMs
   message: {
     success: false,
     error: 'Too many requests',
@@ -86,8 +86,8 @@ const adminLimiter = rateLimit({
  * 50 requests per 15 minutes per user
  */
 const userLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // Limit each user to 50 requests per windowMs
+  windowMs: 60 * 60 * 1000, // 15 minutes
+  max: 500, // Limit each user to 50 requests per windowMs
   message: {
     success: false,
     error: 'Too many requests',
@@ -111,8 +111,8 @@ const userLimiter = rateLimit({
  * 200 requests per 15 minutes per IP
  */
 const publicLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200, // Limit each IP to 200 requests per windowMs
+  windowMs: 60 * 60 * 1000, // 15 minutes
+  max: 2000, // Limit each IP to 200 requests per windowMs
   message: {
     success: false,
     error: 'Too many requests',
