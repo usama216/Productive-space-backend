@@ -290,9 +290,18 @@ app.post('/api/test-package-usage', adminLimiter, authenticateUser, requireAdmin
 // Test verification tracking endpoint
 app.get('/api/test-verification-tracking/:userId', adminLimiter, authenticateUser, requireOwnershipOrAdmin('userId'), async (req, res) => {
   try {
+    const { sanitizeUUID } = require('./utils/inputSanitizer');
     const { userId } = req.params;
 
-    console.log('🧪 Test verification tracking for user:', userId);
+    const sanitizedUserId = sanitizeUUID(userId);
+    if (!sanitizedUserId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid user ID format'
+      });
+    }
+
+    console.log('🧪 Test verification tracking for user:', sanitizedUserId);
 
     const { data: user, error } = await supabase
       .from('User')
@@ -395,11 +404,20 @@ app.use('/docs', swaggerUi.serve, swaggerUi.setup(specs, {
 
 app.get("/api/user/:userId", authenticateUser, requireOwnershipOrAdmin('userId'), async (req, res) => {
   try {
+    const { sanitizeUUID } = require('./utils/inputSanitizer');
     const { userId } = req.params;
 
     if (!userId) {
       return res.status(400).json({
         error: "User ID is required",
+        message: "Please provide a valid user ID"
+      });
+    }
+
+    const sanitizedUserId = sanitizeUUID(userId);
+    if (!sanitizedUserId) {
+      return res.status(400).json({
+        error: "Invalid user ID format",
         message: "Please provide a valid user ID"
       });
     }
