@@ -1,5 +1,5 @@
 const supabase = require("../config/database");
-const { sanitizeSearchQuery, sanitizeString, sanitizeNumber } = require("../utils/inputSanitizer");
+const { sanitizeSearchQuery, sanitizeString, sanitizeNumber, buildSafeOrQuery } = require("../utils/inputSanitizer");
 
 exports.getAllUsers = async (req, res) => {
   try {
@@ -22,9 +22,18 @@ exports.getAllUsers = async (req, res) => {
       // Sanitize search input to prevent SQL injection
       const sanitizedSearch = sanitizeSearchQuery(search);
       if (sanitizedSearch) {
-        // Use parameterized approach - Supabase PostgREST handles this safely
-        // but we sanitize the input anyway
-        query = query.or(`firstName.ilike.%${sanitizedSearch}%,lastName.ilike.%${sanitizedSearch}%,email.ilike.%${sanitizedSearch}%`);
+        // Contain-based search: search in firstName, lastName, email, and contactNumber
+        // This handles spaces properly - "John Doe" will match users with firstName="John" and lastName="Doe"
+        // Using ilike with %value% for contain-based matching (case-insensitive partial match)
+        const orConditions = buildSafeOrQuery([
+          { field: 'firstName', operator: 'ilike', value: `%${sanitizedSearch}%` },
+          { field: 'lastName', operator: 'ilike', value: `%${sanitizedSearch}%` },
+          { field: 'email', operator: 'ilike', value: `%${sanitizedSearch}%` },
+          { field: 'contactNumber', operator: 'ilike', value: `%${sanitizedSearch}%` }
+        ]);
+        if (orConditions) {
+          query = query.or(orConditions);
+        }
       }
     }
 

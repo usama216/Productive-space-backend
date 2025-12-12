@@ -1037,10 +1037,22 @@ exports.getAllPromoCodes = async (req, res) => {
 
     if (search) {
       // Sanitize search input to prevent SQL injection
-      const { sanitizeSearchQuery } = require("../utils/inputSanitizer");
+      const { sanitizeSearchQuery, buildSafeOrQuery } = require("../utils/inputSanitizer");
       const sanitizedSearch = sanitizeSearchQuery(search);
       if (sanitizedSearch) {
-        query = query.or(`code.ilike.%${sanitizedSearch}%,name.ilike.%${sanitizedSearch}%,description.ilike.%${sanitizedSearch}%`);
+        // Contain-based search: search in code, name, description, and category
+        // Using ilike with %value% for contain-based matching (case-insensitive partial match)
+        // This handles spaces properly - "summer sale" will match promo codes containing "summer sale"
+        // FIXED CRITICAL-002: Use buildSafeOrQuery instead of string interpolation
+        const orConditions = buildSafeOrQuery([
+          { field: 'code', operator: 'ilike', value: `%${sanitizedSearch}%` },
+          { field: 'name', operator: 'ilike', value: `%${sanitizedSearch}%` },
+          { field: 'description', operator: 'ilike', value: `%${sanitizedSearch}%` },
+          { field: 'category', operator: 'ilike', value: `%${sanitizedSearch}%` }
+        ]);
+        if (orConditions) {
+          query = query.or(orConditions);
+        }
       }
     }
 
@@ -1051,11 +1063,21 @@ exports.getAllPromoCodes = async (req, res) => {
     }
 
     if (promoType) {
-      query = query.eq("promoType", promoType.toUpperCase());
+      // Sanitize promoType to prevent SQL injection
+      const { sanitizeString } = require("../utils/inputSanitizer");
+      const sanitizedPromoType = sanitizeString(promoType, 50);
+      if (sanitizedPromoType) {
+        query = query.eq("promoType", sanitizedPromoType.toUpperCase());
+      }
     }
 
     if (targetGroup) {
-      query = query.eq("targetGroup", targetGroup.toUpperCase());
+      // Sanitize targetGroup to prevent SQL injection
+      const { sanitizeString } = require("../utils/inputSanitizer");
+      const sanitizedTargetGroup = sanitizeString(targetGroup, 50);
+      if (sanitizedTargetGroup) {
+        query = query.eq("targetGroup", sanitizedTargetGroup.toUpperCase());
+      }
     }
 
     query = query.range(offset, offset + limit - 1).order("priority", { ascending: false }).order("code", { ascending: true });

@@ -12,7 +12,21 @@ exports.getPackages = async (req, res) => {
 
     // Apply filters
     if (search) {
-      query = query.ilike("name", `%${search}%`);
+      // Sanitize search input to prevent SQL injection
+      const { sanitizeSearchQuery, buildSafeOrQuery } = require("../utils/inputSanitizer");
+      const sanitizedSearch = sanitizeSearchQuery(search);
+      if (sanitizedSearch) {
+        // Contain-based search: search in name and description
+        // Using ilike with %value% for contain-based matching (case-insensitive partial match)
+        // This handles spaces properly - "half day" will match packages containing "half day"
+        const orConditions = buildSafeOrQuery([
+          { field: 'name', operator: 'ilike', value: `%${sanitizedSearch}%` },
+          { field: 'description', operator: 'ilike', value: `%${sanitizedSearch}%` }
+        ]);
+        if (orConditions) {
+          query = query.or(orConditions);
+        }
+      }
     }
 
     if (packageType) {

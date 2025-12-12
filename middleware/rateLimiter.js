@@ -1,17 +1,46 @@
 /**
  * Rate Limiting Middleware
  * Protects API endpoints from brute force attacks, DDoS, and abuse
+ * 
+ * Note: Rate limiting is disabled in development mode (NODE_ENV=development)
+ * 
+ * Configuration via Environment Variables:
+ * - RATE_LIMIT_GENERAL_WINDOW_MS: Time window for general limiter (default: 900000 = 15 minutes)
+ * - RATE_LIMIT_GENERAL_MAX: Max requests per window for general limiter (default: 100)
+ * - RATE_LIMIT_AUTH_WINDOW_MS: Time window for auth limiter (default: 900000 = 15 minutes)
+ * - RATE_LIMIT_AUTH_MAX: Max requests per window for auth limiter (default: 5)
+ * - RATE_LIMIT_SENSITIVE_WINDOW_MS: Time window for sensitive operations (default: 900000 = 15 minutes)
+ * - RATE_LIMIT_SENSITIVE_MAX: Max requests per window for sensitive operations (default: 20)
+ * - RATE_LIMIT_ADMIN_WINDOW_MS: Time window for admin limiter (default: 900000 = 15 minutes)
+ * - RATE_LIMIT_ADMIN_MAX: Max requests per window for admin limiter (default: 200)
+ * - RATE_LIMIT_USER_WINDOW_MS: Time window for user limiter (default: 900000 = 15 minutes)
+ * - RATE_LIMIT_USER_MAX: Max requests per window for user limiter (default: 50)
+ * - RATE_LIMIT_PUBLIC_WINDOW_MS: Time window for public limiter (default: 900000 = 15 minutes)
+ * - RATE_LIMIT_PUBLIC_MAX: Max requests per window for public limiter (default: 200)
  */
 
 const rateLimit = require('express-rate-limit');
 
+// Check if we're in development mode
+const isDevelopment = process.env.NODE_ENV === 'development';
+
+// Parse environment variables with defaults
+const parseEnvInt = (envVar, defaultValue) => {
+  const value = process.env[envVar];
+  if (value === undefined || value === null) {
+    return defaultValue;
+  }
+  const parsed = parseInt(value, 10);
+  return isNaN(parsed) ? defaultValue : parsed;
+};
+
 /**
  * General API rate limiter
- * 100 requests per 15 minutes per IP
+ * Applied to all /api routes by default
  */
 const generalLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 15 minutes
-  max: 1000, // Limit each IP to 100 requests per windowMs
+  windowMs: parseEnvInt('RATE_LIMIT_GENERAL_WINDOW_MS', 15 * 60 * 1000), // Default: 15 minutes
+  max: parseEnvInt('RATE_LIMIT_GENERAL_MAX', 100), // Default: 100 requests per window
   message: {
     success: false,
     error: 'Too many requests',
@@ -19,20 +48,19 @@ const generalLimiter = rateLimit({
   },
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  // Skip rate limiting for webhooks (they use signature verification)
+  // Skip rate limiting in development or for webhooks (they use signature verification)
   skip: (req) => {
-    return req.path.includes('/webhook');
+    return isDevelopment || req.path.includes('/webhook');
   }
 });
 
 /**
  * Strict rate limiter for authentication endpoints
- * 5 requests per 15 minutes per IP
  * Prevents brute force attacks
  */
 const authLimiter = rateLimit({
-  windowMs: 65 * 60 * 1000, // 15 minutes
-  max: 50, // Limit each IP to 5 requests per windowMs
+  windowMs: parseEnvInt('RATE_LIMIT_AUTH_WINDOW_MS', 15 * 60 * 1000), // Default: 15 minutes
+  max: parseEnvInt('RATE_LIMIT_AUTH_MAX', 5), // Default: 5 requests per window
   message: {
     success: false,
     error: 'Too many authentication attempts',
@@ -40,6 +68,10 @@ const authLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip rate limiting in development
+  skip: () => {
+    return isDevelopment;
+  },
   // Use IP address for tracking
   keyGenerator: (req) => {
     return req.ip || req.connection.remoteAddress;
@@ -48,46 +80,51 @@ const authLimiter = rateLimit({
 
 /**
  * Moderate rate limiter for sensitive operations
- * 20 requests per 15 minutes per IP
- * For operations like payment, booking creation, etc.
+ * For operations like payment, booking creation, refund, etc.
  */
 const sensitiveOperationLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 15 minutes
-  max: 200, // Limit each IP to 20 requests per windowMs
+  windowMs: parseEnvInt('RATE_LIMIT_SENSITIVE_WINDOW_MS', 15 * 60 * 1000), // Default: 15 minutes
+  max: parseEnvInt('RATE_LIMIT_SENSITIVE_MAX', 20), // Default: 20 requests per window
   message: {
     success: false,
     error: 'Too many requests',
     message: 'Too many requests for this operation, please try again later.'
   },
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  // Skip rate limiting in development
+  skip: () => {
+    return isDevelopment;
+  }
 });
 
 /**
  * Admin rate limiter
- * 200 requests per 15 minutes per IP
  * Higher limit for admin operations
  */
 const adminLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 15 minutes
-  max: 2000, // Limit each IP to 200 requests per windowMs
+  windowMs: parseEnvInt('RATE_LIMIT_ADMIN_WINDOW_MS', 15 * 60 * 1000), // Default: 15 minutes
+  max: parseEnvInt('RATE_LIMIT_ADMIN_MAX', 200), // Default: 200 requests per window
   message: {
     success: false,
     error: 'Too many requests',
     message: 'Too many admin requests, please try again later.'
   },
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  // Skip rate limiting in development
+  skip: () => {
+    return isDevelopment;
+  }
 });
 
 /**
  * User-specific rate limiter
  * Uses authenticated user ID instead of IP
- * 50 requests per 15 minutes per user
  */
 const userLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 15 minutes
-  max: 500, // Limit each user to 50 requests per windowMs
+  windowMs: parseEnvInt('RATE_LIMIT_USER_WINDOW_MS', 15 * 60 * 1000), // Default: 15 minutes
+  max: parseEnvInt('RATE_LIMIT_USER_MAX', 50), // Default: 50 requests per window
   message: {
     success: false,
     error: 'Too many requests',
@@ -99,27 +136,30 @@ const userLimiter = rateLimit({
   keyGenerator: (req) => {
     return req.user?.id || req.ip || req.connection.remoteAddress;
   },
-  // Skip if user is admin
+  // Skip in development or if user is admin
   skip: (req) => {
-    return req.user?.memberType === 'ADMIN';
+    return isDevelopment || req.user?.memberType === 'ADMIN';
   }
 });
 
 /**
  * Public endpoint rate limiter
  * More permissive for public endpoints
- * 200 requests per 15 minutes per IP
  */
 const publicLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 15 minutes
-  max: 2000, // Limit each IP to 200 requests per windowMs
+  windowMs: parseEnvInt('RATE_LIMIT_PUBLIC_WINDOW_MS', 15 * 60 * 1000), // Default: 15 minutes
+  max: parseEnvInt('RATE_LIMIT_PUBLIC_MAX', 200), // Default: 200 requests per window
   message: {
     success: false,
     error: 'Too many requests',
     message: 'Too many requests, please try again later.'
   },
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  // Skip rate limiting in development
+  skip: () => {
+    return isDevelopment;
+  }
 });
 
 module.exports = {
@@ -130,4 +170,3 @@ module.exports = {
   userLimiter,
   publicLimiter
 };
-

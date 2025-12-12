@@ -58,32 +58,34 @@ const requestRefund = async (req, res) => {
     
     // Build the OR condition safely
     // Sanitize booking references to prevent SQL injection
-    const { sanitizeBookingRef, sanitizeUUID } = require("../utils/inputSanitizer");
+    const { sanitizeBookingRef, sanitizeUUID, buildSafeOrQuery } = require("../utils/inputSanitizer");
     
+    // FIXED: Use buildSafeOrQuery instead of string interpolation
     const orConditions = [];
     if (booking.bookingRef) {
       const sanitizedRef = sanitizeBookingRef(booking.bookingRef);
       if (sanitizedRef) {
-        orConditions.push(`bookingRef.eq.${sanitizedRef}`);
+        orConditions.push({ field: 'bookingRef', operator: 'eq', value: sanitizedRef });
       }
     }
     
     // Sanitize booking ID (UUID)
     const sanitizedBookingId = sanitizeUUID(booking.id);
     if (sanitizedBookingId) {
-      orConditions.push(`bookingRef.eq.RESCHEDULE_${sanitizedBookingId}`);
-      orConditions.push(`bookingRef.eq.${sanitizedBookingId}`);
+      orConditions.push({ field: 'bookingRef', operator: 'eq', value: `RESCHEDULE_${sanitizedBookingId}` });
+      orConditions.push({ field: 'bookingRef', operator: 'eq', value: sanitizedBookingId });
     }
     
-    if (orConditions.length > 0) {
-      paymentQuery = paymentQuery.or(orConditions.join(','));
+    const safeOrQuery = buildSafeOrQuery(orConditions);
+    if (safeOrQuery) {
+      paymentQuery = paymentQuery.or(safeOrQuery);
     }
     
     paymentQuery = paymentQuery.order('createdAt', { ascending: true }); // Order by creation time to see original first
     
     const { data: payments, error: paymentsError } = await paymentQuery;
 
-    console.log('🔍 Refund query used:', orConditions.join(','));
+    console.log('🔍 Refund query used:', safeOrQuery || 'none');
 
     if (payments && !paymentsError) {
       allPayments = payments;

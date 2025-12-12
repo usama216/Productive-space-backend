@@ -880,31 +880,34 @@ exports.getBookingPaymentDetails = async (req, res) => {
     // First, let's check what payments exist for this booking
     // Try multiple query patterns to find all related payments
     // Sanitize booking references to prevent SQL injection
-    const { sanitizeBookingRef, sanitizeUUID } = require("../utils/inputSanitizer");
+    const { sanitizeBookingRef, sanitizeUUID, buildSafeOrQuery } = require("../utils/inputSanitizer");
     
+    // FIXED: Use buildSafeOrQuery instead of string interpolation
     const orConditions = [];
     if (booking.bookingRef) {
       const sanitizedRef = sanitizeBookingRef(booking.bookingRef);
       if (sanitizedRef) {
-        orConditions.push(`bookingRef.eq.${sanitizedRef}`);
+        orConditions.push({ field: 'bookingRef', operator: 'eq', value: sanitizedRef });
       }
     }
     
     const sanitizedBookingId = sanitizeUUID(booking.id);
     if (sanitizedBookingId) {
-      orConditions.push(`bookingRef.eq.RESCHEDULE_${sanitizedBookingId}`);
-      orConditions.push(`bookingRef.eq.${sanitizedBookingId}`);
+      orConditions.push({ field: 'bookingRef', operator: 'eq', value: `RESCHEDULE_${sanitizedBookingId}` });
+      orConditions.push({ field: 'bookingRef', operator: 'eq', value: sanitizedBookingId });
     }
+    
+    const safeOrQuery = buildSafeOrQuery(orConditions);
     
     const { data: allPaymentsCheck, error: checkError } = await supabase
       .from('Payment')
       .select('id, totalAmount, cost, paymentMethod, bookingRef, createdAt')
-      .or(orConditions.length > 0 ? orConditions.join(',') : 'id.eq.null') // Use null condition if no valid conditions
+      .or(safeOrQuery || 'id.eq.null') // Use null condition if no valid conditions
       .order('createdAt', { ascending: true });
 
     console.log('🔍 All payments found for booking:', allPaymentsCheck);
     // Log sanitized query for debugging (using sanitized values)
-    console.log('🔍 Query used:', orConditions.join(','));
+    console.log('🔍 Query used:', safeOrQuery || 'id.eq.null');
 
     // Also try a broader search to see all payments
     const { data: allPaymentsBroader, error: broaderError } = await supabase

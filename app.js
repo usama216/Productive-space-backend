@@ -31,39 +31,24 @@ startCreditCleanup();
 const app = express();
 
 
-// CORS Configuration - Security: Only allow trusted origins
+// CORS Configuration - Dynamic CORS based on endpoint type
+// Public endpoints: Allow all origins (*)
+// Protected endpoints: Only allow trusted origins
 const allowedOrigins = process.env.ALLOWED_ORIGINS 
   ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
   : [
       'http://localhost:3000',
       'http://localhost:3001',
       'https://productive-space.vercel.app',
+      'https://my-productive-space.vercel.app',
       'https://www.productivespace.sg'
     ];
 
-app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (Postman, mobile apps, curl, server-to-server)
-    // This is needed for webhooks and server-side requests
-    if (!origin) {
-      return callback(null, true);
-    }
-    
-    // Check if origin is in allowed list
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      // Log blocked origin for security monitoring
-      console.warn(`🚫 CORS blocked origin: ${origin}`);
-      callback(new Error('Not allowed by CORS policy'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  exposedHeaders: ['Content-Range', 'X-Content-Range'],
-  maxAge: 86400 // 24 hours
-}));
+// Import dynamic CORS middleware
+const { dynamicCors } = require('./middleware/dynamicCors');
+
+// Apply dynamic CORS middleware
+app.use(dynamicCors(allowedOrigins));
 
 // Apply general rate limiting to all routes
 // Specific routes can override with their own limiters
@@ -221,34 +206,80 @@ app.get("/", (req, res) => {
         </html>
     `);
 });
-app.use("/api/door", doorRoutes);
+// Rate Limiting Strategy:
+// - generalLimiter: Applied globally to all /api routes (default fallback)
+// - publicLimiter: Public read endpoints (packages, pricing, announcements, shop-hours, payment-settings)
+// - sensitiveOperationLimiter: Sensitive operations (payments, bookings, refunds, credits, reschedules)
+// - userLimiter: User-specific endpoints (user bookings, discount history, booking activity)
+// - adminLimiter: Admin-only endpoints
+// - authLimiter: Authentication endpoints (if any)
+
+// Door routes - sensitive operation (door unlock)
+app.use("/api/door", sensitiveOperationLimiter, doorRoutes);
 // Public door unlock endpoint - clean URL without exposing internal API structure
 // Apply public rate limiting (more permissive) - door unlock uses token-based auth
 app.get("/open", publicLimiter, require('./controllers/doorController').openDoor);
-app.use("/api/hitpay", paymentRoutes);
-app.use("/api/booking", bookingRoutes);
-// Apply rate limiting based on route sensitivity
-app.use("/api/promocode", promoCodeRoutes);
-app.use("/api/student", studentVerificationRoutes);
-app.use("/api/packages", packageRoutes);
+
+// Payment routes - sensitive operation (payment creation)
+app.use("/api/hitpay", sensitiveOperationLimiter, paymentRoutes);
+
+// Booking routes - sensitive operation (booking creation, modification)
+app.use("/api/booking", sensitiveOperationLimiter, bookingRoutes);
+
+// Promo code routes - public read, sensitive write
+app.use("/api/promocode", promoCodeRoutes); // Uses generalLimiter, specific routes can override
+
+// Student verification routes - sensitive operation
+app.use("/api/student", sensitiveOperationLimiter, studentVerificationRoutes);
+
+// Package routes - public read, sensitive write
+app.use("/api/packages", packageRoutes); // Uses generalLimiter, specific routes can override
 app.use("/api/packages", sensitiveOperationLimiter, packagePaymentRoutes);
-app.use("/api/new-packages", newPackageRoutes);
-app.use("/api/packages", packageUsageRoutes);
+app.use("/api/new-packages", newPackageRoutes); // Uses generalLimiter, specific routes can override
+app.use("/api/packages", userLimiter, packageUsageRoutes); // User-specific
+
+// Admin package routes
 app.use("/api/admin/packages", adminLimiter, adminPackageUsageRoutes);
 app.use("/api/admin/packages", adminLimiter, adminPackageRoutes);
-app.use("/api/test", adminLimiter, simpleTestRoutes); // Test routes should be admin-only
+
+// Test routes - admin-only
+app.use("/api/test", adminLimiter, simpleTestRoutes);
+
+// Refund routes - sensitive operation
 app.use("/api/refund", sensitiveOperationLimiter, refundRoutes);
 app.use("/api/admin/refund", adminLimiter, adminRefundRoutes);
+
+// Credit routes - sensitive operation
 app.use("/api/credit", sensitiveOperationLimiter, creditRoutes);
-app.use("/api", pricingRoutes);
+
+// Pricing routes - public read
+app.use("/api", publicLimiter, pricingRoutes);
+
+// Reschedule routes - sensitive operation
 app.use("/api/reschedule", sensitiveOperationLimiter, rescheduleRoutes);
-app.use("/api/discount-history", discountHistoryRoutes);
+
+// Discount history routes - user-specific
+app.use("/api/discount-history", userLimiter, discountHistoryRoutes);
+
+// Tuya settings routes - admin-only
 app.use("/api/tuya-settings", adminLimiter, tuyaSettingsRoutes);
-app.use("/api/booking-activity", bookingActivityRoutes);
-app.use("/api/payment-settings", paymentSettingsRoutes);
-app.use("/api", announcementRoutes);
+
+// Booking activity routes - user-specific
+app.use("/api/booking-activity", userLimiter, bookingActivityRoutes);
+
+// Payment settings routes - public read
+app.use("/api/payment-settings", publicLimiter, paymentSettingsRoutes);
+
+// Announcement routes - public read
+app.use("/api", publicLimiter, announcementRoutes);
+
+// Admin user routes - admin-only
 app.use("/api", adminLimiter, adminUserRoutes);
-app.use("/api/shop-hours", shopHoursRoutes);
+
+// Shop hours routes - public read
+app.use("/api/shop-hours", publicLimiter, shopHoursRoutes);
+
+// Package application routes - sensitive operation
 app.use("/api/booking", sensitiveOperationLimiter, require('./routes/packageApplication'));
 app.post('/api/test-package-usage', adminLimiter, authenticateUser, requireAdmin, async (req, res) => {
   try {

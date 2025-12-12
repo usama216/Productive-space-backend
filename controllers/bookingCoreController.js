@@ -610,13 +610,56 @@ exports.getAllBookings = async (req, res) => {
       .from('Booking')
       .select('*', { count: 'exact' });
 
+    // Handle search - contain-based matching for bookingRef, location, emails, and user name/email
+    let matchingUserIds = [];
     if (search) {
       // Sanitize search input to prevent SQL injection
-      const { sanitizeSearchQuery } = require("../utils/inputSanitizer");
+      const { sanitizeSearchQuery, buildSafeOrQuery, escapePostgREST } = require("../utils/inputSanitizer");
       const sanitizedSearch = sanitizeSearchQuery(search);
       if (sanitizedSearch) {
-        // Use sanitized search - Supabase PostgREST handles parameterization safely
-        query = query.or(`bookingRef.ilike.%${sanitizedSearch}%,location.ilike.%${sanitizedSearch}%,bookedForEmails.cs.{${sanitizedSearch}}`);
+        // First, search for users matching the search term (contain-based)
+        // Search in user name (firstName + lastName), email - contain-based with spaces
+        const escapedSearch = escapePostgREST(sanitizedSearch);
+        const { data: matchingUsers, error: userSearchError } = await supabase
+          .from('User')
+          .select('id')
+          .or(`email.ilike.%${escapedSearch}%,firstName.ilike.%${escapedSearch}%,lastName.ilike.%${escapedSearch}%`);
+        
+        if (!userSearchError && matchingUsers && matchingUsers.length > 0) {
+          matchingUserIds = matchingUsers.map(u => u.id);
+        }
+        
+        // Build search conditions for booking fields (contain-based)
+        const bookingSearchConditions = [
+          { field: 'bookingRef', operator: 'ilike', value: `%${sanitizedSearch}%` },
+          { field: 'location', operator: 'ilike', value: `%${sanitizedSearch}%` },
+          { field: 'bookedForEmails', operator: 'cs', value: `{${sanitizedSearch}}` }
+        ];
+        
+        const bookingOrConditions = buildSafeOrQuery(bookingSearchConditions);
+        
+        // Combine booking search with user search
+        if (matchingUserIds.length > 0 && bookingOrConditions) {
+          // Search in booking fields OR userId matches any of the matching users
+          // Build combined OR condition: booking fields OR userId matches (contain-based)
+          const allConditions = bookingOrConditions.split(',');
+          // Add userId conditions for each matching user (individual eq checks)
+          matchingUserIds.forEach(userId => {
+            // Sanitize userId to prevent injection
+            const { sanitizeUUID } = require("../utils/inputSanitizer");
+            const sanitizedUserId = sanitizeUUID(userId);
+            if (sanitizedUserId) {
+              allConditions.push(`userId.eq.${sanitizedUserId}`);
+            }
+          });
+          query = query.or(allConditions.join(','));
+        } else if (matchingUserIds.length > 0) {
+          // Only user search - use 'in' for better performance when no booking field search
+          query = query.in('userId', matchingUserIds);
+        } else if (bookingOrConditions) {
+          // Only booking fields search (contain-based)
+          query = query.or(bookingOrConditions);
+        }
       }
     }
 
@@ -637,7 +680,12 @@ exports.getAllBookings = async (req, res) => {
     }
 
     if (location) {
-      query = query.eq('location', location);
+      // Sanitize location to prevent SQL injection
+      const { sanitizeString } = require("../utils/inputSanitizer");
+      const sanitizedLocation = sanitizeString(location, 100);
+      if (sanitizedLocation) {
+        query = query.eq('location', sanitizedLocation);
+      }
     }
 
     // Date filtering

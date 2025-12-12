@@ -232,15 +232,22 @@ exports.getPackageUsageAnalytics = async (req, res) => {
       }
     }));
 
-    // Apply in-memory search filter
+    // Apply in-memory search filter (contain-based, case-insensitive)
     let filteredPackageUsages = packageUsages;
     if (search) {
-      const searchLower = search.toLowerCase();
-      filteredPackageUsages = packageUsages.filter(pkg => 
-        pkg.packageName.toLowerCase().includes(searchLower) ||
-        pkg.userName.toLowerCase().includes(searchLower) ||
-        pkg.userEmail.toLowerCase().includes(searchLower)
-      );
+      // Sanitize search input to prevent potential issues
+      const { sanitizeSearchQuery } = require("../utils/inputSanitizer");
+      const sanitizedSearch = sanitizeSearchQuery(search);
+      if (sanitizedSearch) {
+        const searchLower = sanitizedSearch.toLowerCase();
+        // Contain-based search: search in packageName, userName, and userEmail
+        // This handles spaces properly - "half day" will match packages containing "half day"
+        filteredPackageUsages = packageUsages.filter(pkg => 
+          pkg.packageName.toLowerCase().includes(searchLower) ||
+          pkg.userName.toLowerCase().includes(searchLower) ||
+          pkg.userEmail.toLowerCase().includes(searchLower)
+        );
+      }
     }
 
     // Sort by usage percentage if requested

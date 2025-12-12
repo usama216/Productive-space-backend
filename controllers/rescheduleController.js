@@ -536,17 +536,23 @@ const confirmReschedulePayment = async (req, res) => {
         } else {
           // Try 3: Find the most recent payment for this booking
           // Sanitize booking ID to prevent SQL injection
-          const { sanitizeUUID, sanitizeBookingRef } = require("../utils/inputSanitizer");
+          const { sanitizeUUID, sanitizeBookingRef, buildSafeOrQuery } = require("../utils/inputSanitizer");
           const sanitizedBookingId = sanitizeUUID(bookingId);
           
           if (!sanitizedBookingId) {
             return res.status(400).json({ error: 'Invalid booking ID format' });
           }
           
+          // FIXED CRITICAL-002: Use buildSafeOrQuery instead of string interpolation
+          const orConditions = buildSafeOrQuery([
+            { field: 'bookingRef', operator: 'eq', value: sanitizedBookingId },
+            { field: 'bookingRef', operator: 'eq', value: `RESCHEDULE_${sanitizedBookingId}` }
+          ]);
+          
           const { data: recentPayments, error: errorRecent } = await supabase
             .from('Payment')
             .select('*')
-            .or(`bookingRef.eq.${sanitizedBookingId},bookingRef.eq.RESCHEDULE_${sanitizedBookingId}`)
+            .or(orConditions)
             .order('createdAt', { ascending: false })
             .limit(5)
           
