@@ -79,7 +79,7 @@ const authenticateUser = async (req, res, next) => {
     // Load user profile from database
     const { data: userProfile, error: profileError } = await supabase
       .from('User')
-      .select('id, email, firstName, lastName, memberType, studentVerificationStatus')
+      .select('id, email, firstName, lastName, memberType, studentVerificationStatus, disabled, isDisabled')
       .eq('id', user.id)
       .single();
 
@@ -89,6 +89,16 @@ const authenticateUser = async (req, res, next) => {
         success: false,
         error: 'Unauthorized',
         message: 'User profile not found. Please contact support.'
+      });
+    }
+
+    // Check if user is disabled
+    if (userProfile.disabled === true || userProfile.isDisabled === true) {
+      console.warn(`Disabled user attempted to access: ${user.id} (${user.email})`);
+      return res.status(403).json({
+        success: false,
+        error: 'Account Disabled',
+        message: 'Your account has been disabled. Please contact support for assistance.'
       });
     }
 
@@ -157,11 +167,17 @@ const optionalAuthenticate = async (req, res, next) => {
     // Load user profile
     const { data: userProfile } = await supabase
       .from('User')
-      .select('id, email, firstName, lastName, memberType, studentVerificationStatus')
+      .select('id, email, firstName, lastName, memberType, studentVerificationStatus, disabled, isDisabled')
       .eq('id', user.id)
       .single();
 
     if (userProfile) {
+      // Check if user is disabled
+      if (userProfile.disabled === true || userProfile.isDisabled === true) {
+        req.user = null;
+        return next();
+      }
+
       req.user = {
         id: user.id,
         email: user.email,

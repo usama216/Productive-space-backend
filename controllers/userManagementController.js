@@ -754,3 +754,125 @@ exports.changeUserRole = async (req, res) => {
     });
   }
 };
+
+// Disable user - prevents login and all activities
+exports.disableUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'User ID is required'
+      });
+    }
+
+    // Check if user exists
+    const { data: existingUser, error: fetchError } = await supabase
+      .from('User')
+      .select('id, email, disabled')
+      .eq('id', userId)
+      .single();
+
+    if (fetchError || !existingUser) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    // Update user to disabled
+    const { data: updatedUser, error: updateError } = await supabase
+      .from('User')
+      .update({
+        disabled: true,
+        updatedAt: new Date().toISOString()
+      })
+      .eq('id', userId)
+      .select('*')
+      .single();
+
+    if (updateError) {
+      console.error('Failed to disable user:', updateError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to disable user',
+        details: updateError.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'User disabled successfully',
+      user: updatedUser
+    });
+  } catch (err) {
+    console.error('disableUser error:', err);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to disable user',
+      details: err.message
+    });
+  }
+};
+
+// Enable user - allows login and activities
+exports.enableUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'User ID is required'
+      });
+    }
+
+    // Check if user exists
+    const { data: existingUser, error: fetchError } = await supabase
+      .from('User')
+      .select('id, email, disabled')
+      .eq('id', userId)
+      .single();
+
+    if (fetchError || !existingUser) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    // Update user to enabled
+    const { data: updatedUser, error: updateError } = await supabase
+      .from('User')
+      .update({
+        disabled: false,
+        updatedAt: new Date().toISOString()
+      })
+      .eq('id', userId)
+      .select('*')
+      .single();
+
+    if (updateError) {
+      console.error('Failed to enable user:', updateError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to enable user',
+        details: updateError.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'User enabled successfully',
+      user: updatedUser
+    });
+  } catch (err) {
+    console.error('enableUser error:', err);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to enable user',
+      details: err.message
+    });
+  }
+};

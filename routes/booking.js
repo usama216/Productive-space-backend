@@ -48,7 +48,9 @@ const {
   verifyStudentAccount,
   getVerificationExpiry,
   deleteUser,
-  changeUserRole
+  changeUserRole,
+  disableUser,
+  enableUser
 } = require("../controllers/userManagementController");
 
 const router = express.Router();
@@ -89,5 +91,7 @@ router.get("/admin/users/dashboard", authenticateUser, requireAdmin, getUserMana
 router.put("/admin/users/:userId/verify", authenticateUser, requireAdmin, verifyStudentAccount);
 router.get("/admin/users/:userId/verification-expiry", authenticateUser, requireAdmin, getVerificationExpiry);
 router.put("/admin/users/:userId/role", authenticateUser, requireAdmin, changeUserRole);
+router.put("/admin/users/:userId/disable", authenticateUser, requireAdmin, disableUser);
+router.put("/admin/users/:userId/enable", authenticateUser, requireAdmin, enableUser);
 router.delete("/admin/users/:userId", authenticateUser, requireAdmin, deleteUser);
 module.exports = router;

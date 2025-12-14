@@ -40,7 +40,7 @@ const parseEnvInt = (envVar, defaultValue) => {
  */
 const generalLimiter = rateLimit({
   windowMs: parseEnvInt('RATE_LIMIT_GENERAL_WINDOW_MS', 15 * 60 * 1000), // Default: 15 minutes
-  max: parseEnvInt('RATE_LIMIT_GENERAL_MAX', 100), // Default: 100 requests per window
+  max: parseEnvInt('RATE_LIMIT_GENERAL_MAX', 10000), // Default: 100 requests per window
   message: {
     success: false,
     error: 'Too many requests',
@@ -84,7 +84,7 @@ const authLimiter = rateLimit({
  */
 const sensitiveOperationLimiter = rateLimit({
   windowMs: parseEnvInt('RATE_LIMIT_SENSITIVE_WINDOW_MS', 15 * 60 * 1000), // Default: 15 minutes
-  max: parseEnvInt('RATE_LIMIT_SENSITIVE_MAX', 20), // Default: 20 requests per window
+  max: parseEnvInt('RATE_LIMIT_SENSITIVE_MAX', 2000), // Default: 20 requests per window
   message: {
     success: false,
     error: 'Too many requests',
@@ -104,7 +104,7 @@ const sensitiveOperationLimiter = rateLimit({
  */
 const adminLimiter = rateLimit({
   windowMs: parseEnvInt('RATE_LIMIT_ADMIN_WINDOW_MS', 15 * 60 * 1000), // Default: 15 minutes
-  max: parseEnvInt('RATE_LIMIT_ADMIN_MAX', 200), // Default: 200 requests per window
+  max: parseEnvInt('RATE_LIMIT_ADMIN_MAX', 20000), // Default: 200 requests per window
   message: {
     success: false,
     error: 'Too many requests',
@@ -124,7 +124,7 @@ const adminLimiter = rateLimit({
  */
 const userLimiter = rateLimit({
   windowMs: parseEnvInt('RATE_LIMIT_USER_WINDOW_MS', 15 * 60 * 1000), // Default: 15 minutes
-  max: parseEnvInt('RATE_LIMIT_USER_MAX', 50), // Default: 50 requests per window
+  max: parseEnvInt('RATE_LIMIT_USER_MAX', 5000), // Default: 50 requests per window
   message: {
     success: false,
     error: 'Too many requests',
@@ -148,7 +148,7 @@ const userLimiter = rateLimit({
  */
 const publicLimiter = rateLimit({
   windowMs: parseEnvInt('RATE_LIMIT_PUBLIC_WINDOW_MS', 15 * 60 * 1000), // Default: 15 minutes
-  max: parseEnvInt('RATE_LIMIT_PUBLIC_MAX', 200), // Default: 200 requests per window
+  max: parseEnvInt('RATE_LIMIT_PUBLIC_MAX', 20000), // Default: 200 requests per window
   message: {
     success: false,
     error: 'Too many requests',
