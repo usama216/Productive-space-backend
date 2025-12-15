@@ -1060,18 +1060,21 @@ exports.cancelBooking = async (req, res) => {
     }
 
     // Update booking status to 'cancelled' with all cancellation details
+    // Release seats by clearing seatNumbers array
     const updateData = {
       status: 'cancelled',
       cancelledBy: 'admin',
       cancelledAt: now.toISOString(),
       cancellationReason: reason || 'Cancelled by Admin',
       refundAmount: refundAmount || existingBooking.totalAmount,
+      seatNumbers: [], // Release seats for other users
       updatedAt: now.toISOString()
     };
 
     console.log('🔄 Updating booking with cancellation data:', JSON.stringify(updateData, null, 2));
     console.log('🔄 Booking ID:', id);
     console.log('🔄 Existing booking status:', existingBooking.status);
+    console.log('🔄 Releasing seats:', existingBooking.seatNumbers, '→ []');
 
     const { data: cancelledBooking, error: updateError } = await supabase
       .from('Booking')
@@ -1112,7 +1115,7 @@ exports.cancelBooking = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Booking cancelled successfully',
+      message: 'Booking cancelled successfully and seats released',
       booking: cancelledBooking,
       cancelledBooking: {
         id: existingBooking.id,
@@ -1121,7 +1124,7 @@ exports.cancelBooking = async (req, res) => {
         cancelledBy: 'admin',
         reason: reason || 'Cancelled by Admin',
         refundAmount: refundAmount || existingBooking.totalAmount,
-        seatNumbers: existingBooking.seatNumbers // Seats are now released
+        seatNumbers: [] // Seats released (empty array)
       }
     });
 
