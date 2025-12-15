@@ -182,8 +182,15 @@ exports.getUserBookings = async (req, res) => {
         isToday,
         durationHours,
         timeUntilBooking,
-        // Priority: ongoing/today first, then upcoming, then completed
-        status: isRefunded ? 'refunded' : isCancelled ? 'cancelled' : isOngoing ? 'ongoing' : isToday ? 'today' : isUpcoming ? 'upcoming' : 'completed',
+        // Priority: refunded by admin first, then cancelled by admin, then cancelled, then ongoing/today, then upcoming, then completed
+        status: isRefunded && booking.refundapprovedby === 'admin' ? 'Refunded by Admin' 
+                : isRefunded ? 'refunded' 
+                : isCancelled && booking.cancelledBy === 'admin' ? 'Cancelled by Admin'
+                : isCancelled ? 'cancelled' 
+                : isOngoing ? 'ongoing' 
+                : isToday ? 'today' 
+                : isUpcoming ? 'upcoming' 
+                : 'completed',
         PromoCode: promoCode,
         paymentMethod: paymentMethod,
         // Add discount tracking data

@@ -131,7 +131,7 @@ const getAllRefundRequests = async (req, res) => {
             .update({
               refundstatus: 'APPROVED',
               refundapprovedat: new Date().toISOString(),
-              refundapprovedby: null // No admin ID needed for single admin setup
+              refundapprovedby: 'admin' // Mark as approved by admin
             })
             .eq('id', refund.bookingid);
 

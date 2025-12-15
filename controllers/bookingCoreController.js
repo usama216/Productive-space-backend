@@ -665,17 +665,25 @@ exports.getAllBookings = async (req, res) => {
 
     if (status) {
       const now = new Date().toISOString();
-      if (status === 'upcoming') {
-        query = query.gt('startAt', now);
+      if (status === 'cancelled' || status === 'Cancelled by Admin') {
+        // Filter cancelled bookings
+        query = query.eq('status', 'cancelled');
+        // If specifically looking for admin cancelled, filter by cancelledBy
+        if (status === 'Cancelled by Admin') {
+          query = query.eq('cancelledBy', 'admin');
+        }
+      } else if (status === 'upcoming') {
+        // Exclude cancelled bookings from upcoming
+        query = query.gt('startAt', now).neq('status', 'cancelled');
       } else if (status === 'ongoing') {
-        query = query.lte('startAt', now).gt('endAt', now);
+        query = query.lte('startAt', now).gt('endAt', now).neq('status', 'cancelled');
       } else if (status === 'completed') {
-        query = query.lt('endAt', now);
+        query = query.lt('endAt', now).neq('status', 'cancelled');
       } else if (status === 'today') {
         const today = new Date();
         const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
         const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59).toISOString();
-        query = query.gte('startAt', startOfDay).lte('startAt', endOfDay);
+        query = query.gte('startAt', startOfDay).lte('startAt', endOfDay).neq('status', 'cancelled');
       }
     }
 
@@ -807,6 +815,22 @@ exports.getAllBookings = async (req, res) => {
       const user = booking.userId ? userData[booking.userId] : null;
       const promoCode = booking.promoCodeId ? promoCodeData[booking.promoCodeId] : null;
 
+      // Check refund status first - if refunded by admin, show "Refunded by Admin"
+      // Then check cancelled status
+      let calculatedStatus;
+      if (booking.refundstatus === 'APPROVED' && booking.refundapprovedby === 'admin') {
+        calculatedStatus = 'Refunded by Admin';
+      } else if (booking.cancelledBy || booking.status === 'cancelled') {
+        // If cancelled by admin, show "Cancelled by Admin" status
+        calculatedStatus = booking.cancelledBy === 'admin' ? 'Cancelled by Admin' : 'cancelled';
+      } else if (booking.refundstatus === 'APPROVED') {
+        // Refunded but not by admin (auto-approved)
+        calculatedStatus = 'Refunded';
+      } else {
+        // Priority: ongoing/today first, then upcoming, then completed
+        calculatedStatus = isOngoing ? 'ongoing' : isToday ? 'today' : isUpcoming ? 'upcoming' : 'completed';
+      }
+
       return {
         ...booking,
         startAt: startAtUTC,  // Return with UTC suffix
@@ -817,8 +841,7 @@ exports.getAllBookings = async (req, res) => {
         isToday,
         durationHours,
         timeUntilBooking,
-        // Priority: ongoing/today first, then upcoming, then completed
-        status: isOngoing ? 'ongoing' : isToday ? 'today' : isUpcoming ? 'upcoming' : 'completed',
+        status: calculatedStatus,
         User: user,
         PromoCode: promoCode
       };
@@ -1036,24 +1059,38 @@ exports.cancelBooking = async (req, res) => {
       return res.status(400).json({ error: 'Cannot cancel past or ongoing bookings' });
     }
 
-    // Update booking status to 'cancelled' instead of deleting
+    // Update booking status to 'cancelled' with all cancellation details
+    const updateData = {
+      status: 'cancelled',
+      cancelledBy: 'admin',
+      cancelledAt: now.toISOString(),
+      cancellationReason: reason || 'Cancelled by Admin',
+      refundAmount: refundAmount || existingBooking.totalAmount,
+      updatedAt: now.toISOString()
+    };
+
+    console.log('🔄 Updating booking with cancellation data:', JSON.stringify(updateData, null, 2));
+    console.log('🔄 Booking ID:', id);
+    console.log('🔄 Existing booking status:', existingBooking.status);
+
     const { data: cancelledBooking, error: updateError } = await supabase
       .from('Booking')
-      .update({
-        status: 'cancelled',
-        cancelledBy: 'admin',
-        cancelledAt: now.toISOString(),
-        cancellationReason: reason || 'Cancelled by Admin',
-        refundAmount: refundAmount || existingBooking.totalAmount,
-        updatedAt: now.toISOString()
-      })
+      .update(updateData)
       .eq('id', id)
       .select('*')
       .single();
 
     if (updateError) {
       console.error('❌ Error updating booking status:', updateError);
-      return res.status(500).json({ error: 'Failed to cancel booking' });
+      console.error('❌ Update error code:', updateError.code);
+      console.error('❌ Update error message:', updateError.message);
+      console.error('❌ Update error details:', JSON.stringify(updateError, null, 2));
+      return res.status(500).json({ 
+        error: 'Failed to cancel booking',
+        details: updateError.message || updateError.code || 'Unknown database error',
+        code: updateError.code,
+        bookingId: id
+      });
     }
 
     // Log cancellation activity
