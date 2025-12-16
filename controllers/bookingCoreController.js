@@ -481,6 +481,43 @@ exports.getAdminBookingDetails = async (req, res) => {
         : Promise.resolve({ data: null, error: null }),
     ]);
 
+    // Fetch ALL payments related to this booking (original + reschedule payments)
+    let allPayments = [];
+    if (booking.id || booking.bookingRef) {
+      const { sanitizeBookingRef, sanitizeUUID, buildSafeOrQuery } = require("../utils/inputSanitizer");
+      const orConditions = [];
+      
+      if (booking.bookingRef) {
+        const sanitizedRef = sanitizeBookingRef(booking.bookingRef);
+        if (sanitizedRef) {
+          orConditions.push({ field: 'bookingRef', operator: 'eq', value: sanitizedRef });
+        }
+      }
+      
+      const sanitizedBookingId = sanitizeUUID(booking.id);
+      if (sanitizedBookingId) {
+        orConditions.push({ field: 'bookingRef', operator: 'eq', value: `RESCHEDULE_${sanitizedBookingId}` });
+        orConditions.push({ field: 'bookingRef', operator: 'eq', value: sanitizedBookingId });
+      }
+      
+      const safeOrQuery = buildSafeOrQuery(orConditions);
+      if (safeOrQuery) {
+        const { data: paymentsData, error: paymentsError } = await supabase
+          .from('Payment')
+          .select('*')
+          .or(safeOrQuery)
+          .order('createdAt', { ascending: true });
+        
+        if (!paymentsError && paymentsData && Array.isArray(paymentsData)) {
+          // Normalize payment amounts - use amount field or totalAmount field
+          allPayments = paymentsData.map(payment => ({
+            ...payment,
+            amount: payment.amount || payment.totalAmount || 0
+          }));
+        }
+      }
+    }
+
     // User aggregates by userId
     let userStats = null;
     let recentBookings = [];
@@ -570,6 +607,7 @@ exports.getAdminBookingDetails = async (req, res) => {
         booking,
         user: userData,
         payment: paymentResp ? paymentResp.data : null,
+        allPayments: allPayments, // All payments including reschedule payments
         promoCode: promoResp ? promoResp.data : null,
         package: packageWithName,
         discountHistory,
