@@ -70,7 +70,7 @@ function verifyHitPayWebhook(req, salt) {
       return false;
     }
 
-    const isValid = crypto.timingSafeEqual(
+      const isValid = crypto.timingSafeEqual(
       Buffer.from(receivedHmacHex, 'hex'),
       Buffer.from(computedHmacHex, 'hex')
     );

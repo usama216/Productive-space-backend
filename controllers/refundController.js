@@ -4,19 +4,19 @@ const { sendRefundConfirmation } = require('../utils/email');
 // Request refund for a booking
 const requestRefund = async (req, res) => {
   try {
-    const { bookingid, reason, userid } = req.body;
+    // AUTH-001 Fix: Use authenticated user's ID instead of req.body to prevent IDOR
+    const userid = req.user.id;
+    const { bookingid, reason } = req.body;
 
-    console.log('🔄 Refund request:', { bookingid, userid, reason });
+    // DATA-001 Fix: Sanitize logs to mask sensitive IDs
+    const maskedUserId = userid ? `${userid.substring(0, 8)}...` : 'N/A';
+    const maskedBookingId = bookingid ? `${bookingid.substring(0, 8)}...` : 'N/A';
+    console.log('🔄 Refund request:', { bookingid: maskedBookingId, userid: maskedUserId });
 
     // Validate required fields
     if (!bookingid) {
       console.error('❌ Missing bookingid');
       return res.status(400).json({ error: 'Booking ID is required' });
-    }
-
-    if (!userid) {
-      console.error('❌ Missing userid');
-      return res.status(400).json({ error: 'User ID is required' });
     }
 
     if (!reason || !reason.trim()) {
@@ -251,7 +251,10 @@ const requestRefund = async (req, res) => {
 
     // Verify the booking belongs to the requesting user
     if (booking.userId !== userid) {
-      console.error('❌ Booking does not belong to user:', { bookingUserId: booking.userId, requestingUserId: userid });
+      // DATA-001 Fix: Sanitize logs to mask sensitive IDs
+      const maskedBookingUserId = booking.userId ? `${booking.userId.substring(0, 8)}...` : 'N/A';
+      const maskedRequestingUserId = userid ? `${userid.substring(0, 8)}...` : 'N/A';
+      console.error('❌ Booking does not belong to user:', { bookingUserId: maskedBookingUserId, requestingUserId: maskedRequestingUserId });
       return res.status(403).json({ error: 'You can only request refunds for your own bookings' });
     }
 
@@ -262,10 +265,6 @@ const requestRefund = async (req, res) => {
       return res.status(400).json({ error: 'Cannot refund unconfirmed booking' });
     }
 
-    // Update booking refund status
-    console.log('🔄 Updating booking refund status to REQUESTED...');
-    console.log('📊 Booking ID:', bookingid);
-    console.log('📊 Reason:', reason);
     
     const { data: updateData, error: updateBookingError } = await supabase
       .from('Booking')

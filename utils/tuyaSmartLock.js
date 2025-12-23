@@ -142,7 +142,8 @@ class TuyaSmartLock {
     // Tuya tokens typically expire in 7200 seconds (2 hours)
     this.tokenExpireTime = Date.now() + (login.result.expire_time * 1000);
     
-    console.log('Token refreshed successfully. Expires at:', new Date(this.tokenExpireTime));
+    // Log expiration time only, not the token itself (security: prevent token exposure)
+    console.log('✅ Token refreshed successfully. Expires at:', new Date(this.tokenExpireTime));
   }
 
   /**
@@ -257,7 +258,12 @@ class TuyaSmartLock {
       
       const data = await this.makeApiRequest(endpoint, method, body);
 
-      console.log('getTemporaryKey response:', data);
+      // Log only success status, not full response data (security: prevent sensitive data exposure)
+      if (data && data.success) {
+        console.log('✅ Temporary key obtained successfully');
+      } else {
+        console.log('❌ Failed to get temporary key:', data?.msg || 'Unknown error');
+      }
       
       if (data && data.success) {
         return {
@@ -300,7 +306,12 @@ class TuyaSmartLock {
 
       const data = await this.makeApiRequest(endpoint, method, body);
 
-      console.log('unlockDoorWithoutPassword response:', data);
+      // Log only success status, not full response data (security: prevent sensitive data exposure)
+      if (data && data.success) {
+        console.log('✅ Door unlock request successful');
+      } else {
+        console.log('❌ Door unlock failed:', data?.msg || 'Unknown error');
+      }
 
       if (data && data.success) {
         return {

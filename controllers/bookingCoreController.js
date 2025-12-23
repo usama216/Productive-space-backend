@@ -1063,7 +1063,7 @@ exports.updateBooking = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('❌ Error in updateBooking:', err);
+  
     res.status(500).json({ error: 'Failed to update booking' });
   }
 };
@@ -1071,8 +1071,8 @@ exports.updateBooking = async (req, res) => {
 exports.cancelBooking = async (req, res) => {
   try {
     const { id } = req.params;
-    const { reason, refundAmount } = req.body;
-
+    const { reason, refundAmount, remarks } = req.body;
+   
     // Fetch existing booking
     const { data: existingBooking, error: fetchError } = await supabase
       .from('Booking')
@@ -1105,15 +1105,11 @@ exports.cancelBooking = async (req, res) => {
       cancelledAt: now.toISOString(),
       cancellationReason: reason || 'Cancelled by Admin',
       refundAmount: refundAmount || existingBooking.totalAmount,
+      remarks: remarks !== undefined && remarks !== null ? remarks : null, // Store admin remarks (allow empty string)
       seatNumbers: [], // Release seats for other users
       updatedAt: now.toISOString()
     };
-
-    console.log('🔄 Updating booking with cancellation data:', JSON.stringify(updateData, null, 2));
-    console.log('🔄 Booking ID:', id);
-    console.log('🔄 Existing booking status:', existingBooking.status);
-    console.log('🔄 Releasing seats:', existingBooking.seatNumbers, '→ []');
-
+   
     const { data: cancelledBooking, error: updateError } = await supabase
       .from('Booking')
       .update(updateData)
@@ -1122,18 +1118,15 @@ exports.cancelBooking = async (req, res) => {
       .single();
 
     if (updateError) {
-      console.error('❌ Error updating booking status:', updateError);
-      console.error('❌ Update error code:', updateError.code);
-      console.error('❌ Update error message:', updateError.message);
-      console.error('❌ Update error details:', JSON.stringify(updateError, null, 2));
-      return res.status(500).json({ 
+       return res.status(500).json({ 
         error: 'Failed to cancel booking',
         details: updateError.message || updateError.code || 'Unknown database error',
         code: updateError.code,
         bookingId: id
       });
     }
-
+    
+  
     // Log cancellation activity
     try {
       await logBookingActivity({
@@ -1167,7 +1160,7 @@ exports.cancelBooking = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('❌ Error in cancelBooking:', err);
+  
     res.status(500).json({ error: 'Failed to cancel booking' });
   }
 };

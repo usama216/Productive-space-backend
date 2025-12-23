@@ -2,7 +2,8 @@ const supabase = require("../config/database");
 
 exports.getUserBookings = async (req, res) => {
   try {
-    const { userId } = req.body;
+    // AUTH-001 Fix: Use authenticated user's ID instead of req.body to prevent IDOR
+    const userId = req.user.id;
     const {
       page = 1,
       limit = 1000,
@@ -11,10 +12,6 @@ exports.getUserBookings = async (req, res) => {
       sortBy = 'startAt',
       sortOrder = 'desc'
     } = req.query;
-
-    if (!userId) {
-      return res.status(400).json({ error: "userId is required" });
-    }
 
     let query = supabase
       .from('Booking')
@@ -236,11 +233,8 @@ exports.getUserBookings = async (req, res) => {
 
 exports.getUserBookingStats = async (req, res) => {
   try {
-    const { userId } = req.body;
-
-    if (!userId) {
-      return res.status(400).json({ error: "userId is required" });
-    }
+    // AUTH-001 Fix: Use authenticated user's ID instead of req.body to prevent IDOR
+    const userId = req.user.id;
 
     const now = new Date().toISOString();
 
@@ -279,12 +273,9 @@ exports.getUserBookingStats = async (req, res) => {
 
 exports.getUserBookingAnalytics = async (req, res) => {
   try {
-    const { userId } = req.body;
+    // AUTH-001 Fix: Use authenticated user's ID instead of req.body to prevent IDOR
+    const userId = req.user.id;
     const { period = 'month' } = req.query;
-    
-    if (!userId) {
-      return res.status(400).json({ error: "userId is required" });
-    }
 
     const now = new Date();
     let startDate, endDate;
@@ -388,11 +379,8 @@ exports.getUserBookingAnalytics = async (req, res) => {
 
 exports.getUserDashboardSummary = async (req, res) => {
   try {
-    const { userId } = req.body;
-    
-    if (!userId) {
-      return res.status(400).json({ error: "userId is required" });
-    }
+    // AUTH-001 Fix: Use authenticated user's ID instead of req.body to prevent IDOR
+    const userId = req.user.id;
 
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());

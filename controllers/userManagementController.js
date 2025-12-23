@@ -551,7 +551,9 @@ exports.changeUserRole = async (req, res) => {
     const { userId } = req.params;
     const { newRole, reason } = req.body;
 
-    console.log('changeUserRole request:', { userId, newRole, reason });
+    // DATA-001 Fix: Sanitize logs to mask sensitive IDs
+    const maskedUserId = userId ? `${userId.substring(0, 8)}...` : 'N/A';
+    console.log('changeUserRole request:', { userId: maskedUserId, newRole, reason });
 
     // Validate newRole
     const validRoles = ['ADMIN', 'STUDENT', 'MEMBER', 'TUTOR', null];
