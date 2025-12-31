@@ -1042,13 +1042,129 @@ exports.updateBooking = async (req, res) => {
     if (updatedBooking.userId) {
       const { data: user, error: userError } = await supabase
         .from('User')
-        .select('id, name, email')
+        .select('id, name, email, firstName, lastName')
         .eq('id', updatedBooking.userId)
         .single();
 
       if (!userError && user) {
         userData = user;
       }
+    }
+
+    // Log booking update activity
+    try {
+      const changes = [];
+      const metadata = {};
+      
+      // Check what fields were changed
+      // Compare dates by converting to ISO strings for accurate comparison
+      const existingStartAtISO = existingBooking.startAt ? new Date(existingBooking.startAt).toISOString() : null;
+      const updateStartAtISO = updateData.startAt ? new Date(updateData.startAt).toISOString() : null;
+      
+      if (updateData.startAt && existingStartAtISO !== updateStartAtISO) {
+        changes.push('start time');
+        metadata.originalStartAt = existingBooking.startAt;
+        metadata.newStartAt = updateData.startAt;
+      }
+      
+      const existingEndAtISO = existingBooking.endAt ? new Date(existingBooking.endAt).toISOString() : null;
+      const updateEndAtISO = updateData.endAt ? new Date(updateData.endAt).toISOString() : null;
+      
+      if (updateData.endAt && existingEndAtISO !== updateEndAtISO) {
+        changes.push('end time');
+        metadata.originalEndAt = existingBooking.endAt;
+        metadata.newEndAt = updateData.endAt;
+      }
+      
+      if (updateData.location && existingBooking.location !== updateData.location) {
+        changes.push('location');
+        metadata.originalLocation = existingBooking.location;
+        metadata.newLocation = updateData.location;
+      }
+      
+      if (updateData.specialRequests !== undefined && existingBooking.specialRequests !== updateData.specialRequests) {
+        changes.push('special requests');
+      }
+      
+      if (updateData.totalAmount !== undefined && parseFloat(existingBooking.totalAmount) !== parseFloat(updateData.totalAmount)) {
+        changes.push('total amount');
+        metadata.originalAmount = parseFloat(existingBooking.totalAmount);
+        metadata.newAmount = parseFloat(updateData.totalAmount);
+      }
+
+      // Only log if there are actual changes
+      if (changes.length > 0) {
+        const userName = userData ? `${userData.firstName || ''} ${userData.lastName || ''}`.trim() : null;
+        
+        // Format old and new values for description
+        let oldValue = '';
+        let newValue = '';
+        
+        if (metadata.originalStartAt || metadata.originalEndAt || metadata.newStartAt || metadata.newEndAt) {
+          // Format dates for description
+          const formatDate = (dateStr) => {
+            if (!dateStr) return '';
+            return new Date(dateStr).toLocaleString('en-SG', {
+              timeZone: 'Asia/Singapore',
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: true
+            });
+          };
+          
+          if (metadata.originalStartAt && metadata.originalEndAt) {
+            oldValue = `${formatDate(metadata.originalStartAt)} - ${formatDate(metadata.originalEndAt)}`;
+          } else if (metadata.originalEndAt) {
+            oldValue = `End: ${formatDate(metadata.originalEndAt)}`;
+          } else if (metadata.originalStartAt) {
+            oldValue = `Start: ${formatDate(metadata.originalStartAt)}`;
+          }
+          
+          if (metadata.newStartAt && metadata.newEndAt) {
+            newValue = `${formatDate(metadata.newStartAt)} - ${formatDate(metadata.newEndAt)}`;
+          } else if (metadata.newEndAt) {
+            newValue = `End: ${formatDate(metadata.newEndAt)}`;
+          } else if (metadata.newStartAt) {
+            newValue = `Start: ${formatDate(metadata.newStartAt)}`;
+          }
+        } else if (metadata.originalLocation || metadata.newLocation) {
+          oldValue = metadata.originalLocation || '';
+          newValue = metadata.newLocation || '';
+        } else if (metadata.originalAmount !== undefined || metadata.newAmount !== undefined) {
+          oldValue = metadata.originalAmount ? `$${metadata.originalAmount.toFixed(2)}` : '';
+          newValue = metadata.newAmount ? `$${metadata.newAmount.toFixed(2)}` : '';
+        }
+
+        const activityDescription = oldValue && newValue 
+          ? `Old: ${oldValue} → New: ${newValue}`
+          : `Modified: ${changes.join(', ')}`;
+
+        await logBookingActivity({
+          bookingId: updatedBooking.id,
+          bookingRef: updatedBooking.bookingRef,
+          activityType: ACTIVITY_TYPES.BOOKING_UPDATED,
+          activityTitle: 'Booking Modified by Admin',
+          activityDescription: activityDescription,
+          userId: updatedBooking.userId,
+          userName: userName,
+          userEmail: userData?.email || updatedBooking.bookedForEmails?.[0],
+          oldValue: oldValue || null,
+          newValue: newValue || null,
+          metadata: {
+            ...metadata,
+            changes: changes,
+            modifiedBy: 'admin'
+          }
+        });
+        
+        console.log('✅ Booking update activity logged successfully');
+      }
+    } catch (activityError) {
+      console.error('❌ Error logging booking update activity:', activityError);
+      // Don't fail the request if activity logging fails
     }
 
     const finalResponse = {
@@ -1162,6 +1278,92 @@ exports.cancelBooking = async (req, res) => {
   } catch (err) {
   
     res.status(500).json({ error: 'Failed to cancel booking' });
+  }
+};
+
+// Delete unpaid booking immediately when payment is cancelled
+exports.deleteUnpaidBooking = async (req, res) => {
+  try {
+    const { bookingId } = req.body;
+    
+    if (!bookingId) {
+      return res.status(400).json({ error: 'Booking ID is required' });
+    }
+
+    // Fetch existing booking
+    const { data: existingBooking, error: fetchError } = await supabase
+      .from('Booking')
+      .select('id, bookingRef, confirmedPayment, refundstatus, extensionamounts, userId')
+      .eq('id', bookingId)
+      .single();
+
+    if (fetchError || !existingBooking) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+
+    // Only allow deletion of unpaid bookings
+    if (existingBooking.confirmedPayment === true) {
+      return res.status(400).json({ error: 'Cannot delete confirmed booking' });
+    }
+
+    // Don't delete if booking has refunds (except NONE, REQUESTED, REJECTED)
+    if (existingBooking.refundstatus && 
+        existingBooking.refundstatus !== 'NONE' && 
+        existingBooking.refundstatus !== 'REQUESTED' && 
+        existingBooking.refundstatus !== 'REJECTED') {
+      return res.status(400).json({ error: 'Cannot delete booking with refund status' });
+    }
+
+    // Don't delete if booking has extensions
+    if (existingBooking.extensionamounts && Object.keys(existingBooking.extensionamounts).length > 0) {
+      return res.status(400).json({ error: 'Cannot delete booking with extensions' });
+    }
+
+    // Don't delete reschedule/extension payments - only new bookings
+    if (existingBooking.bookingRef && 
+        (existingBooking.bookingRef.startsWith('RESCHEDULE_') || 
+         existingBooking.bookingRef.startsWith('EXTEND_'))) {
+      return res.status(400).json({ error: 'Cannot delete reschedule or extension booking' });
+    }
+
+    // Check ownership - user can only delete their own bookings
+    if (req.user && req.user.id !== existingBooking.userId) {
+      return res.status(403).json({ error: 'Not authorized to delete this booking' });
+    }
+
+  
+    // Step 1: Delete related creditusage records first (to avoid foreign key constraint)
+    const { error: creditUsageError } = await supabase
+      .from('creditusage')
+      .delete()
+      .eq('bookingid', existingBooking.id);
+
+    if (creditUsageError) {
+      console.error('⚠️  Error deleting creditusage records:', creditUsageError);
+      // Continue with booking deletion even if creditusage deletion fails
+    } else {
+      console.log('✅ Deleted related creditusage records');
+    }
+
+    // Step 2: Delete the booking
+    const { error: deleteError } = await supabase
+      .from('Booking')
+      .delete()
+      .eq('id', existingBooking.id);
+
+    if (deleteError) {
+  
+      return res.status(500).json({ error: 'Failed to delete booking' });
+    }
+
+    res.json({
+      success: true,
+      message: 'Unpaid booking deleted successfully',
+      bookingRef: existingBooking.bookingRef
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete booking' });
   }
 };
 

@@ -8,7 +8,8 @@ const {
   getBookingById,
   getAdminBookingDetails,
   updateBooking,
-  cancelBooking
+  cancelBooking,
+  deleteUnpaidBooking
 } = require("../controllers/bookingCoreController");
 
 const {
@@ -74,6 +75,7 @@ router.post("/user/dashboard", authenticateUser, getUserDashboardSummary);
 router.post("/getBookingPaymentDetails", authenticateUser, getBookingPaymentDetails);
 router.post("/extend", authenticateUser, extendBooking);
 router.post("/confirm-extension-payment", authenticateUser, confirmExtensionPayment);
+router.post("/deleteUnpaidBooking", authenticateUser, deleteUnpaidBooking);
 
 
 router.get("/admin/all", authenticateUser, requireAdmin, getAllBookings);
